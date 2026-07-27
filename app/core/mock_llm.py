@@ -2,34 +2,30 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import time
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Optional
+import uuid
+
 
 
 class MockLLMClient:
     model = "mock"
 
+    def create_vector_store(self, name: str) -> str:
+        return f"vs_mock_{uuid.uuid4().hex}"
+
+    def upload_file_from_path(self, path: str) -> tuple[str, str]:
+        return (f"upload_mock_{uuid.uuid4().hex}", f"file_mock_{uuid.uuid4().hex}")
+
+    def attach_file_to_vector_store(self, vector_store_id: str, file_id: str) -> str:
+        return f"vs_file_mock_{uuid.uuid4().hex}"
+
+    def wait_vector_store_file_completed(self, vector_store_id: str, vs_file_id: str) -> None:
+        pass
+
     def _seed(self, text: str) -> int:
         return int(hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:8], 16)
-
     def _response_id(self, input_text: str) -> str:
         return f"mock-{self._seed(input_text):08x}"
-
-    def _stream_delay_s(self) -> float:
-        raw = os.getenv("KEHA_LV_MOCK_STREAM_DELAY_MS", "").strip()
-        if not raw:
-            return 0.0
-        try:
-            return max(float(raw) / 1000.0, 0.0)
-        except Exception:
-            return 0.0
-
-    def _chunk_text(self, text: str, chunk_size: int = 32) -> list[str]:
-        text = text or ""
-        if not text:
-            return [""]
-        return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
 
     def _mock_json(self, input_text: str) -> Dict[str, Any]:
         low = (input_text or "").lower()
@@ -315,9 +311,10 @@ class MockLLMClient:
         vector_store_ids: list[str] | None,
         response_format: str | None,
         max_output_tokens: int | None,
+        previous_response_id: str | None = None,
         reasoning_effort: str | None,
         text_verbosity: str | None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if response_format == "json_object":
             payload = self._mock_json(input_text or "")
             output_text = json.dumps(payload, ensure_ascii=False)
@@ -328,47 +325,5 @@ class MockLLMClient:
             "output_text": output_text,
         }
 
-    def responses_stream(
-        self,
-        *,
-        input_text: str,
-        vector_store_ids: list[str] | None,
-        response_format: str | None,
-        max_output_tokens: int | None,
-        previous_response_id: str | None,
-        reasoning_effort: str | None,
-        text_verbosity: str | None,
-    ) -> Iterator[dict[str, Any]]:
-        if response_format == "json_object":
-            payload = self._mock_json(input_text or "")
-            output_text = json.dumps(payload, ensure_ascii=False)
-        else:
-            output_text = self._mock_text(input_text or "")
-
-        response_id = self._response_id(input_text or "")
-        delay_s = self._stream_delay_s()
-        yield {"event": "response.created", "data": {"id": response_id}}
-        chunks = self._chunk_text(output_text)
-        for chunk in chunks:
-            if delay_s:
-                time.sleep(delay_s)
-            yield {"event": "response.output_text.delta", "data": {"delta": chunk, "id": response_id}}
-        yield {
-            "event": "response.output_text.done",
-            "data": {"text": output_text, "id": response_id},
-        }
-        yield {
-            "event": "response.completed",
-            "data": {
-                "id": response_id,
-                "output_text": output_text,
-                "usage": {
-                    "input_tokens": max(len(input_text.split()), 1),
-                    "output_tokens": max(len(output_text.split()), 1),
-                    "total_tokens": max(len(input_text.split()), 1) + max(len(output_text.split()), 1),
-                },
-            },
-        }
-
-    def extract_output_text(self, resp: Dict[str, Any]) -> Optional[str]:
+    def extract_output_text(self, resp: dict[str, Any]) -> str | None:
         return resp.get("output_text")

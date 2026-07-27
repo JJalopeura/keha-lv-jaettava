@@ -7,13 +7,22 @@ ulkoisia yhteyksiä.
 ## Käynnistys
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ./run.sh
 ```
 
 Avaa selaimella http://127.0.0.1:8000.
+
+## Testit
+
+```bash
+.venv/bin/python -m unittest discover tests
+```
+
+Testit ajetaan mock-LLM:llä ja väliaikaiseen tietokantaan, joten ne eivät
+koske `data/`-hakemistoon eivätkä tarvitse Azure-yhteyttä.
 
 ## Aineisto ja data
 

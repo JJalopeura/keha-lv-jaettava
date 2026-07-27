@@ -8,11 +8,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name, str(default)).strip().lower()
-    return value in {"1", "true", "yes", "on"}
-
-
 @dataclass(frozen=True)
 class Settings:
     db_path: str
@@ -42,7 +37,7 @@ def load_settings() -> Settings:
         db_path=os.getenv("KEHA_LV_DB_PATH", str(data_dir / "keha_lv.db")),
         uploads_dir=os.getenv("KEHA_LV_UPLOADS_DIR", str(data_dir / "uploads")),
         llm_provider=os.getenv("KEHA_LV_LLM_PROVIDER", "mock").strip().lower() or "mock",
-        demo_mode=_bool("KEHA_LV_DEMO_MODE", True),
+        demo_mode=os.getenv("KEHA_LV_DEMO_MODE", "true").strip().lower() in {"1", "true", "yes", "on"},
         azure_openai_host_core=os.getenv("AZURE_OPENAI_HOST_CORE", ""),
         azure_openai_host_chat=os.getenv("AZURE_OPENAI_HOST_CHAT", ""),
         azure_openai_api_key_core=os.getenv("AZURE_OPENAI_API_KEY_CORE", ""),

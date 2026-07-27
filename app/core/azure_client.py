@@ -1,11 +1,9 @@
 from __future__ import annotations
-
 import mimetypes
-import json
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -13,6 +11,42 @@ import httpx
 def guess_mime_type(filename: str) -> str:
     mt, _ = mimetypes.guess_type(filename)
     return mt or "application/octet-stream"
+
+def _build_responses_payload(
+    model: str,
+    *,
+    input_text: Optional[str] = None,
+    input_items: Optional[List[Dict[str, Any]]] = None,
+    vector_store_ids: Optional[List[str]] = None,
+    response_format: Optional[str] = None,
+    max_output_tokens: Optional[int] = None,
+    previous_response_id: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+    text_verbosity: Optional[str] = None,
+    stream: bool = False,
+) -> Dict[str, Any]:
+    if input_text is None and input_items is None:
+        raise ValueError("responses requires input_text or input_items")
+    payload: Dict[str, Any] = {"model": model}
+    payload["input"] = input_items if input_items is not None else input_text
+    if vector_store_ids:
+        payload["tools"] = [{"type": "file_search", "vector_store_ids": vector_store_ids}]
+        payload["tool_choice"] = "auto"
+    if response_format == "json_object":
+        payload.setdefault("text", {})
+        payload["text"]["format"] = {"type": "json_object"}
+    if text_verbosity:
+        payload.setdefault("text", {})
+        payload["text"]["verbosity"] = text_verbosity
+    if reasoning_effort:
+        payload["reasoning"] = {"effort": reasoning_effort}
+    if max_output_tokens is not None:
+        payload["max_output_tokens"] = int(max_output_tokens)
+    if previous_response_id is not None:
+        payload["previous_response_id"] = previous_response_id
+    if stream:
+        payload["stream"] = True
+    return payload
 
 
 @dataclass
@@ -63,27 +97,6 @@ class AzureOpenAIClient:
         if not resp.text.strip():
             return {}
         return resp.json()
-
-    def create_realtime_client_secret(
-        self,
-        *,
-        session: Dict[str, Any],
-        expires_after_s: int = 600,
-        path: str = "/openai/v1/realtime/client_secrets",
-    ) -> Dict[str, Any]:
-        body = {
-            "expires_after": {
-                "anchor": "created_at",
-                "seconds": max(int(expires_after_s), 10),
-            },
-            "session": session,
-        }
-        return self.request_json(
-            "POST",
-            path,
-            json_body=body,
-            include_api_version=False,
-        )
 
     # -------- Vector stores --------
     def create_vector_store(self, name: Optional[str] = None) -> str:
@@ -179,48 +192,6 @@ class AzureOpenAIClient:
         file_id = self.complete_upload(upload_id, part_ids)
         return upload_id, file_id
 
-    # -------- Responses --------
-    def _responses_payload(
-        self,
-        *,
-        input_text: Optional[str] = None,
-        input_items: Optional[List[Dict[str, Any]]] = None,
-        vector_store_ids: Optional[List[str]] = None,
-        response_format: Optional[str] = None,
-        max_output_tokens: Optional[int] = None,
-        previous_response_id: Optional[str] = None,
-        reasoning_effort: Optional[str] = None,
-        text_verbosity: Optional[str] = None,
-        model: Optional[str] = None,
-        stream: bool = False,
-    ) -> Dict[str, Any]:
-        if input_text is None and input_items is None:
-            raise ValueError("responses requires input_text or input_items")
-
-        payload: Dict[str, Any] = {"model": model or self.model}
-        if input_items is not None:
-            payload["input"] = input_items
-        else:
-            payload["input"] = input_text
-        if vector_store_ids:
-            payload["tools"] = [{"type": "file_search", "vector_store_ids": vector_store_ids}]
-            payload["tool_choice"] = "auto"
-        if response_format == "json_object":
-            payload.setdefault("text", {})
-            payload["text"]["format"] = {"type": "json_object"}
-        if text_verbosity:
-            payload.setdefault("text", {})
-            payload["text"]["verbosity"] = text_verbosity
-        if reasoning_effort:
-            payload["reasoning"] = {"effort": reasoning_effort}
-        if max_output_tokens is not None:
-            payload["max_output_tokens"] = int(max_output_tokens)
-        if previous_response_id is not None:
-            payload["previous_response_id"] = previous_response_id
-        if stream:
-            payload["stream"] = True
-        return payload
-
     def responses(
         self,
         *,
@@ -234,7 +205,8 @@ class AzureOpenAIClient:
         text_verbosity: Optional[str] = None,    # low|medium|high
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
-        payload = self._responses_payload(
+        payload = _build_responses_payload(
+            model or self.model,
             input_text=input_text,
             input_items=input_items,
             vector_store_ids=vector_store_ids,
@@ -243,53 +215,10 @@ class AzureOpenAIClient:
             previous_response_id=previous_response_id,
             reasoning_effort=reasoning_effort,
             text_verbosity=text_verbosity,
-            model=model,
         )
         return self.request_json("POST", "/openai/responses", json_body=payload)
 
-    def responses_stream(
-        self,
-        *,
-        input_text: Optional[str] = None,
-        input_items: Optional[List[Dict[str, Any]]] = None,
-        vector_store_ids: Optional[List[str]] = None,
-        response_format: Optional[str] = None,
-        max_output_tokens: Optional[int] = None,
-        previous_response_id: Optional[str] = None,
-        reasoning_effort: Optional[str] = None,
-        text_verbosity: Optional[str] = None,
-        model: Optional[str] = None,
-    ) -> Iterator[dict[str, Any]]:
-        payload = self._responses_payload(
-            input_text=input_text,
-            input_items=input_items,
-            vector_store_ids=vector_store_ids,
-            response_format=response_format,
-            max_output_tokens=max_output_tokens,
-            previous_response_id=previous_response_id,
-            reasoning_effort=reasoning_effort,
-            text_verbosity=text_verbosity,
-            model=model,
-            stream=True,
-        )
-        url = self._url("/openai/responses")
-        params = {"api-version": self.api_version}
-        headers = {"Content-Type": "application/json", "Accept": "text/event-stream", **self._headers()}
-
-        with httpx.Client(timeout=self.timeout_s) as client:
-            with client.stream("POST", url, params=params, headers=headers, json=payload) as resp:
-                if resp.status_code >= 400:
-                    try:
-                        data = resp.json()
-                        err = data.get("error", {})
-                        msg = err.get("message") or data
-                    except Exception:
-                        msg = resp.text
-                    raise RuntimeError(f"POST /openai/responses -> HTTP {resp.status_code}: {msg}")
-                yield from self._iter_sse_events(resp)
-
-    @staticmethod
-    def extract_output_text(resp: Dict[str, Any]) -> Optional[str]:
+    def extract_output_text(self, resp: dict[str, Any]) -> str | None:
         try:
             for o in resp.get("output", []):
                 if o.get("type") == "message":
@@ -299,46 +228,3 @@ class AzureOpenAIClient:
         except Exception:
             return None
         return None
-
-    @staticmethod
-    def _iter_sse_events(resp: httpx.Response) -> Iterator[dict[str, Any]]:
-        event_name: Optional[str] = None
-        data_lines: List[str] = []
-
-        def flush() -> Optional[dict[str, Any]]:
-            nonlocal event_name, data_lines
-            if event_name is None and not data_lines:
-                return None
-            raw = "\n".join(data_lines)
-            data: Any = raw
-            if raw.strip():
-                try:
-                    data = json.loads(raw)
-                except Exception:
-                    data = raw
-            event = {"event": event_name or "message", "data": data}
-            event_name = None
-            data_lines = []
-            return event
-
-        for raw_line in resp.iter_lines():
-            if raw_line is None:
-                continue
-            line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else str(raw_line)
-            line = line.rstrip("\r")
-            if line == "":
-                event = flush()
-                if event is not None:
-                    yield event
-                continue
-            if line.startswith("event:"):
-                event_name = line[len("event:") :].strip()
-                continue
-            if line.startswith("data:"):
-                data_lines.append(line[len("data:") :].lstrip())
-                continue
-            if line.startswith(":"):
-                continue
-        event = flush()
-        if event is not None:
-            yield event

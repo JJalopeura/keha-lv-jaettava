@@ -1,0 +1,12 @@
+{
+  "diagnostics": {
+    "disabledRules": [
+      "unchecked-throwing-call-python",
+      "no-ellipsis-body",
+      "no-return-value-in-generator",
+      "no-bare-except",
+      "no-boolean-in-except",
+      "no-yield-from-non-iterable"
+    ]
+  }
+}

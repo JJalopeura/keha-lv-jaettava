@@ -11,4 +11,6 @@ fi
 export KEHA_LV_LLM_PROVIDER="${KEHA_LV_LLM_PROVIDER:-mock}"
 export KEHA_LV_DEMO_MODE="${KEHA_LV_DEMO_MODE:-true}"
 export KEHA_LV_FORCE_MOCK_LLM="${KEHA_LV_FORCE_MOCK_LLM:-true}"
-exec python -m uvicorn app.main:app --host "${HOST:-127.0.0.1}" --port "${PORT:-8000}"
+PYTHON="${PYTHON:-$SCRIPT_DIR/.venv/bin/python}"
+[[ -x "$PYTHON" ]] || PYTHON="$(command -v python3 || command -v python)"
+exec "$PYTHON" -m uvicorn app.main:app --host "${HOST:-127.0.0.1}" --port "${PORT:-8000}"

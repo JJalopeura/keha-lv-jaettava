@@ -1,13 +1,13 @@
 from __future__ import annotations
-
 import json
 import io
+import time
 import uuid
 import zipfile
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
@@ -36,31 +36,35 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
         out = {"case_id": case_id, "case": db().get_case(case_id), "project": project, "common": common, "sync": sync}
         if permit_type:
             app = svc.ensure_application(db(), case_id, permit_type)
-            out.update(
-                {
-                    "application": app,
-                    "schema": svc.load_form_schema(app["permit_type"]),
-                    "criteria": svc.load_criteria(app["permit_type"]),
-                    "attachments": svc.list_attachments(db(), case_id, app["permit_type"]),
-                    "suggestions": svc.artifact_json(db(), case_id, "ai_suggestions", app["permit_type"], {"suggestions": []}).get("suggestions", []),
-                    "check_report": svc.artifact_json(db(), case_id, "check_report", app["permit_type"], {}),
-                    "precheck_gate": svc.precheck_gate_status(db(), case_id, app["permit_type"]),
-                    "package": svc.artifact_json(db(), case_id, "submission_package", app["permit_type"], {}),
-                    "receipt": svc.artifact_json(db(), case_id, "receipt", app["permit_type"], {}),
-                    "wizard": svc.wizard_step_status(db(), case_id, app["permit_type"]),
-                    "structure_extraction": svc.artifact_json(db(), case_id, "structure_extraction_result", app["permit_type"], {}),
-                    "intake_analysis": svc.artifact_json(db(), case_id, "intake_analysis", app["permit_type"], {}),
-                    "material_package": svc.current_material_package(db(), case_id, app["permit_type"]),
-                    "package_analysis": svc.artifact_json(db(), case_id, "package_analysis_result", app["permit_type"], {}),
-                    "field_extraction_queue": svc.artifact_json(db(), case_id, "field_extraction_queue", app["permit_type"], {"items": []}),
-                    "ai_jobs": svc.list_ai_jobs(db(), case_id, app["permit_type"]),
-                    "contextual_chat": svc.artifact_json(db(), case_id, "contextual_chat", app["permit_type"], {"messages": []}),
-                    "voice_state": svc.voice_feature_state(settings()),
-                    "voice_chat": svc.artifact_json(db(), case_id, "voice_chat", app["permit_type"], {"turns": []}),
-                    "environmental_story": svc.artifact_json(db(), case_id, "environmental_material_story", "main", {}),
-                }
-            )
+            out.update(_context_app(app, case_id, permit_type, db(), settings()))
         return out
+
+
+    def _context_app(app: dict, case_id: str, permit_type: str, db_obj: Any, settings_obj: Any) -> dict:
+        def aj(type_: str, default: Any) -> Any:
+            return svc.artifact_json(db_obj, case_id, type_, permit_type, default)
+        return {
+            "application": app,
+            "schema": svc.load_form_schema(app["permit_type"]),
+            "criteria": svc.load_criteria(app["permit_type"]),
+            "attachments": svc.list_attachments(db_obj, case_id, app["permit_type"]),
+            "suggestions": aj("ai_suggestions", {"suggestions": []}).get("suggestions", []),
+            "check_report": aj("check_report", {}),
+            "precheck_gate": svc.precheck_gate_status(db_obj, case_id, app["permit_type"]),
+            "package": aj("submission_package", {}),
+            "receipt": aj("receipt", {}),
+            "wizard": svc.wizard_step_status(db_obj, case_id, app["permit_type"]),
+            "structure_extraction": aj("structure_extraction_result", {}),
+            "intake_analysis": aj("intake_analysis", {}),
+            "material_package": svc.current_material_package(db_obj, case_id, app["permit_type"]),
+            "package_analysis": aj("package_analysis_result", {}),
+            "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
+            "ai_jobs": svc.list_ai_jobs(db_obj, case_id, app["permit_type"]),
+            "contextual_chat": aj("contextual_chat", {"messages": []}),
+            "voice_state": svc.voice_feature_state(settings_obj),
+            "voice_chat": aj("voice_chat", {"turns": []}),
+            "environmental_story": svc.artifact_json(db_obj, case_id, "environmental_material_story", "main", {}),
+        }
 
     @router.get("/", response_class=HTMLResponse)
     def landing(request: Request):
@@ -661,7 +665,7 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
         payload["request_id"] = payload.get("request_id") or f"demo_{uuid.uuid4().hex[:8]}"
         trace = [
             {"event": "request.received", "detail": "Playground request accepted", "request_id": payload["request_id"]},
-            {"event": "tenant.authenticated", "detail": client.tenant_id, "request_id": payload["request_id"]},
+            {"event": "tenant.authenticated", "detail": client["tenant_id"], "request_id": payload["request_id"]},
         ]
         documents = payload.get("documents") if isinstance(payload.get("documents"), list) else []
         is_package_analysis = bool(documents)
@@ -714,7 +718,7 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
             ]
         )
         svc.save_artifact(db(), case_id, "suggestion_service_demo", "api", {"request": payload, "response": result, "api_key": api_key, "job": completed_job, "trace_stream": trace})
-        svc.append_suggestion_service_log(db(), case_id, "api_demo", client.tenant_id, payload.get("permit_type", ""), result.get("criteria_version", ""))
+        svc.append_suggestion_service_log(db(), case_id, "api_demo", client["tenant_id"], payload.get("permit_type", ""), result.get("criteria_version", ""))
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/suggestion-service/api-demo", status_code=303)
 
     @router.get("/cases/{case_id}/lupademo/suggestion-service/ui-only", response_class=HTMLResponse)
@@ -786,7 +790,7 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
                 "permit_type": result.get("permit_type", ""),
                 "criteria_version": result.get("criteria_version", ""),
                 "accepted_fields": fields,
-                "created_at": uuid.uuid4().hex,
+                "created_at": time.time(),
             }
         )
         svc.save_artifact(db(), case_id, "ui_only_acceptance_log", "main", log)
@@ -919,27 +923,27 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
     def metrics_report_html(case_id: str):
         metrics_payload = svc.metrics_snapshot(db(), case_id)
         html = f"""<!doctype html>
-<html lang="fi">
-<head><meta charset="utf-8"><title>Lupademo mittariraportti</title></head>
-<body>
-<h1>Lupademo mittariraportti</h1>
-<p>Hakemuksia: {metrics_payload.get("application_count", 0)} · Lähetetty: {metrics_payload.get("submitted_count", 0)}</p>
-<h2>Ennen ja jälkeen</h2>
-<ul>
-  <li>Laatupisteet ennen AI:tä: {metrics_payload.get("quality_score_before_ai", 0)}</li>
-  <li>Laatupisteet nyt: {metrics_payload.get("quality_score_after_ai", 0)}</li>
-  <li>Puutteet ennen AI:tä: {metrics_payload.get("issue_count_before_ai", 0)}</li>
-  <li>Puutteet nyt: {metrics_payload.get("issue_count_after_ai", 0)}</li>
-  <li>Arvioitu käsittelijäaikasäästö: {metrics_payload.get("estimated_caseworker_minutes_saved", 0)} min</li>
-</ul>
-<h2>Auditointi</h2>
-<ul>
-  <li>LLM-kutsuja: {metrics_payload.get("agent_call_count", 0)}</li>
-  <li>File search -kutsuja: {metrics_payload.get("file_search_call_count", 0)}</li>
-  <li>Fallbackeja: {metrics_payload.get("fallback_count", 0)}</li>
-</ul>
-</body>
-</html>"""
+    <html lang="fi">
+    <head><meta charset="utf-8"><title>Lupademo mittariraportti</title></head>
+    <body>
+    <h1>Lupademo mittariraportti</h1>
+    <p>Hakemuksia: {metrics_payload.get("application_count", 0)} · Lähetetty: {metrics_payload.get("submitted_count", 0)}</p>
+    <h2>Ennen ja jälkeen</h2>
+    <ul>
+      <li>Laatupisteet ennen AI:tä: {metrics_payload.get("quality_score_before_ai", 0)}</li>
+      <li>Laatupisteet nyt: {metrics_payload.get("quality_score_after_ai", 0)}</li>
+      <li>Puutteet ennen AI:tä: {metrics_payload.get("issue_count_before_ai", 0)}</li>
+      <li>Puutteet nyt: {metrics_payload.get("issue_count_after_ai", 0)}</li>
+      <li>Arvioitu käsittelijäaikasäästö: {metrics_payload.get("estimated_caseworker_minutes_saved", 0)} min</li>
+    </ul>
+    <h2>Auditointi</h2>
+    <ul>
+      <li>LLM-kutsuja: {metrics_payload.get("agent_call_count", 0)}</li>
+      <li>File search -kutsuja: {metrics_payload.get("file_search_call_count", 0)}</li>
+      <li>Fallbackeja: {metrics_payload.get("fallback_count", 0)}</li>
+    </ul>
+    </body>
+    </html>"""
         return HTMLResponse(html)
 
     @router.post("/cases/{case_id}/lupademo/admin/agent-chain/audit-run")
@@ -950,10 +954,20 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
     def _demo_case_for_api() -> str:
         return scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
 
-    def _api_response(client: security.ApiClient, request_id: str, job: dict[str, Any], result: dict[str, Any], *, case_id: str, application_id: str) -> dict[str, Any]:
+    def _service_payload(payload: dict[str, Any], request_id: str, application_id: str) -> dict[str, Any]:
+        """Fill in the request fields the route already resolved, so the service layer never sees them missing."""
+        return {
+            **payload,
+            "request_id": request_id,
+            "permit_type": application_id,
+            "form_schema": payload.get("form_schema") or svc.load_form_schema(application_id),
+            "form_data": payload.get("form_data") or {},
+        }
+
+    def _api_response(client: dict[str, Any], request_id: str, job: dict[str, Any], result: dict[str, Any], *, case_id: str, application_id: str) -> dict[str, Any]:
         evidence_refs: list[dict[str, Any]] = []
         for key in ("suggestions", "issues", "extracted_fields", "questions"):
-            rows = result.get(key) if isinstance(result.get(key), list) else []
+            rows = result.get(key) or []
             for row in rows:
                 if isinstance(row, dict) and isinstance(row.get("evidence_refs"), list):
                     evidence_refs.extend([ref for ref in row["evidence_refs"] if isinstance(ref, dict)])
@@ -964,7 +978,7 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
             "status": status_payload["status"],
             "evidence_refs": evidence_refs,
             "agent_trace": status_payload["events"],
-            "tenant_id": client.tenant_id,
+            "tenant_id": client["tenant_id"],
             "result": result,
         }
 
@@ -1072,7 +1086,7 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
         application_id = svc.application_id_for(str(payload.get("permit_type") or "building_residential"))
         request_id = str(payload.get("request_id") or f"field_{uuid.uuid4().hex[:8]}")
         job = svc.start_ai_job(db(), case_id, application_id, "field_suggestion", "Field suggestion API", ["field_suggestion_agent"], eta_seconds=8)
-        result = security.annotate_api_response(client, svc.suggestion_service_field(payload, db=db(), settings=settings(), case_id=case_id))
+        result = security.annotate_api_response(client, svc.suggestion_service_field(_service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
         completed = _complete_api_job(case_id, application_id, job, result)
         return _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
 
@@ -1084,7 +1098,7 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
         application_id = svc.application_id_for(str(payload.get("permit_type") or "building_residential"))
         request_id = str(payload.get("request_id") or f"precheck_{uuid.uuid4().hex[:8]}")
         job = svc.start_ai_job(db(), case_id, application_id, "precheck", "Application precheck API", ["precheck_agent"], eta_seconds=10)
-        result = security.annotate_api_response(client, svc.suggestion_service_check(payload, db=db(), settings=settings(), case_id=case_id))
+        result = security.annotate_api_response(client, svc.suggestion_service_check(_service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
         completed = _complete_api_job(case_id, application_id, job, result)
         return _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
 
@@ -1104,7 +1118,7 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
             ["request_validator", "document_classifier", "structure_extractor", "gap_analyzer"],
             eta_seconds=15,
         )
-        documents = payload.get("documents") if isinstance(payload.get("documents"), list) else []
+        documents = payload.get("documents") or []
         document_text_parts = []
         document_inventory = []
         for index, doc in enumerate(documents):
@@ -1152,7 +1166,7 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
                 "events_url": f"/api/v1/jobs/{completed['id']}/events",
                 "stream_url": f"/api/v1/jobs/{completed['id']}/stream",
                 "result_url": f"/api/v1/jobs/{completed['id']}/result",
-                "tenant_id": client.tenant_id,
+                "tenant_id": client["tenant_id"],
             },
             headers={"Location": f"/api/v1/jobs/{completed['id']}"},
         )
@@ -1208,12 +1222,12 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
         return JSONResponse(status_code=503, content={"enabled": False, "status": "disabled", "mode": state.get("mode", "disabled"), "reason": state["reason"]})
 
     @router.post("/api/v1/suggestions/field")
-    async def api_suggest_field(request: Request, x_lupademo_api_key: Optional[str] = Header(None, alias="X-Lupademo-Api-Key")):
+    async def api_suggest_field(request: Request):
         try:
             client = security.require_api_client(request)
             payload = security.validate_client_payload(client, await request.json())
             result = security.annotate_api_response(client, svc.suggestion_service_field(payload, db=db(), settings=settings()))
-            svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_field", client.tenant_id, payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/suggestions/field", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
+            svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_field", client["tenant_id"], payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/suggestions/field", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
             return result
         except HTTPException:
             raise
@@ -1221,12 +1235,12 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
             return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @router.post("/api/v1/suggestions/form")
-    async def api_suggest_form(request: Request, x_lupademo_api_key: Optional[str] = Header(None, alias="X-Lupademo-Api-Key")):
+    async def api_suggest_form(request: Request):
         try:
             client = security.require_api_client(request)
             payload = security.validate_client_payload(client, await request.json())
             result = security.annotate_api_response(client, svc.suggestion_service_form(payload, db=db(), settings=settings()))
-            svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_form", client.tenant_id, payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/suggestions/form", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
+            svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_form", client["tenant_id"], payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/suggestions/form", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
             return result
         except HTTPException:
             raise
@@ -1234,12 +1248,12 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
             return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @router.post("/api/v1/checks/application")
-    async def api_check(request: Request, x_lupademo_api_key: Optional[str] = Header(None, alias="X-Lupademo-Api-Key")):
+    async def api_check(request: Request):
         try:
             client = security.require_api_client(request)
             payload = security.validate_client_payload(client, await request.json())
             result = security.annotate_api_response(client, svc.suggestion_service_check(payload, db=db(), settings=settings()))
-            svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_check", client.tenant_id, payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/checks/application", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
+            svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_check", client["tenant_id"], payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/checks/application", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
             return result
         except HTTPException:
             raise
@@ -1247,12 +1261,12 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
             return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @router.post("/api/v1/structure/extract")
-    async def api_extract(request: Request, x_lupademo_api_key: Optional[str] = Header(None, alias="X-Lupademo-Api-Key")):
+    async def api_extract(request: Request):
         try:
             client = security.require_api_client(request)
             payload = security.validate_client_payload(client, await request.json())
             result = security.annotate_api_response(client, svc.structure_extract(payload, db=db(), settings=settings()))
-            svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_extract", client.tenant_id, payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/structure/extract", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
+            svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_extract", client["tenant_id"], payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/structure/extract", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
             return result
         except HTTPException:
             raise
@@ -1260,15 +1274,15 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
             return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @router.get("/api/v1/criteria/{criteria_set_id}")
-    def api_criteria(criteria_set_id: str, request: Request, x_lupademo_api_key: Optional[str] = Header(None, alias="X-Lupademo-Api-Key")):
+    def api_criteria(criteria_set_id: str, request: Request):
         client = security.require_api_client(request)
         if not security.client_can_access_criteria(client, criteria_set_id):
-            raise HTTPException(status_code=403, detail=f"Tenant {client.tenant_id} cannot use criteria_set_id {criteria_set_id}")
+            raise HTTPException(status_code=403, detail=f"Tenant {client['tenant_id']} cannot use criteria_set_id {criteria_set_id}")
         for permit in svc.CRITERIA_FILES:
             criteria = svc.load_criteria(permit)
             if criteria.get("criteria_set_id") == criteria_set_id:
                 result = security.annotate_api_response(client, {**criteria, "criteria_version": criteria.get("version", "demo")})
-                svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_criteria", client.tenant_id, permit, result.get("criteria_version", ""), endpoint="/api/v1/criteria/{criteria_set_id}", request_id=criteria_set_id, status="ok", fallback_used=False)
+                svc.append_suggestion_service_log(db(), svc.ensure_demo_case(db()), "api_v1_criteria", client["tenant_id"], permit, result.get("criteria_version", ""), endpoint="/api/v1/criteria/{criteria_set_id}", request_id=criteria_set_id, status="ok", fallback_used=False)
                 return result
         raise HTTPException(status_code=404, detail="Criteria set not found")
 

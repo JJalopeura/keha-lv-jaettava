@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import mimetypes
 import os
 import re
-import shutil
 import tempfile
-import threading
 import time
 import unicodedata
 import uuid
@@ -17,19 +14,19 @@ from typing import Any, Literal, Optional
 
 import openpyxl
 import pdfplumber
-from pydantic import BaseModel, Field, ValidationError
+from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import fields as dataclass_fields
 from docx import Document as DocxDocument
+from fastapi import HTTPException
 from jinja2 import Template
 
-from app.core.ingest_backend import create_ingest_backend
-from app.core.llm_factory import LLMClient, create_llm_client
+from app.core.llm_factory import create_llm_client
 from app.core.llm_utils import call_llm_json, vector_store_ids
 
 
 ROOT = Path(__file__).resolve().parents[3]
 DOMAIN_ROOT = Path(__file__).resolve().parent
 SPEC_ROOT = DOMAIN_ROOT / "specs"
-KNOWLEDGE_STORE_LOCK = threading.Lock()
 
 COMMON_FIELDS = [
     "applicant_name",
@@ -218,19 +215,6 @@ ENVIRONMENTAL_MATERIAL_STORIES = [
     },
 ]
 
-PROMPT_FILES = {
-    "attachment_classifier": "attachment_classifier.prompt.md",
-    "structure_extractor": "structure_extractor.prompt.md",
-    "field_suggestion_agent": "field_suggestion.prompt.md",
-    "form_suggestion_agent": "form_suggestion.prompt.md",
-    "completeness_validator": "completeness_validator.prompt.md",
-    "consistency_validator": "consistency_validator.prompt.md",
-    "criteria_assessor": "criteria_assessor.prompt.md",
-    "applicant_precheck_report": "applicant_precheck_report.prompt.md",
-    "caseworker_summary_agent": "caseworker_summary.prompt.md",
-    "additional_info_request_agent": "additional_info_request.prompt.md",
-    "authority_memo_draft_agent": "authority_memo_draft.prompt.md",
-}
 
 SEVERITY_ORDER = {"recommendation": 0, "minor": 1, "major": 2, "blocking": 3}
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -253,103 +237,104 @@ AI_JOB_AGENT_LABELS = {
     "completeness_validator": "Täydellisyystarkistus",
     "consistency_validator": "Ristiriitatarkistus",
     "criteria_assessor": "Kriteeriarviointi",
-    "applicant_precheck_report": "Hakijan yhteenveto",
+    "caseworker_summary_agent": "Käsittelijän yhteenvetoagentti",
+    "additional_info_request_agent": "Täydennyspyyntöagentti",
+    "authority_memo_draft_agent": "Valmistelumuistioagentti",
 }
-
-
-class EvidenceRef(BaseModel):
+@dataclass
+class EvidenceRef:
     source_id: str
     title: str
-    locator: Optional[str] = None
-    quote: Optional[str] = None
-    confidence: float = Field(ge=0, le=1, default=0.7)
+    locator: str | None = None
+    quote: str | None = None
+    confidence: float = 0.7
 
-
-class Issue(BaseModel):
+@dataclass
+class Issue:
     id: str
-    type: Literal["missing", "incomplete", "inconsistent", "risk", "recommendation"]
-    severity: Literal["blocking", "major", "minor", "recommendation"]
+    type: str
+    severity: str
     title: str
     detail: str
-    confidence: float = Field(ge=0, le=1)
-    field_id: Optional[str] = None
-    attachment_id: Optional[str] = None
-    suggested_fix: Optional[str] = None
-    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+    confidence: float
+    field_id: str | None = None
+    attachment_id: str | None = None
+    suggested_fix: str | None = None
+    evidence_refs: list = field(default_factory=list)
     resolved: bool = False
 
-
-class Suggestion(BaseModel):
-    id: str = Field(default_factory=lambda: f"sug_{uuid.uuid4().hex[:10]}")
+@dataclass
+class Suggestion:
     field_id: str
-    current_value: str = ""
     suggested_value: str
+    id: str = field(default_factory=lambda: f"sug_{uuid.uuid4().hex[:10]}")
+    current_value: str = ""
     diff_summary: str = ""
-    rationale: str
-    confidence: float = Field(ge=0, le=1)
-    evidence_refs: list[EvidenceRef]
+    rationale: str = ""
+    confidence: float = 0.5
+    evidence_refs: list = field(default_factory=list)
     criteria_version: str = ""
     agent: str = "field_suggestion_agent"
     fallback_used: bool = False
-    warnings: list[str] = Field(default_factory=list)
-    status: Literal["pending", "accepted", "rejected"] = "pending"
-    created_at: float = Field(default_factory=time.time)
+    warnings: list[str] = field(default_factory=list)
+    status: str = "pending"
+    created_at: float = field(default_factory=time.time)
 
-
-class FieldSuggestionRequest(BaseModel):
+@dataclass
+class FieldSuggestionRequest:
     request_id: str
     tenant_id: str
     permit_type: str
     form_schema: dict[str, Any]
     field_id: str
     form_data: dict[str, Any]
-    criteria_set_id: Optional[str] = None
-    common_data: dict[str, Any] = Field(default_factory=dict)
-    attachments: list[dict[str, Any]] = Field(default_factory=list)
-    options: dict[str, Any] = Field(default_factory=dict)
+    criteria_set_id: str | None = None
+    common_data: dict[str, Any] = field(default_factory=dict)
+    attachments: list[dict[str, Any]] = field(default_factory=list)
+    options: dict[str, Any] = field(default_factory=dict)
 
-
-class FieldSuggestionResponse(BaseModel):
+@dataclass
+class FieldSuggestionResponse:
     request_id: str
     criteria_version: str
-    suggestions: list[Suggestion]
-    warnings: list[str] = Field(default_factory=list)
+    suggestions: list[Suggestion] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
-
-class ApplicationCheckRequest(BaseModel):
+@dataclass
+class ApplicationCheckRequest:
     request_id: str
     tenant_id: str
     permit_type: str
     form_schema: dict[str, Any]
     form_data: dict[str, Any]
-    criteria_set_id: Optional[str] = None
-    common_data: dict[str, Any] = Field(default_factory=dict)
-    attachments: list[dict[str, Any]] = Field(default_factory=list)
+    criteria_set_id: str | None = None
+    common_data: dict[str, Any] = field(default_factory=dict)
+    attachments: list[dict[str, Any]] = field(default_factory=list)
 
-
-class ApplicationCheckResponse(BaseModel):
+@dataclass
+class ApplicationCheckResponse:
     request_id: str
     criteria_version: str
-    score: int = Field(ge=0, le=100)
+    score: int
     summary: str
-    issues: list[Issue]
+    issues: list[Issue] = field(default_factory=list)
 
+@dataclass
+class IssueListResponse:
+    issues: list[Issue] = field(default_factory=list)
 
-class IssueListResponse(BaseModel):
-    issues: list[Issue] = Field(default_factory=list)
-
-
-class AttachmentClassificationResponse(BaseModel):
+@dataclass
+class AttachmentClassificationResponse:
     file_id: str
     primary_type: str
-    type_tags: list[str] = Field(default_factory=list)
     summary: str
+    type_tags: list[str] = field(default_factory=list)
     suggested_delivery_scope: str = "unknown"
-    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
-    confidence: float = Field(ge=0, le=1, default=0.5)
+    evidence_refs: list[EvidenceRef] = field(default_factory=list)
+    confidence: float = 0.5
 
-
-class DocumentAsset(BaseModel):
+@dataclass
+class DocumentAsset:
     document_id: str
     package_id: str
     filename: str
@@ -360,113 +345,113 @@ class DocumentAsset(BaseModel):
     extraction_status: str = "not_started"
     text_excerpt: str = ""
     text_chars: int = 0
-    confidence: float = Field(ge=0, le=1, default=0.5)
-    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+    confidence: float = 0.5
+    evidence_refs: list[EvidenceRef] = field(default_factory=list)
 
-
-class MaterialPackage(BaseModel):
+@dataclass
+class MaterialPackage:
     package_id: str
     project_id: str
     application_id: str
     display_name: str
     source_channel: str = "browser_upload"
     package_scope: str = "current_application_material"
-    documents: list[DocumentAsset] = Field(default_factory=list)
+    documents: list[DocumentAsset] = field(default_factory=list)
     expected_document_count: int = 0
     status: str = "ready"
-    created_at: float
+    created_at: float = field(default_factory=time.time)
 
-
-class PackageFinding(BaseModel):
+@dataclass
+class PackageFinding:
     id: str
-    severity: Literal["info", "minor", "major", "blocking"] = "info"
     title: str
     detail: str
-    field_id: Optional[str] = None
-    attachment_id: Optional[str] = None
-    suggested_fix: Optional[str] = None
-    confidence: float = Field(ge=0, le=1, default=0.6)
-    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+    severity: str = "info"
+    field_id: str | None = None
+    attachment_id: str | None = None
+    suggested_fix: str | None = None
+    confidence: float = 0.6
+    evidence_refs: list[EvidenceRef] = field(default_factory=list)
 
-
-class PackageAnalysisResult(BaseModel):
+@dataclass
+class PackageAnalysisResult:
     package_id: str
     permit_type: str
-    readiness: Literal["ready", "almost_ready", "needs_completion", "contradictory"] = "needs_completion"
-    readiness_score: int = Field(ge=0, le=100, default=0)
     summary: str
-    findings: list[PackageFinding] = Field(default_factory=list)
-    questions: list[dict[str, Any]] = Field(default_factory=list)
-    suggestions: list[dict[str, Any]] = Field(default_factory=list)
-    document_inventory: list[dict[str, Any]] = Field(default_factory=list)
-    field_extractions: list[dict[str, Any]] = Field(default_factory=list)
-    created_at: float
+    readiness: str = "needs_completion"
+    readiness_score: int = 0
+    findings: list[PackageFinding] = field(default_factory=list)
+    questions: list[dict[str, Any]] = field(default_factory=list)
+    suggestions: list[dict[str, Any]] = field(default_factory=list)
+    document_inventory: list[dict[str, Any]] = field(default_factory=list)
+    field_extractions: list[dict[str, Any]] = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)
 
-
-class CriteriaResult(BaseModel):
+@dataclass
+class CriteriaResult:
     criteria_id: str
-    status: Literal["green", "yellow", "red"]
+    status: str
     rationale: str
-    related_fields: list[str] = Field(default_factory=list)
-    issues: list[str] = Field(default_factory=list)
-    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
-    confidence: float = Field(ge=0, le=1, default=0.5)
+    related_fields: list[str] = field(default_factory=list)
+    issues: list[str] = field(default_factory=list)
+    evidence_refs: list[EvidenceRef] = field(default_factory=list)
+    confidence: float = 0.5
 
+@dataclass
+class CriteriaAssessmentResponse:
+    criteria_results: list[CriteriaResult] = field(default_factory=list)
 
-class CriteriaAssessmentResponse(BaseModel):
-    criteria_results: list[CriteriaResult] = Field(default_factory=list)
-
-
-class ApplicantPrecheckReport(BaseModel):
+@dataclass
+class ApplicantPrecheckReport:
     summary: str
     readiness: str
     score: int = 0
-    sections: list[dict[str, Any]] = Field(default_factory=list)
+    sections: list[dict[str, Any]] = field(default_factory=list)
     blocking_issue_count: int = 0
     major_issue_count: int = 0
 
-
-class CaseworkerSummaryResponse(BaseModel):
+@dataclass
+class CaseworkerSummaryResponse:
     summary_md: str
-    key_facts: list[str] = Field(default_factory=list)
-    open_questions: list[str] = Field(default_factory=list)
-    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
-    confidence: float = Field(ge=0, le=1, default=0.5)
+    key_facts: list[str] = field(default_factory=list)
+    open_questions: list[str] = field(default_factory=list)
+    evidence_refs: list[EvidenceRef] = field(default_factory=list)
+    confidence: float = 0.5
 
-
-class AdditionalInfoRequestDraft(BaseModel):
+@dataclass
+class AdditionalInfoRequestDraft:
     subject: str
     body_md: str
-    requested_items: list[dict[str, Any]] = Field(default_factory=list)
-    review_notes_for_caseworker: list[str] = Field(default_factory=list)
+    requested_items: list[dict[str, Any]] = field(default_factory=list)
+    review_notes_for_caseworker: list[str] = field(default_factory=list)
 
-
-class AuthorityMemoDraft(BaseModel):
+@dataclass
+class AuthorityMemoDraft:
     memo_md: str
-    facts: list[str] = Field(default_factory=list)
-    ai_observations: list[str] = Field(default_factory=list)
-    caseworker_checks: list[str] = Field(default_factory=list)
-    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+    facts: list[str] = field(default_factory=list)
+    ai_observations: list[str] = field(default_factory=list)
+    caseworker_checks: list[str] = field(default_factory=list)
+    evidence_refs: list[EvidenceRef] = field(default_factory=list)
 
-
-class StructureExtractionRequest(BaseModel):
+@dataclass
+class StructureExtractionRequest:
     request_id: str
     permit_type: str
     form_schema: dict[str, Any]
     source_text: str
-    source_refs: list[dict[str, Any]] = Field(default_factory=list)
+    source_refs: list[dict[str, Any]] = field(default_factory=list)
 
-
-class ExtractedField(BaseModel):
+@dataclass
+class ExtractedField:
     field_id: str
     value: str
-    confidence: float = Field(ge=0, le=1)
-    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
+    confidence: float
+    evidence_refs: list[dict[str, Any]] = field(default_factory=list)
 
-
-class StructureExtractionResponse(BaseModel):
+@dataclass
+class StructureExtractionResponse:
     request_id: str
-    extracted_fields: list[ExtractedField] = Field(default_factory=list)
+    extracted_fields: list[ExtractedField] = field(default_factory=list)
 
 
 def load_json(path: Path, default: Any) -> Any:
@@ -474,7 +459,6 @@ def load_json(path: Path, default: Any) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default
-
 
 def load_form_schema(permit_type: str) -> dict[str, Any]:
     filename = PERMIT_SCHEMAS.get(permit_type, PERMIT_SCHEMAS["building_residential"])
@@ -671,7 +655,7 @@ def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str) ->
 
 
 def load_prompt(agent: str) -> str:
-    filename = PROMPT_FILES.get(agent)
+    filename = f"{agent}.prompt.md"
     if not filename:
         return ""
     path = SPEC_ROOT / "prompts" / filename
@@ -703,6 +687,24 @@ def artifact_json(db: Any, case_id: str, type_: str, name: str, default: Any) ->
     return data if isinstance(data, type(default)) else default
 
 
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _plain(items: Any) -> list[Any]:
+    """Dataclasses -> dicts, dicts passed through; agent output lists mix both."""
+    return [asdict(i) if is_dataclass(i) and not isinstance(i, type) else i for i in items]
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Agent results arrive as either a response dataclass or a plain dict."""
+    return asdict(value) if is_dataclass(value) and not isinstance(value, type) else _dict(value)
+
+
 def save_artifact(db: Any, case_id: str, type_: str, name: str, data: dict[str, Any]) -> None:
     db.upsert_artifact(case_id, type_, name, data_json=data)
 
@@ -721,8 +723,8 @@ def _job_store(db: Any, case_id: str, permit_type: str) -> dict[str, Any]:
 def list_ai_jobs(db: Any, case_id: str, permit_type: str, limit: int = 8) -> list[dict[str, Any]]:
     _refresh_ai_jobs_for_case_permit(db, case_id, permit_type)
     store = _job_store(db, case_id, permit_type)
-    jobs = store.get("jobs") if isinstance(store.get("jobs"), list) else []
-    return sorted(jobs, key=lambda item: float(item.get("updated_at") or item.get("created_at") or 0), reverse=True)[:limit]
+    jobs = _list(store.get("jobs"))
+    return sorted(jobs or [], key=lambda item: float(item.get("updated_at") or item.get("created_at") or 0), reverse=True)[:limit]
 
 
 def find_ai_job(db: Any, job_id: str) -> dict[str, Any]:
@@ -1185,12 +1187,12 @@ def explicit_contradiction_findings(attachments: list[dict[str, Any]]) -> list[P
 def intake_analysis_questions(schema: dict[str, Any], app: dict[str, Any], attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     form_data = app.get("form_data", {})
     questions: list[dict[str, Any]] = []
-    for field in schema.get("fields", []):
-        if field.get("required") and not str(form_data.get(field["id"], "") or "").strip():
+    for schema_field in schema.get("fields", []):
+        if schema_field.get("required") and not str(form_data.get(schema_field["id"], "") or "").strip():
             questions.append(
                 {
-                    "field_id": field["id"],
-                    "question": f"Täydennä kenttä: {field.get('label', field['id'])}.",
+                    "field_id": schema_field["id"],
+                    "question": f"Täydennä kenttä: {schema_field.get('label', schema_field['id'])}.",
                     "reason": "Pakollinen tieto puuttuu hakemusluonnoksesta.",
                     "source": "gap_analyzer",
                 }
@@ -1267,7 +1269,7 @@ def package_analysis_from_current_state(
             "form_schema": json.dumps(schema, ensure_ascii=False),
             "form_data": json.dumps(effective_form_data, ensure_ascii=False),
             "attachments": json.dumps(compact_attachments, ensure_ascii=False),
-            "deterministic_issues": json.dumps([item.model_dump() for item in issues], ensure_ascii=False),
+            "deterministic_issues": json.dumps(_plain(issues), ensure_ascii=False),
             "criteria_and_context": json.dumps({"criteria": criteria, "retrieval": retrieval}, ensure_ascii=False),
             "common_data": json.dumps(common.get("data", {}), ensure_ascii=False),
             "attachment_context": json.dumps(retrieval, ensure_ascii=False),
@@ -1286,7 +1288,10 @@ def package_analysis_from_current_state(
                 fallback={"issues": []},
                 max_output_tokens=6000,
             )
-            agent_issues.extend(response.issues)
+            if isinstance(response, IssueListResponse):
+                agent_issues.extend(response.issues)
+            elif isinstance(response, dict):
+                agent_issues.extend(response.get("issues", []))
         issues = merge_issues(issues, agent_issues)
     joined_text = "\n".join(str(att.get("text_excerpt") or att.get("summary") or "") for att in attachments).lower()
     specific_contradictions = [issue for issue in issues if issue.type == "inconsistent"]
@@ -1391,7 +1396,7 @@ def package_analysis_from_current_state(
         "needs_completion": "Paketista puuttuu olennaisia tietoja tai liitteitä ennen lähetystä.",
         "contradictory": "Paketti sisältää ristiriitaisia tietoja ja vaatii hakijan tarkistuksen.",
     }[readiness]
-    result = PackageAnalysisResult(
+    result = asdict(PackageAnalysisResult(
         package_id=str(package.get("package_id") or f"pkg_current_{permit_type}"),
         permit_type=permit_type,
         readiness=readiness,
@@ -1403,7 +1408,7 @@ def package_analysis_from_current_state(
         document_inventory=inventory,
         field_extractions=field_extractions,
         created_at=time.time(),
-    ).model_dump()
+    ))
     result["job_id"] = job_id
     result["extraction_queue"] = extraction_queue
     save_artifact(db, case_id, "package_analysis_result", permit_type, result)
@@ -1522,33 +1527,6 @@ def execute_intake_analysis_job(db: Any, case_id: str, permit_type: str, job_id:
         )
 
 
-def run_intake_analysis(db: Any, case_id: str, permit_type: str, settings: Any = None) -> dict[str, Any]:
-    permit_type = application_id_for(permit_type)
-    job = start_ai_job(
-        db,
-        case_id,
-        permit_type,
-        "intake_analysis",
-        "Aineiston analyysi ja kysymyslista",
-        ["material_classifier", "structure_extractor", "gap_analyzer", "question_generator"],
-        eta_seconds=30,
-    )
-    try:
-        result = _build_intake_analysis_result(db, case_id, permit_type, job["id"], settings=settings)
-        complete_ai_job(
-            db,
-            case_id,
-            permit_type,
-            job["id"],
-            summary=f"Analyysi valmis: {len(result.get('questions', []))} kysymystä, {len(result.get('missing_required_fields', []))} kenttäpuutetta.",
-            result_artifact=f"intake_analysis:{permit_type}",
-        )
-        return result
-    except Exception:
-        complete_ai_job(db, case_id, permit_type, job["id"], summary="Aineiston analyysi epäonnistui.", result_artifact=f"intake_analysis:{permit_type}", failed=True)
-        raise
-
-
 def contextual_chat_context(db: Any, case_id: str, permit_type: str) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     app = ensure_application(db, case_id, permit_type)
@@ -1564,8 +1542,8 @@ def contextual_chat_context(db: Any, case_id: str, permit_type: str) -> dict[str
             "readiness": package_analysis.get("readiness"),
             "readiness_score": package_analysis.get("readiness_score"),
             "summary": package_analysis.get("summary"),
-            "findings": package_analysis.get("findings", [])[:8] if isinstance(package_analysis.get("findings"), list) else [],
-            "questions": package_analysis.get("questions", [])[:8] if isinstance(package_analysis.get("questions"), list) else [],
+            "findings": _list(package_analysis.get("findings"))[:8],
+            "questions": _list(package_analysis.get("questions"))[:8],
         },
         "attachments": [
             {
@@ -1673,7 +1651,7 @@ def contextual_chat_answer(db: Any, case_id: str, permit_type: str, message: str
                 criteria_version=criteria_version(permit_type, db, case_id),
                 agent="contextual_chat_assistant",
             )
-            pending.setdefault("suggestions", []).append(suggestion.model_dump())
+            pending.setdefault("suggestions", []).append(suggestion)
             change["suggestion_id"] = suggestion.id
         save_artifact(db, case_id, "ai_suggestions", permit_type, pending)
     if proposed_changes:
@@ -1871,14 +1849,14 @@ def detect_common_data_changes(db: Any, case_id: str) -> dict[str, Any]:
     sync = artifact_json(db, case_id, "common_data_sync_state", "main", {"base": DEFAULT_COMMON_DATA.copy(), "changes": []})
     base = sync.get("base") or DEFAULT_COMMON_DATA.copy()
     changes: list[dict[str, Any]] = []
-    for field in COMMON_FIELDS:
-        lv_value = common.get(field, "")
-        base_value = base.get(field, "")
+    for schema_field in COMMON_FIELDS:
+        lv_value = common.get(schema_field, "")
+        base_value = base.get(schema_field, "")
         app_entries = []
         for permit_type in PERMIT_SCHEMAS:
             app = ensure_application(db, case_id, permit_type)
             form_data = app.get("form_data", {})
-            app_entries.append({"application_id": permit_type, "value": form_data.get(field, base_value)})
+            app_entries.append({"application_id": permit_type, "value": form_data.get(schema_field, base_value)})
         if not app_entries:
             continue
         app_values = [entry["value"] for entry in app_entries]
@@ -1896,8 +1874,8 @@ def detect_common_data_changes(db: Any, case_id: str) -> dict[str, Any]:
         source_entry = changed_entries[0] if changed_entries else (app_entries[0] if app_entries else {"application_id": "", "value": ""})
         changes.append(
             {
-                "id": f"chg_{field}_{source_entry.get('application_id') or 'lv'}",
-                "field_id": field,
+                "id": f"chg_{schema_field}_{source_entry.get('application_id') or 'lv'}",
+                "field_id": schema_field,
                 "direction": direction,
                 "lv_value": lv_value,
                 "app_value": source_entry.get("value", ""),
@@ -2281,32 +2259,10 @@ def get_or_create_case_vector_store(db: Any, settings: Any, case_id: str, *, nam
     existing = str(case.get("case_vector_store_id") or "").strip()
     if existing and not existing.startswith("ingest_failed:"):
         return existing
-    backend = create_ingest_backend(settings, purpose="core")
-    vector_store_id = backend.create_vector_store(f"lupademo-{case_id[:8]}-{name_suffix}")
+    _backend = create_llm_client(settings, purpose="core")
+    vector_store_id = _backend.create_vector_store(f"lupademo-{case_id[:8]}-{name_suffix}")
     db.set_case_vector_store(case_id, vector_store_id)
     return vector_store_id
-
-
-def ensure_lupademo_knowledge_vector_store(db: Any, settings: Any, case_id: str) -> str:
-    source_paths = sorted((SPEC_ROOT / "criteria_sets").glob("*.json")) + sorted((SPEC_ROOT / "form_schemas").glob("*.json"))
-    version = hashlib.sha256(b"".join(path.read_bytes() for path in source_paths)).hexdigest()[:16]
-    with KNOWLEDGE_STORE_LOCK:
-        existing = str(db.get_app_setting("lupademo_knowledge_vector_store_id") or "").strip()
-        existing_version = str(db.get_app_setting("lupademo_knowledge_vector_store_version") or "").strip()
-        if existing and existing_version == version and not existing.startswith("ingest_failed:"):
-            db.set_research_vector_store(case_id, existing)
-            return existing
-
-        backend = create_ingest_backend(settings, purpose="core")
-        vector_store_id = backend.create_vector_store(f"lupademo-knowledge-{version}")
-        for path in source_paths:
-            _, azure_file_id = backend.upload_file_from_path(str(path))
-            vector_file_id = backend.attach_file_to_vector_store(vector_store_id, azure_file_id)
-            backend.wait_vector_store_file_completed(vector_store_id, vector_file_id)
-        db.set_app_setting("lupademo_knowledge_vector_store_id", vector_store_id)
-        db.set_app_setting("lupademo_knowledge_vector_store_version", version)
-        db.set_research_vector_store(case_id, vector_store_id)
-        return vector_store_id
 
 
 def ingest_file_row_to_case_vector_store(db: Any, settings: Any, case_id: str, file_row_id: int) -> dict[str, Any]:
@@ -2321,14 +2277,14 @@ def ingest_file_row_to_case_vector_store(db: Any, settings: Any, case_id: str, f
         db.update_file(int(file_row_id), status="error", error=f"Missing local file: {local_path}")
         return {"file_row_id": int(file_row_id), "status": "error", "error": "missing local file"}
     vector_store_id = get_or_create_case_vector_store(db, settings, case_id)
-    backend = create_ingest_backend(settings, purpose="core")
+    _backend = create_llm_client(settings, purpose="core")
     try:
         db.update_file(int(file_row_id), status="uploading", error=None)
-        upload_id, azure_file_id = backend.upload_file_from_path(local_path)
+        upload_id, azure_file_id = _backend.upload_file_from_path(local_path)
         db.update_file(int(file_row_id), azure_upload_id=upload_id, azure_file_id=azure_file_id, status="uploaded")
-        vs_file_id = backend.attach_file_to_vector_store(vector_store_id, azure_file_id)
+        vs_file_id = _backend.attach_file_to_vector_store(vector_store_id, azure_file_id)
         db.update_file(int(file_row_id), azure_vs_file_id=vs_file_id, status="ingesting")
-        backend.wait_vector_store_file_completed(vector_store_id, vs_file_id)
+        _backend.wait_vector_store_file_completed(vector_store_id, vs_file_id)
         db.update_file(int(file_row_id), status="ready", error=None)
         return {
             "file_row_id": int(file_row_id),
@@ -2348,13 +2304,13 @@ def run_json_agent(
     case_id: str,
     agent: str,
     prompt_values: dict[str, Any],
-    response_model: type[BaseModel],
+    response_model: type[Any],
     *,
     vector_ids: Optional[list[str]] = None,
-    fallback: Optional[dict[str, Any]] = None,
+    fallback: Any = None,
     max_output_tokens: int = 4000,
     reasoning_effort: str = "medium",
-) -> BaseModel:
+) -> Any:
     prompt = render_agent_prompt(agent, prompt_values)
     retrieval_manifest = azure_vector_store_manifest(db, settings, case_id, vector_ids or [])
     if retrieval_manifest["stores"]:
@@ -2380,8 +2336,8 @@ def run_json_agent(
             text_verbosity="low",
         )
         payload = normalize_agent_payload(response_model, payload)
-        model = response_model.model_validate(payload)
-        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model.model_dump(), "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": False})
+        model = response_model(**payload)
+        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": False})
         return model
     except Exception as exc:
         if vector_ids and "vector store" in str(exc).lower():
@@ -2399,7 +2355,7 @@ def run_json_agent(
                     text_verbosity="low",
                 )
                 payload = normalize_agent_payload(response_model, payload)
-                model = response_model.model_validate(payload)
+                model = response_model(**payload)
                 save_artifact(
                     db,
                     case_id,
@@ -2407,7 +2363,7 @@ def run_json_agent(
                     agent,
                     {
                         "agent": agent,
-                        "output": model.model_dump(),
+                        "output": model,
                         "used_vector_store_ids": [],
                         "vector_store_scope_manifest": retrieval_manifest,
                         "vector_store_retry_reason": str(exc)[:500],
@@ -2419,8 +2375,8 @@ def run_json_agent(
                 exc = retry_exc
         if fallback is None:
             raise
-        model = response_model.model_validate(fallback)
-        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model.model_dump(), "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(exc)[:500]})
+        model = fallback if isinstance(fallback, response_model) else response_model(**fallback)
+        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(exc)[:500]})
         return model
 
 
@@ -2473,24 +2429,24 @@ def _normalize_evidence_refs(value: Any, *, limit: int = 4) -> list[dict[str, An
     return clean_refs
 
 
-def normalize_agent_payload(response_model: type[BaseModel], payload: dict[str, Any]) -> dict[str, Any]:
+def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) -> dict[str, Any]:
     if response_model is StructureExtractionResponse:
         extracted_fields = payload.get("extracted_fields", []) if isinstance(payload, dict) else []
         if not isinstance(extracted_fields, list):
             extracted_fields = []
         normalized_fields = []
-        for index, field in enumerate(extracted_fields[:80]):
-            if not isinstance(field, dict):
+        for item in extracted_fields[:80]:
+            if not isinstance(item, dict):
                 continue
-            field_id = str(field.get("field_id") or field.get("id") or "").strip()
+            field_id = str(item.get("field_id") or item.get("id") or "").strip()
             if not field_id:
                 continue
             normalized_fields.append(
                 {
                     "field_id": field_id,
-                    "value": str(field.get("value") or field.get("text") or ""),
-                    "confidence": _coerce_confidence(field.get("confidence"), 0.55),
-                    "evidence_refs": _normalize_evidence_refs(field.get("evidence_refs", []), limit=6),
+                    "value": str(item.get("value") or item.get("text") or ""),
+                    "confidence": _coerce_confidence(item.get("confidence"), 0.55),
+                    "evidence_refs": _normalize_evidence_refs(item.get("evidence_refs", []), limit=6),
                 }
             )
         return {"request_id": str(payload.get("request_id") or ""), "extracted_fields": normalized_fields}
@@ -2613,7 +2569,7 @@ def add_attachment(db: Any, case_id: str, permit_type: str, filename: str, size:
         "summary": classification.summary if classification else (text_excerpt[:500] or f"Luokiteltu tiedostonimen perusteella: {filename}"),
         "local_path": local_path,
         "text_excerpt": text_excerpt[:24000],
-        "evidence_refs": [r.model_dump() for r in classification.evidence_refs] if classification else [source_ref(filename, filename, filename, 0.7)],
+        "evidence_refs": _plain(classification.evidence_refs) if classification else [source_ref(filename, filename, filename, 0.7)],
         "confidence": classification.confidence if classification else 0.74,
         "created_at": time.time(),
         "extraction_status": extraction["extraction_status"],
@@ -2660,7 +2616,7 @@ def document_asset_from_attachment(attachment: dict[str, Any], package_id: str) 
     refs = []
     for ref in attachment.get("evidence_refs") or []:
         try:
-            refs.append(EvidenceRef.model_validate(ref))
+            refs.append(EvidenceRef(**ref))
         except Exception:
             continue
     asset = DocumentAsset(
@@ -2677,7 +2633,7 @@ def document_asset_from_attachment(attachment: dict[str, Any], package_id: str) 
         confidence=_coerce_confidence(attachment.get("confidence"), 0.6),
         evidence_refs=refs,
     )
-    return asset.model_dump()
+    return asdict(asset)
 
 
 def save_material_package(
@@ -2697,18 +2653,18 @@ def save_material_package(
     package_id = package_id or f"pkg_{uuid.uuid4().hex[:10]}"
     existing_package = artifact_json(db, case_id, "material_package", permit_type, {})
     expected_document_count = expected_document_count or int(existing_package.get("expected_document_count") or 0)
-    package = MaterialPackage(
+    package = asdict(MaterialPackage(
         package_id=package_id,
         project_id=case_id,
         application_id=permit_type,
         display_name=display_name or "Hakemusaineistopaketti",
         source_channel=source_channel,
         package_scope=package_scope,
-        documents=[DocumentAsset.model_validate(document_asset_from_attachment(att, package_id)) for att in attachments],
+        documents=[DocumentAsset(**document_asset_from_attachment(att, package_id)) for att in attachments],
         expected_document_count=expected_document_count or len(attachments),
         status=status,
         created_at=time.time(),
-    ).model_dump()
+    ))
     store = artifact_json(db, case_id, "material_packages", permit_type, {"packages": []})
     store["packages"] = [item for item in store.get("packages", []) if item.get("package_id") != package_id]
     store.setdefault("packages", []).append(package)
@@ -3235,7 +3191,7 @@ def structure_environmental_application_from_attachments(
 ) -> dict[str, Any]:
     permit_type = "environmental_industrial"
     job = start_ai_job(db, case_id, permit_type, "structure_extraction", "Hakemuksen rakenteistus liitteistä", ["structure_extractor", "gap_analyzer"], eta_seconds=20) if track_job else None
-    app = ensure_application(db, case_id, permit_type)
+    ensure_application(db, case_id, permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     official_or_ai = [a for a in attachments if a.get("delivery_scope") in {"official_submission", "ai_context_only"}]
     joined = "\n".join(str(a.get("text_excerpt") or a.get("summary") or "") for a in official_or_ai)
@@ -3312,16 +3268,20 @@ def structure_environmental_application_from_attachments(
             max_output_tokens=8000,
         )
         source_by_field = []
-        for field in response.extracted_fields:
-            if field.field_id not in allowed_fields or not field.value.strip():
+        if isinstance(response, StructureExtractionResponse):
+            fields_iter = response.extracted_fields
+        else:
+            fields_iter = []
+        for schema_field in fields_iter:
+            if schema_field.field_id not in allowed_fields or not schema_field.value.strip():
                 continue
-            refs = [ref for ref in field.evidence_refs if isinstance(ref, dict)]
+            refs = [ref for ref in schema_field.evidence_refs if isinstance(ref, dict)]
             source_by_field.append(
                 {
-                    "field_id": field.field_id,
-                    "extracted_value": field.value.strip(),
+                    "field_id": schema_field.field_id,
+                    "extracted_value": schema_field.value.strip(),
                     "source_document": str((refs[0].get("title") if refs else "Hakemusaineisto") or "Hakemusaineisto"),
-                    "confidence": field.confidence,
+                    "confidence": schema_field.confidence,
                     "evidence_refs": refs,
                 }
             )
@@ -3362,7 +3322,7 @@ def accept_extraction_queue_item(
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     queue_payload = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []})
-    items = queue_payload.get("items") if isinstance(queue_payload.get("items"), list) else []
+    items = _list(queue_payload.get("items"))
     selected = next((item for item in items if isinstance(item, dict) and item.get("field_id") == field_id), None)
     if not selected:
         raise KeyError(field_id)
@@ -3461,10 +3421,13 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
             },
             FieldSuggestionResponse,
             vector_ids=azure_vector_store_ids(db, settings, case_id),
-            fallback={"request_id": f"fallback_{uuid.uuid4().hex[:8]}", "criteria_version": criteria_version(app["permit_type"], db, case_id), "suggestions": [fallback_suggestion.model_dump()], "warnings": []},
+            fallback={"request_id": f"fallback_{uuid.uuid4().hex[:8]}", "criteria_version": criteria_version(app["permit_type"], db, case_id), "suggestions": [fallback_suggestion], "warnings": []},
             max_output_tokens=3000,
         )
-        suggestion = response.suggestions[0]
+        if isinstance(response, FieldSuggestionResponse) and response.suggestions:
+            suggestion = response.suggestions[0]
+        else:
+            suggestion = fallback_suggestion
     else:
         suggestion = fallback_suggestion
     current_value = str(app.get("form_data", {}).get(field_id, "") or "")
@@ -3476,7 +3439,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
         suggestion.diff_summary = "Korvaa tyhjän kentän ehdotuksella." if not current_value else "Täydentää nykyistä arvoa AI-ehdotuksella."
     FieldSuggestionResponse(request_id=f"ui_{uuid.uuid4().hex[:8]}", criteria_version=criteria_version(app["permit_type"], db, case_id), suggestions=[suggestion])
     pending = artifact_json(db, case_id, "ai_suggestions", app["permit_type"], {"suggestions": []})
-    pending.setdefault("suggestions", []).append(suggestion.model_dump())
+    pending.setdefault("suggestions", []).append(suggestion)
     save_artifact(db, case_id, "ai_suggestions", app["permit_type"], pending)
     complete_ai_job(db, case_id, app["permit_type"], job["id"], summary=f"Ehdotus luotu kentälle {field_id}.", result_artifact=f"ai_suggestions:{app['permit_type']}")
     event(db, case_id, "ai.suggestion.created", "AI field suggestion created", {"application_id": app["permit_type"], "field_id": field_id, "suggestion_id": suggestion.id})
@@ -3533,10 +3496,10 @@ def deterministic_issues(permit_type: str, form_data: dict[str, Any], attachment
     criteria = load_criteria(permit_type)
     criteria_source = EvidenceRef(source_id=criteria.get("criteria_set_id", "demo"), title=(criteria.get("sources") or ["Demokriteeristö"])[0], locator="criteria", confidence=0.75)
     issues: list[Issue] = []
-    for field in schema.get("fields", []):
-        if field.get("required") and str(form_data.get(field["id"], "")).strip() == "":
-            severity = "blocking" if field["id"] in {"building_height_m", "stormwater_management", "permit_basis", "competent_authority", "landowner_permission"} else "major"
-            issues.append(Issue(id=f"missing_{field['id']}", type="missing", severity=severity, field_id=field["id"], title=f"{field['label']} puuttuu", detail="Pakollinen kenttä on tyhjä.", suggested_fix=f"Täytä kenttä {field['label']}.", evidence_refs=[criteria_source], confidence=0.95))
+    for schema_field in schema.get("fields", []):
+        if schema_field.get("required") and str(form_data.get(schema_field["id"], "")).strip() == "":
+            severity = "blocking" if schema_field["id"] in {"building_height_m", "stormwater_management", "permit_basis", "competent_authority", "landowner_permission"} else "major"
+            issues.append(Issue(id=f"missing_{schema_field['id']}", type="missing", severity=severity, field_id=schema_field["id"], title=f"{schema_field['label']} puuttuu", detail="Pakollinen kenttä on tyhjä.", suggested_fix=f"Täytä kenttä {schema_field['label']}.", evidence_refs=[criteria_source], confidence=0.95))
     official_types = {a.get("primary_type") for a in attachments if a.get("delivery_scope") == "official_submission"}
     for required in schema.get("required_attachments", []):
         if required not in official_types:
@@ -3593,7 +3556,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             "form_schema": json.dumps(schema, ensure_ascii=False),
             "form_data": json.dumps(app.get("form_data", {}), ensure_ascii=False),
             "attachments": json.dumps(attachments, ensure_ascii=False),
-            "deterministic_issues": json.dumps([i.model_dump() for i in deterministic], ensure_ascii=False),
+            "deterministic_issues": json.dumps(_plain(deterministic), ensure_ascii=False),
             "criteria_and_context": json.dumps({"criteria": criteria, "retrieval": context}, ensure_ascii=False),
             "common_data": json.dumps(common.get("data", {}), ensure_ascii=False),
             "attachment_context": json.dumps(context, ensure_ascii=False),
@@ -3613,7 +3576,10 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
                 fallback={"issues": []},
                 max_output_tokens=5000,
             )
-            agent_issues.extend(response.issues)
+            if isinstance(response, IssueListResponse):
+                agent_issues.extend(response.issues)
+            elif isinstance(response, dict):
+                agent_issues.extend(response.get("issues", []))
         criteria_response = run_json_agent(
             db,
             settings,
@@ -3625,7 +3591,10 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             fallback={"criteria_results": []},
             max_output_tokens=6000,
         )
-        criteria_results = [r.model_dump() for r in criteria_response.criteria_results]
+        if isinstance(criteria_response, CriteriaAssessmentResponse):
+            criteria_results = _plain(criteria_response.criteria_results)
+        elif isinstance(criteria_response, dict):
+            criteria_results = criteria_response.get("criteria_results", [])
     issues = merge_issues(deterministic, agent_issues)
     blockers = sum(1 for i in issues if i.severity == "blocking" and not i.resolved)
     major = sum(1 for i in issues if i.severity == "major" and not i.resolved)
@@ -3639,7 +3608,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         summary="Hakemus on lähetysvalmis." if blockers == 0 else "Hakemuksessa on lähettämisen estäviä puutteita.",
         issues=issues,
     )
-    report_payload = response.model_dump()
+    report_payload = asdict(response)
     report_payload.update(
         {
             "checked_at": checked_at,
@@ -3657,7 +3626,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             settings,
             case_id,
             "applicant_precheck_report",
-            {"issues": json.dumps([i.model_dump() for i in issues], ensure_ascii=False)},
+            {"issues": json.dumps(_plain(issues), ensure_ascii=False)},
             ApplicantPrecheckReport,
             fallback={
                 "summary": response.summary,
@@ -3674,17 +3643,11 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             max_output_tokens=5000,
             reasoning_effort="low",
         )
-        save_artifact(db, case_id, "applicant_precheck_report", app["permit_type"], precheck.model_dump())
+        save_artifact(db, case_id, "applicant_precheck_report", app["permit_type"], precheck)
     event(db, case_id, "ai.check.completed", "Application check completed", {"application_id": app["permit_type"], "issues": len(issues), "blocking": blockers, "major": major, "score": response.score})
     save_artifact(db, case_id, "precheck_gate", app["permit_type"], precheck_gate_status(db, case_id, app["permit_type"]))
     complete_ai_job(db, case_id, app["permit_type"], job["id"], summary=f"Tarkistus valmis: {len(issues)} havaintoa, pisteet {response.score}.", result_artifact=f"check_report:{app['permit_type']}")
     return response
-
-
-def has_blocking_issues(db: Any, case_id: str, permit_type: str) -> bool:
-    report = artifact_json(db, case_id, "check_report", application_id_for(permit_type), {})
-    issues = report.get("issues") or []
-    return any(i.get("severity") == "blocking" and not i.get("resolved") for i in issues)
 
 
 def attachments_updated_at(db: Any, case_id: str, permit_type: str) -> float:
@@ -3806,17 +3769,17 @@ def compose_submission_package(db: Any, case_id: str, permit_type: str) -> dict[
     excluded = [a for a in attachments if a.get("delivery_scope") != "official_submission"]
     form_data = app.get("form_data", {})
     form_fields = []
-    for field in schema.get("fields", []):
-        field_id = field.get("id")
+    for schema_field in schema.get("fields", []):
+        field_id = schema_field.get("id")
         if not field_id:
             continue
         value = form_data.get(field_id, "")
         form_fields.append(
             {
                 "field_id": field_id,
-                "label": field.get("label") or field_id,
+                "label": schema_field.get("label") or field_id,
                 "value": value,
-                "required": bool(field.get("required")),
+                "required": bool(schema_field.get("required")),
                 "source": (app.get("field_sources") or {}).get(field_id, "käyttäjän syöttämä"),
             }
         )
@@ -3867,7 +3830,7 @@ def metrics_snapshot(db: Any, case_id: str) -> dict[str, Any]:
     detected_issues = sum(int((event_row.get("data") or {}).get("issues") or 0) for event_row in events if event_row.get("action") == "ai.check.completed")
     score_values = [int(check.get("score")) for check in checks if check.get("score") is not None]
     avg_score = round(sum(score_values) / len(score_values), 1) if score_values else 0
-    check_scores = [int((event_row.get("data") or {}).get("score")) for event_row in events if event_row.get("action") == "ai.check.completed" and (event_row.get("data") or {}).get("score") is not None]
+    check_scores = [int((event_row.get("data") or {}).get("score") or 0) for event_row in events if event_row.get("action") == "ai.check.completed"]
     quality_before_ai = check_scores[0] if check_scores else max(0, int(avg_score) - accepted * 3)
     quality_after_ai = check_scores[-1] if check_scores else int(avg_score)
     issue_count_by_check = [int((event_row.get("data") or {}).get("issues") or 0) for event_row in events if event_row.get("action") == "ai.check.completed"]
@@ -4294,9 +4257,9 @@ def authority_example_benchmark(documents: list[dict[str, Any]]) -> dict[str, An
 
 def benchmark_lab_snapshot(db: Any, case_id: str) -> dict[str, Any]:
     source_ingest = artifact_json(db, case_id, "source_material_ingest", "main", {})
-    benchmark = source_ingest.get("authority_benchmark") if isinstance(source_ingest.get("authority_benchmark"), dict) else {}
-    documents = source_ingest.get("authority_example_documents") if isinstance(source_ingest.get("authority_example_documents"), list) else []
-    targets = benchmark.get("agent_comparison_targets") if isinstance(benchmark.get("agent_comparison_targets"), list) else []
+    benchmark = _dict(source_ingest.get("authority_benchmark"))
+    documents = _list(source_ingest.get("authority_example_documents"))
+    targets = _list(benchmark.get("agent_comparison_targets"))
     result = {
         "scope": "admin_eval_only",
         "normal_path_available": False,
@@ -4414,15 +4377,15 @@ def agent_chain_audit(db: Any, case_id: str) -> dict[str, Any]:
         full_agent = str(row.get("agent") or "")
         agent = full_agent.removeprefix("lupademo.")
         called_agents.add(agent)
-        tools = request.get("tools") if isinstance(request.get("tools"), list) else []
+        tools = _list(request.get("tools"))
         file_search_tools = [tool for tool in tools if isinstance(tool, dict) and tool.get("type") == "file_search"]
         request_vector_ids: list[str] = []
         for tool in file_search_tools:
             request_vector_ids.extend([str(v) for v in tool.get("vector_store_ids") or [] if v])
         if file_search_tools:
             file_search_call_count += 1
-        text_settings = request.get("text") if isinstance(request.get("text"), dict) else {}
-        format_settings = text_settings.get("format") if isinstance(text_settings.get("format"), dict) else {}
+        text_settings = _dict(request.get("text"))
+        format_settings = _dict(text_settings.get("format"))
         response_format = str(format_settings.get("type") or "")
         if response_format == "json_object":
             json_response_call_count += 1
@@ -4547,7 +4510,7 @@ def run_agent_chain_audit(db: Any, settings: Any, case_id: str) -> dict[str, Any
             audit_runs.append({"step": name, "status": "error", "duration_ms": int((time.time() - item_started) * 1000), "error": str(exc)[:500]})
 
     record("structure_extractor", lambda: structure_extract({"request_id": f"audit_{uuid.uuid4().hex[:8]}", "permit_type": "environmental_industrial", "form_schema": schema, "source_text": json.dumps(environmental_data, ensure_ascii=False)}, db=db, settings=settings, case_id=case_id))
-    record("field_suggestion_agent", lambda: create_field_suggestion(db, case_id, "environmental_industrial", "activity_description", settings=settings).model_dump())
+    record("field_suggestion_agent", lambda: create_field_suggestion(db, case_id, "environmental_industrial", "activity_description", settings=settings))
     record(
         "form_suggestion_agent",
         lambda: suggestion_service_form(
@@ -4567,7 +4530,7 @@ def run_agent_chain_audit(db: Any, settings: Any, case_id: str) -> dict[str, Any
             case_id=case_id,
         ),
     )
-    record("application_check", lambda: run_application_check(db, case_id, "environmental_industrial", settings=settings).model_dump())
+    record("application_check", lambda: run_application_check(db, case_id, "environmental_industrial", settings=settings))
     record("caseworker_summary_agent", lambda: authority_summary(db, case_id, "environmental_industrial", settings=settings))
     record("additional_info_request_agent", lambda: additional_info_draft(db, case_id, "environmental_industrial", settings=settings))
     record("authority_memo_draft_agent", lambda: authority_memo(db, case_id, "environmental_industrial", settings=settings))
@@ -4630,12 +4593,11 @@ def readiness_snapshot(
     agent_audit: dict[str, Any] | None = None,
     attachment_extraction: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    source_ingest = source_ingest if isinstance(source_ingest, dict) else artifact_json(db, case_id, "source_material_ingest", "main", {})
-    agent_audit = agent_audit if isinstance(agent_audit, dict) else agent_chain_audit(db, case_id)
-    attachment_extraction = attachment_extraction if isinstance(attachment_extraction, dict) else attachment_extraction_summary(db, case_id)
-    analysis = source_ingest.get("analysis") if isinstance(source_ingest.get("analysis"), dict) else {}
-    documents = source_ingest.get("documents") if isinstance(source_ingest.get("documents"), list) else []
-    by_case = analysis.get("by_case") if isinstance(analysis.get("by_case"), dict) else {}
+    source_ingest = _dict(source_ingest or artifact_json(db, case_id, "source_material_ingest", "main", {}))
+    agent_audit = _dict(agent_audit or agent_chain_audit(db, case_id))
+    attachment_extraction = _dict(attachment_extraction or attachment_extraction_summary(db, case_id))
+    analysis = _dict(source_ingest.get("analysis"))
+    by_case = _dict(analysis.get("by_case"))
     prompt_files = sorted((SPEC_ROOT / "prompts").glob("*.prompt.md"))
     e2e_path = ROOT / "tests" / "e2e" / "lupademo-full-flows.spec.js"
     e2e_text = _read_text_if_exists(e2e_path)
@@ -4884,6 +4846,7 @@ def ingest_source_materials(db: Any, settings: Any, case_id: str, source_dir: st
         except Exception:
             pass
     vector_store_id = ""
+    _ingest_backend: Any = None
     file_errors: list[dict[str, Any]] = []
     blocked_file_count = 0
     upload_allowed, upload_block_reason = external_real_case_upload_allowed(base, settings)
@@ -4903,22 +4866,22 @@ def ingest_source_materials(db: Any, settings: Any, case_id: str, source_dir: st
             vector_store_id = upload_block_reason
         elif uploadable_rows:
             try:
-                backend = create_ingest_backend(settings, purpose="core")
-                vector_store_id = backend.create_vector_store(f"lupademo-{case_id[:8]}-source-materials")
+                _ingest_backend = create_llm_client(settings, purpose="core")
+                vector_store_id = _ingest_backend.create_vector_store(f"lupademo-{case_id[:8]}-source-materials")
                 db.set_research_vector_store(case_id, vector_store_id)
             except Exception as exc:
                 vector_store_id = f"ingest_failed:{str(exc)[:180]}"
-        if vector_store_id and not vector_store_id.startswith("ingest_failed:") and uploadable_rows:
+        if vector_store_id and not vector_store_id.startswith("ingest_failed:") and uploadable_rows and _ingest_backend:
             for row in uploadable_rows:
                 try:
                     db.update_file(int(row["file_id"]), status="uploading", error=None)
-                    _, azure_file_id = backend.upload_file_from_path(row["path"])
+                    _, azure_file_id = _ingest_backend.upload_file_from_path(row["path"])
                     row["azure_file_id"] = azure_file_id
                     db.update_file(int(row["file_id"]), azure_file_id=azure_file_id, status="uploaded")
-                    vs_file_id = backend.attach_file_to_vector_store(vector_store_id, azure_file_id)
+                    vs_file_id = _ingest_backend.attach_file_to_vector_store(vector_store_id, azure_file_id)
                     row["azure_vs_file_id"] = vs_file_id
                     db.update_file(int(row["file_id"]), azure_vs_file_id=vs_file_id, status="ingesting")
-                    backend.wait_vector_store_file_completed(vector_store_id, vs_file_id)
+                    _ingest_backend.wait_vector_store_file_completed(vector_store_id, vs_file_id)
                     row["status"] = "ready"
                     db.update_file(int(row["file_id"]), status="ready", error=None)
                 except Exception as exc:
@@ -5031,13 +4994,13 @@ def _caseworker_observation_id(kind: str, raw_id: Any, index: int) -> str:
 def caseworker_observation_panel(db: Any, case_id: str, permit_type: str) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     app = ensure_application(db, case_id, permit_type)
-    form_data = app.get("form_data") if isinstance(app.get("form_data"), dict) else {}
+    form_data = _dict(app.get("form_data"))
     attachments = list_attachments(db, case_id, permit_type)
     check_report = artifact_json(db, case_id, "check_report", permit_type, {"issues": []})
     authority_summary_data = artifact_json(db, case_id, "authority_summary", permit_type, {})
     memo = artifact_json(db, case_id, "authority_memo", permit_type, {})
     suggestions = artifact_json(db, case_id, "ai_suggestions", permit_type, {"suggestions": []}).get("suggestions", [])
-    issues = check_report.get("issues") if isinstance(check_report.get("issues"), list) else []
+    issues = _list(check_report.get("issues"))
     unresolved_issues = [issue for issue in issues if not issue.get("resolved")]
     blocking_issues = [issue for issue in unresolved_issues if issue.get("severity") == "blocking"]
     major_issues = [issue for issue in unresolved_issues if issue.get("severity") == "major"]
@@ -5077,7 +5040,7 @@ def caseworker_observation_panel(db: Any, case_id: str, permit_type: str) -> dic
             }
         )
     decisions = artifact_json(db, case_id, "caseworker_observation_decisions", permit_type, {"items": {}})
-    decision_items = decisions.get("items") if isinstance(decisions.get("items"), dict) else {}
+    decision_items = _dict(decisions.get("items"))
     for observation in observations:
         decision = decision_items.get(observation["id"], {}) if isinstance(decision_items, dict) else {}
         observation["review_status"] = decision.get("status", "new")
@@ -5165,7 +5128,7 @@ def update_caseworker_observation_status(
     if observation_id not in observation_ids:
         raise KeyError(observation_id)
     decisions = artifact_json(db, case_id, "caseworker_observation_decisions", permit_type, {"items": {}})
-    items = decisions.get("items") if isinstance(decisions.get("items"), dict) else {}
+    items = _dict(decisions.get("items"))
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     items[observation_id] = {"observation_id": observation_id, "status": status, "note": note, "updated_at": now}
     decisions["items"] = items
@@ -5198,7 +5161,7 @@ def authority_summary(db: Any, case_id: str, permit_type: str, settings: Any = N
             fallback=fallback,
             max_output_tokens=5000,
         )
-        summary = summary_model.model_dump()
+        summary = _as_dict(summary_model)
     else:
         summary = fallback
     save_artifact(db, case_id, "authority_summary", app["permit_type"], summary)
@@ -5229,7 +5192,7 @@ def additional_info_draft(db: Any, case_id: str, permit_type: str, settings: Any
             max_output_tokens=5000,
             reasoning_effort="low",
         )
-        draft = draft_model.model_dump()
+        draft = draft_model
     else:
         draft = fallback
     save_artifact(db, case_id, "additional_info_draft", app["permit_type"], draft)
@@ -5239,7 +5202,7 @@ def additional_info_draft(db: Any, case_id: str, permit_type: str, settings: Any
 
 def _compact_authority_context(db: Any, case_id: str, app: dict[str, Any]) -> dict[str, Any]:
     check_report = artifact_json(db, case_id, "check_report", app["permit_type"], {})
-    form_data = app.get("form_data", {}) if isinstance(app.get("form_data", {}), dict) else {}
+    form_data = _dict(app.get("form_data", {}))
     compact_form_data = {}
     for key, value in form_data.items():
         text = str(value or "").strip()
@@ -5313,7 +5276,7 @@ def authority_memo(db: Any, case_id: str, permit_type: str, settings: Any = None
             max_output_tokens=2500,
             reasoning_effort="low",
         )
-        memo = memo_model.model_dump()
+        memo = memo_model
     else:
         memo = fallback
     save_artifact(db, case_id, "authority_memo", app["permit_type"], memo)
@@ -5369,8 +5332,19 @@ def _field_defs(form_schema: dict[str, Any], field_ids: list[str]) -> list[dict[
     return out
 
 
+def _request_from_payload(model: type[Any], payload: dict[str, Any]) -> Any:
+    """Build a request dataclass from untrusted JSON: drop unknown keys, 422 on missing ones."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="request body must be a JSON object")
+    known = {f.name for f in dataclass_fields(model)}
+    try:
+        return model(**{key: value for key, value in payload.items() if key in known})
+    except TypeError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid request payload: {exc}") from exc
+
+
 def suggestion_service_field(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
-    req = FieldSuggestionRequest.model_validate(payload)
+    req = _request_from_payload(FieldSuggestionRequest, payload)
     fallback_suggestion = deterministic_suggestion(req.permit_type, req.field_id, req.form_data, req.attachments)
     response = FieldSuggestionResponse(request_id=req.request_id, criteria_version=criteria_version(req.permit_type), suggestions=[fallback_suggestion], warnings=[])
     if db is not None and settings is not None:
@@ -5393,20 +5367,26 @@ def suggestion_service_field(payload: dict[str, Any], db: Any = None, settings: 
             },
             FieldSuggestionResponse,
             vector_ids=azure_vector_store_ids(db, settings, api_case),
-            fallback=response.model_dump(),
+            fallback=response,
             max_output_tokens=3000,
         )
+        if isinstance(agent_response, FieldSuggestionResponse):
+            suggestions = agent_response.suggestions
+            warnings = agent_response.warnings
+        else:
+            suggestions = [fallback_suggestion]
+            warnings = []
         response = FieldSuggestionResponse(
             request_id=req.request_id,
             criteria_version=criteria_version(req.permit_type, db, api_case),
-            suggestions=agent_response.suggestions,
-            warnings=agent_response.warnings,
+            suggestions=suggestions,
+            warnings=warnings,
         )
-    return response.model_dump()
+    return asdict(response)
 
 
 def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
-    base = FieldSuggestionRequest.model_validate(payload)
+    base = _request_from_payload(FieldSuggestionRequest, payload)
     target_fields = payload.get("target_field_ids") or [base.field_id]
     fallback_suggestions = [deterministic_suggestion(base.permit_type, field_id, base.form_data, base.attachments) for field_id in target_fields]
     response = FieldSuggestionResponse(request_id=base.request_id, criteria_version=criteria_version(base.permit_type), suggestions=fallback_suggestions, warnings=[])
@@ -5428,21 +5408,28 @@ def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: A
             },
             FieldSuggestionResponse,
             vector_ids=azure_vector_store_ids(db, settings, api_case),
-            fallback=response.model_dump(),
+            fallback=response,
             max_output_tokens=5000,
         )
+        if isinstance(agent_response, FieldSuggestionResponse):
+            suggestions = agent_response.suggestions
+            warnings = agent_response.warnings
+        else:
+            suggestions = fallback_suggestions
+            warnings = []
         response = FieldSuggestionResponse(
             request_id=base.request_id,
             criteria_version=criteria_version(base.permit_type, db, api_case),
-            suggestions=agent_response.suggestions,
-            warnings=agent_response.warnings,
+            suggestions=suggestions,
+            warnings=warnings,
         )
-    return response.model_dump()
+    return asdict(response)
 
 
 def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
-    req = ApplicationCheckRequest.model_validate(payload)
+    req = _request_from_payload(ApplicationCheckRequest, payload)
     issues = deterministic_issues(req.permit_type, req.form_data, req.attachments)
+    api_case: str = ""  # ponytail: avoids "possibly unbound" false-positive from type checker
     if db is not None and settings is not None:
         api_case = _api_case_id(db, case_id)
         criteria = effective_criteria(db, api_case, req.permit_type)
@@ -5450,7 +5437,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             "form_schema": json.dumps(req.form_schema, ensure_ascii=False),
             "form_data": json.dumps(req.form_data, ensure_ascii=False),
             "attachments": json.dumps(req.attachments, ensure_ascii=False),
-            "deterministic_issues": json.dumps([i.model_dump() for i in issues], ensure_ascii=False),
+            "deterministic_issues": json.dumps(_plain(issues), ensure_ascii=False),
             "criteria_and_context": json.dumps({"criteria": criteria, "retrieval": {"mode": "api_payload", "attachments": req.attachments}}, ensure_ascii=False),
             "common_data": json.dumps(req.common_data, ensure_ascii=False),
             "attachment_context": json.dumps({"mode": "api_payload", "attachments": req.attachments}, ensure_ascii=False),
@@ -5471,7 +5458,10 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
                 fallback={"issues": []},
                 max_output_tokens=5000,
             )
-            agent_issues.extend(response.issues)
+            if isinstance(response, IssueListResponse):
+                agent_issues.extend(response.issues)
+            elif isinstance(response, dict):
+                agent_issues.extend(response.get("issues", []))
         criteria_response = run_json_agent(
             db,
             settings,
@@ -5483,8 +5473,12 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             fallback={"criteria_results": []},
             max_output_tokens=6000,
         )
-        if criteria_response.criteria_results:
-            save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": [r.model_dump() for r in criteria_response.criteria_results]})
+        if isinstance(criteria_response, CriteriaAssessmentResponse) and criteria_response.criteria_results:
+            save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": _plain(criteria_response.criteria_results)})
+        elif isinstance(criteria_response, dict):
+            cr = criteria_response.get("criteria_results", [])
+            if cr:
+                save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": _plain(cr)})
         issues = merge_issues(issues, agent_issues)
     blockers = sum(1 for i in issues if i.severity == "blocking")
     majors = sum(1 for i in issues if i.severity == "major")
@@ -5495,18 +5489,18 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         summary="API-tarkistus valmis.",
         issues=issues,
     )
-    return response.model_dump()
+    return asdict(response)
 
 
 def structure_extract(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
-    req = StructureExtractionRequest.model_validate(payload)
+    req = _request_from_payload(StructureExtractionRequest, payload)
     extracted = []
     text = req.source_text.lower()
-    for field in req.form_schema.get("fields", []):
-        fid = field.get("id")
+    for schema_field in req.form_schema.get("fields", []):
+        fid = schema_field.get("id")
         if fid and fid.replace("_", " ") in text:
             extracted.append({"field_id": fid, "value": req.source_text[:240], "confidence": 0.55, "evidence_refs": req.source_refs})
-    fallback = StructureExtractionResponse(request_id=req.request_id, extracted_fields=extracted).model_dump()
+    fallback = StructureExtractionResponse(request_id=req.request_id, extracted_fields=extracted)
     if db is not None and settings is not None:
         api_case = _api_case_id(db, case_id)
         response = run_json_agent(
@@ -5525,12 +5519,6 @@ def structure_extract(payload: dict[str, Any], db: Any = None, settings: Any = N
             max_output_tokens=5000,
             reasoning_effort="low",
         )
-        return StructureExtractionResponse(request_id=req.request_id, extracted_fields=response.extracted_fields).model_dump()
-    return fallback
-
-
-def validate_agent_json(model: type[BaseModel], payload: dict[str, Any]) -> BaseModel:
-    try:
-        return model.model_validate(payload)
-    except ValidationError:
-        raise
+        if isinstance(response, StructureExtractionResponse):
+            return asdict(StructureExtractionResponse(request_id=req.request_id, extracted_fields=response.extracted_fields))
+    return asdict(fallback)

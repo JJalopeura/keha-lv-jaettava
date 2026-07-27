@@ -1,10 +1,10 @@
 from __future__ import annotations
-
 import json
 import os
 import sqlite3
 import time
 import uuid
+from dataclasses import asdict
 from typing import Any, Optional
 
 
@@ -104,7 +104,7 @@ class DB:
                 (case_id, filename, local_path, mime_type, int(size_bytes), kind, source_group,
                  type_primary, type_tags, int(vectorize), now, now),
             )
-            return int(cursor.lastrowid)
+            return int(cursor.lastrowid or 0)
 
     def update_file(self, file_row_id: int, **fields: Any) -> None:
         allowed = {
@@ -135,7 +135,7 @@ class DB:
     def upsert_artifact(self, case_id: str, type_: str, name: str, *, data_json: Optional[dict[str, Any]] = None,
                         data_text: Optional[str] = None) -> str:
         artifact_id, now = f"{case_id}:{type_}:{name}", time.time()
-        payload = json.dumps(data_json, ensure_ascii=False) if data_json is not None else None
+        payload = json.dumps(data_json, ensure_ascii=False, default=asdict) if data_json is not None else None
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?, ?)
