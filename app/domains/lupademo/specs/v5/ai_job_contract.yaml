@@ -1,0 +1,35 @@
+AIJob:
+  required_fields:
+    - id
+    - kind
+    - title
+    - status
+    - progress
+    - eta_seconds_total
+    - eta_seconds_remaining
+    - steps
+    - events
+  statuses: [queued, running, waiting_for_user, completed, failed, cancelled]
+  step_statuses: [pending, running, completed, failed, skipped]
+  user_visible_agent_names:
+    document_reader: Dokumenttien lukija
+    attachment_classifier: Liitteiden luokittelija
+    structure_extractor: Lomakkeen rakenteistaja
+    criteria_agent: Ohje- ja kriteeriagentti
+    gap_analyzer: Puutteiden ja ristiriitojen tarkastaja
+    improvement_agent: Parannusehdotusagentti
+    authority_summary_agent: Viranomaisyhteenvedon laatija
+  events:
+    - job.created
+    - job.started
+    - step.started
+    - step.progress
+    - step.completed
+    - job.completed
+    - job.failed
+    - job.cancelled
+  eta_rules:
+    application_package_analysis: "min(90, 8 + document_count * 3 + total_chars // 12000)"
+    structure_extraction: "min(60, 10 + sections * 3)"
+    precheck: "min(45, 12 + sections * 2)"
+    field_suggestion: 12

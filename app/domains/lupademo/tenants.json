@@ -1,0 +1,28 @@
+{
+  "clients": [
+    {
+      "tenant_id": "vantaa_demo",
+      "name": "Vantaa demo asiointipalvelu",
+      "api_key": "demo-vantaa-key",
+      "permit_types": ["building_residential", "event_public"],
+      "criteria_sets": ["vantaa_building_residential_demo_v1", "event_public_demo_v1"],
+      "criteria_version_suffix": "vantaa-v1"
+    },
+    {
+      "tenant_id": "kunta_x_demo",
+      "name": "Kunta X demo asiointipalvelu",
+      "api_key": "demo-kunta-x-key",
+      "permit_types": ["building_residential"],
+      "criteria_sets": ["vantaa_building_residential_demo_v1"],
+      "criteria_version_suffix": "kunta-x-strict-v1"
+    },
+    {
+      "tenant_id": "avi_demo",
+      "name": "AVI demo asiointipalvelu",
+      "api_key": "demo-avi-key",
+      "permit_types": ["environmental_industrial"],
+      "criteria_sets": ["national_environmental_industrial_demo_v1"],
+      "criteria_version_suffix": "avi-v1"
+    }
+  ]
+}

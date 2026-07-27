@@ -1,0 +1,7 @@
+{
+  "applications": [
+    {"id": "building_residential", "label": "Rakennuslupa / asuinrakennusdemo"},
+    {"id": "environmental_industrial", "label": "Ympäristölupa / teollinen uusiutuvan energian toiminta"},
+    {"id": "event_public", "label": "Tapahtumalupa / julkinen kaupunkitapahtuma"}
+  ]
+}

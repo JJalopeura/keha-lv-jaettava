@@ -1,0 +1,25 @@
+events:
+  - package_uploaded
+  - ai_job_created
+  - ai_job_started
+  - ai_job_completed
+  - extraction_accepted
+  - extraction_rejected
+  - finding_opened
+  - finding_resolved
+  - copilot_message_sent
+  - copilot_action_proposed
+  - copilot_action_accepted
+  - precheck_rerun
+  - submit_preview_opened
+  - api_playground_request_sent
+  - authority_brief_opened
+metrics:
+  user_value:
+    - extracted_fields_count
+    - accepted_extractions_count
+    - readiness_before
+    - readiness_after
+    - blocking_findings_before
+    - blocking_findings_after
+    - time_to_first_ai_result_seconds

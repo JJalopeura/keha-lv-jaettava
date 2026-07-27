@@ -1,0 +1,44 @@
+{
+  "criteria_set_id": "vantaa_building_residential_demo_v1",
+  "tenant_id": "vantaa_demo",
+  "permit_type": "building_residential",
+  "version": "2026-06-demo-1",
+  "status": "active",
+  "sources": [
+    "Vantaan-kaupungin-rakennusjarjestys.pdf",
+    "Topten-kortisto (web)",
+    "Rakentamislain/RakL demo-ohjeet"
+  ],
+  "rules": [
+    {
+      "id": "stormwater_required",
+      "field_id": "stormwater_management",
+      "severity": "blocking",
+      "instruction": "Rakennus- ja peruskorjaushankkeessa on oltava selvitys hulevesi- ja perustusten kuivatusvesijärjestelmästä; kuvauksessa tulee käsitellä imeytys, viivytys tai johtaminen."
+    },
+    {
+      "id": "distance_boundary_check",
+      "field_id": "distance_to_boundary_m",
+      "severity": "major",
+      "instruction": "Tarkista, että etäisyys rakennuspaikan rajasta on yhdenmukainen lomakkeen ja asemapiirroksen välillä; Vantaan rakennusjärjestyksen demo-oletus on 4 m asemakaava-alueella, ellei muu peruste."
+    },
+    {
+      "id": "height_required",
+      "field_id": "building_height_m",
+      "severity": "blocking",
+      "instruction": "Rakennuksen korkeus on pakollinen tarkistettava tieto."
+    },
+    {
+      "id": "noise_context",
+      "field_id": "noise_context",
+      "severity": "minor",
+      "instruction": "Jos hanke sijoittuu melualueelle tai liikenneväylän läheisyyteen, pyydä selvitys rakenteiden ääneneristävyydestä."
+    },
+    {
+      "id": "official_drawings",
+      "attachment_type": "main_drawings",
+      "severity": "blocking",
+      "instruction": "Pääpiirustukset tarvitaan viranomaiselle lähtevänä liitteenä."
+    }
+  ]
+}

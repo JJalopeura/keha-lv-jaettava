@@ -1,0 +1,20 @@
+{% extends "lv_base.html" %}
+{% block content %}
+<section class="band">
+  <h1>Demo-skenaariot</h1>
+  <p class="muted">Sama lista JSON-speksistä käytettynä käyttöliittymän starttipolkuna.</p>
+</section>
+<section class="cards">
+  {% for scenario in scenarios %}
+  <article class="scenario-card">
+    <h2>{{ scenario.label }}</h2>
+    <p>{{ scenario.persona }}</p>
+    <p class="muted">{{ scenario.proof_points|join(" · ") }}</p>
+    <form method="post" action="/demo/scenarios/start">
+      <input type="hidden" name="scenario_id" value="{{ scenario.id }}">
+      <button>Aloita skenaario</button>
+    </form>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

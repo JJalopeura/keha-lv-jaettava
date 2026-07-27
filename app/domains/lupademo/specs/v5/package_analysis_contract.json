@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PackageAnalysisResult",
+  "type": "object",
+  "required": [
+    "package_id",
+    "readiness",
+    "document_inventory",
+    "extraction_candidates",
+    "findings",
+    "next_best_actions"
+  ],
+  "properties": {
+    "package_id": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "readiness": {
+      "type": "object",
+      "required": [
+        "score",
+        "label",
+        "blocking_count",
+        "major_count",
+        "minor_count"
+      ],
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "label": {
+          "type": "string"
+        },
+        "blocking_count": {
+          "type": "integer"
+        },
+        "major_count": {
+          "type": "integer"
+        },
+        "minor_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "document_inventory": {
+      "type": "array"
+    },
+    "extraction_candidates": {
+      "type": "array"
+    },
+    "findings": {
+      "type": "array"
+    },
+    "next_best_actions": {
+      "type": "array",
+      "maxItems": 3
+    },
+    "questions": {
+      "type": "array"
+    },
+    "warnings": {
+      "type": "array"
+    },
+    "model_audit": {
+      "type": "object"
+    }
+  }
+}

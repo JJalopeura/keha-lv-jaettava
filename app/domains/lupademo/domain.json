@@ -1,0 +1,5 @@
+{
+  "name": "lupademo",
+  "label": "AI-avusteinen kevytasiointi ja ehdotuspalvelu",
+  "capabilities": ["files", "applications", "workflow", "chat", "approval", "sources", "poc_tools"]
+}

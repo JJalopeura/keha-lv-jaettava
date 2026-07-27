@@ -1,0 +1,39 @@
+routes:
+  - path: /
+    name: Front door
+    must_show_above_fold:
+      - Tarkista valmis hakemuspaketti
+      - Laadi hakemus AI:n kanssa
+      - AI tekee ehdotuksia, sinä hyväksyt muutokset
+  - path: /applicant/packages/new
+    name: Application package upload
+    supports:
+      - zip_upload
+      - multi_file_upload
+      - mixed_zip_and_files
+      - free_text_material
+  - path: /applicant/packages/{package_id}
+    name: AI workbench
+    sections:
+      - ai_job_status
+      - readiness_dashboard
+      - next_best_actions
+      - extraction_review_queue
+      - findings
+      - attachments_scope
+      - copilot
+  - path: /authority
+    name: Authority command center
+  - path: /api-playground
+    name: API and embedded demo
+  - path: /demo-lab
+    name: Demo lab and benchmarks
+forbidden_in_normal_routes:
+  - P2X
+  - Ren-Gas
+  - RenGas
+  - SharpCell
+  - Sharpcell
+allowed_only_under:
+  - /demo-lab
+  - /demo-lab/benchmarks

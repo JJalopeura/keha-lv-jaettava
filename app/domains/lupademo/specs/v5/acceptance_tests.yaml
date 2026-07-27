@@ -1,0 +1,49 @@
+acceptance_tests:
+  - id: AT01
+    name: Front door primary CTA
+    type: playwright
+    assert: User sees "Tarkista valmis hakemuspaketti" above fold on /.
+  - id: AT02
+    name: Multi-file upload
+    type: playwright
+    assert: User can select more than one file without zip and create package.
+  - id: AT03
+    name: Visible AI job ETA
+    type: playwright
+    assert: After clicking analyze, AI job banner appears with eta_seconds_remaining > 0.
+  - id: AT04
+    name: Agent step progress
+    type: playwright
+    assert: Job shows at least four human-readable agent step names and progress changes.
+  - id: AT05
+    name: Analysis dashboard
+    type: playwright
+    assert: Completed analysis shows readiness score, findings, extraction queue and next actions.
+  - id: AT06
+    name: Human approval required
+    type: unit
+    assert: Extraction candidate does not update form before accept.
+  - id: AT07
+    name: Contextual chat proposed action
+    type: integration
+    assert: Chat produces proposed_action and does not mutate form before accept.
+  - id: AT08
+    name: API asynchronous job
+    type: integration
+    assert: Package analyze API returns 202 job_id before final result.
+  - id: AT09
+    name: API event stream
+    type: integration
+    assert: Events endpoint emits multiple events.
+  - id: AT10
+    name: Authority AI brief
+    type: playwright
+    assert: Authority detail shows AI brief and completion request draft.
+  - id: AT11
+    name: No benchmark name leakage
+    type: script
+    assert: P2X/Ren-Gas/SharpCell absent from normal applicant and authority paths.
+  - id: AT12
+    name: Synthetic fixture evals
+    type: eval
+    assert: Three synthetic packages produce expected readiness tiers.

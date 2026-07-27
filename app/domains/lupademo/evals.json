@@ -1,0 +1,6 @@
+{
+  "evals": [
+    {"id": "BUILDING-HULEVESI-MISSING", "permit_type": "building_residential", "field_id": "stormwater_management", "expected_severity": "major"},
+    {"id": "ENV-BAT-MISSING", "permit_type": "environmental_industrial", "field_id": "bat_assessment", "expected_severity": "major"}
+  ]
+}

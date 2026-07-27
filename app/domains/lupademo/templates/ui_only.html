@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="band service-product"><p class="eyebrow">AI-palvelu · UI-only</p><h1>UI-only ehdotuspalvelu</h1><p>Kevyt käyttö ilman integraatiota: liitä teksti tai lataa aineisto, valitse tenantti ja kopioi kenttäehdotukset.</p></section>
+<section class="grid two">
+  <form method="post" enctype="multipart/form-data">
+    <label>Tenant
+      <select name="tenant_id">
+        {% for client in api_clients %}
+        <option value="{{ client.tenant_id }}">{{ client.tenant_id }} · {{ client.criteria_version_suffix }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Lupatyyppi
+      <select name="permit_type"><option value="environmental_industrial">Ympäristölupa</option><option value="building_residential">Rakennuslupa</option></select>
+    </label>
+    <label>Vapaateksti<textarea name="source_text">Toiminta sisältää kemikaalien varastointia, tuotantoprosesseja ja tarkkailutarpeita.</textarea></label>
+    <label>Aineistotiedosto<input type="file" name="uploaded_file"></label>
+    <button>Muodosta ehdotus</button>
+  </form>
+  <div>
+    <h2>Kopioitava ehdotus</h2>
+    {% if result.tenant_id %}<p class="muted">Tenant {{ result.tenant_id }} · {{ result.criteria_version }}</p>{% endif %}
+    {% if result.source_documents %}
+    <dl class="data-list">
+      {% for doc in result.source_documents %}
+      <div class="data-row"><dt>{{ doc.filename }}</dt><dd>{{ doc.text_chars }} merkkiä · {{ doc.delivery_scope }}</dd></div>
+      {% endfor %}
+    </dl>
+    {% endif %}
+    {% if result.extracted_fields %}
+    <button type="button" class="secondary" data-copy-ui-only>Kopioi ehdotus</button>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/suggestion-service/ui-only/accept">
+    <div class="result-list" id="ui-only-copy-source">
+      {% for field in result.extracted_fields %}
+      <div class="result-item">
+        <label><input type="checkbox" name="accepted_fields" value="{{ field.field_id }}"> Hyväksy</label>
+        <span class="status good">{{ field.field_id }}</span>
+        <p>{{ field.value }}</p>
+        <small>Luottamus {{ field.confidence }}</small>
+      </div>
+      {% endfor %}
+    </div>
+    <button class="secondary">Merkitse hyväksytyiksi</button>
+    </form>
+    {% else %}
+    <p class="muted">Liitä teksti ja muodosta ehdotus.</p>
+    {% endif %}
+    <div id="acceptance-log">
+      <h2>Hyväksyntäloki</h2>
+      {% for item in acceptance_log["items"] %}
+      <div class="result-item">
+        <strong>{{ item.tenant_id }} · {{ item.criteria_version }}</strong>
+        <p>Hyväksyttyjä kenttiä: {{ item.accepted_fields|length }}</p>
+      </div>
+      {% else %}
+      <p class="muted">Ei hyväksyntöjä vielä.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+<script>
+document.querySelector("[data-copy-ui-only]")?.addEventListener("click", async () => {
+  const source = document.querySelector("#ui-only-copy-source");
+  if (!source || !navigator.clipboard) return;
+  await navigator.clipboard.writeText(source.innerText.trim());
+});
+</script>
+{% endblock %}

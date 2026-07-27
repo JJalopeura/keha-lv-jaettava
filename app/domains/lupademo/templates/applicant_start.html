@@ -1,0 +1,31 @@
+{% extends "light_base.html" %}
+{% block title %}Uusi hakemus{% endblock %}
+{% block content %}
+<section class="page-heading narrow-heading">
+  <a class="back-link" href="/">← Takaisin</a>
+  <p class="section-kicker">Uusi hakemus</p>
+  <h1>Kerro ensin hankkeestasi</h1>
+  <p>Perustiedot riittävät alkuun. Voit täydentää lomaketta ja liitteitä seuraavissa vaiheissa.</p>
+</section>
+<form method="post" action="/projects/new" class="setup-layout">
+  <input type="hidden" name="start_at" value="wizard">
+  <section class="form-section" aria-labelledby="project-details">
+    <div class="form-section-heading"><span>1</span><div><h2 id="project-details">Hankkeen tiedot</h2><p>Näitä käytetään hakemuksen otsikossa ja yhteisissä tiedoissa.</p></div></div>
+    <div class="field-grid">
+      <label class="wide-field">Hankkeen nimi<input name="project_name" value="" placeholder="Esimerkiksi Koivutien pientalo" required></label>
+      <label>Hakija tai organisaatio<input name="applicant_name" value="" autocomplete="organization"></label>
+      <label>Kunta<input name="municipality" value="Vantaa" autocomplete="address-level2"></label>
+      <label class="wide-field">Hankkeen osoite<input name="address" value="" autocomplete="street-address"></label>
+    </div>
+  </section>
+  <section class="form-section" aria-labelledby="permit-choice">
+    <div class="form-section-heading"><span>2</span><div><h2 id="permit-choice">Mitä olet hakemassa?</h2><p>Valitse lähin vaihtoehto. Lupa-apuri auttaa tarkentamaan tarvetta.</p></div></div>
+    <div class="choice-list">
+      <label class="choice-row"><input type="radio" name="permit_type" value="building_residential" checked><span><strong>Rakennuslupa</strong><small>Asuinrakennus, laajennus tai muu rakennushanke</small></span></label>
+      <label class="choice-row"><input type="radio" name="permit_type" value="environmental_industrial"><span><strong>Ympäristölupa</strong><small>Teollinen toiminta tai ympäristövaikutuksia aiheuttava hanke</small></span></label>
+      <label class="choice-row"><input type="radio" name="permit_type" value="event_public"><span><strong>Tapahtuman luvat</strong><small>Yleisötapahtuman lupa- ja ilmoitustarpeet</small></span></label>
+    </div>
+  </section>
+  <div class="form-actions"><p>Seuraavaksi tarkistat yhteiset tiedot ja lisäät hankkeen aineiston.</p><button class="primary-cta">Jatka hakemukseen <span aria-hidden="true">→</span></button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="band service-product"><p class="eyebrow">AI-palvelu · API</p><h1>API-demo</h1><p>Muokkaa pyyntöä, valitse tenantin demoavain ja lähetä sama sopimus, jota ulkoinen asiointipalvelu käyttäisi.</p></section>
+<section class="grid two">
+  <form method="post">
+    <label>Tenant / API key
+      <select name="api_key">
+        {% for client in api_clients %}
+        {% set selected_key = result.api_key if result.api_key else default_api_key %}
+        <option value="{{ client.api_key }}" {% if client.api_key == selected_key %}selected{% endif %}>{{ client.tenant_id }} · {{ client.criteria_version_suffix }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>HTTP request JSON<textarea name="request_json" rows="18">{{ result.request | tojson(indent=2) if result.request else request_json }}</textarea></label>
+    <button>Lähetä request</button>
+  </form>
+  <div>
+    <h2>HTTP response</h2>
+    {% set response = result.response if result.response else result %}
+    {% if result.job %}
+    <div class="result-item">
+      <h3>Job</h3>
+      <p>{{ result.job.id }} · {{ result.job.status }} · {{ result.job.progress_pct }}%</p>
+      <div class="progress-line"><span style="width: {{ result.job.progress_pct }}%"></span></div>
+      <small>{{ result.job.summary }}</small>
+    </div>
+    {% endif %}
+    {% if result.trace_stream %}
+    <div class="result-item">
+      <h3>Event stream</h3>
+      <pre class="trace-preview">{{ result.trace_stream | tojson(indent=2) }}</pre>
+    </div>
+    {% endif %}
+    <div class="result-item">
+      <h3>Final response JSON</h3>
+      {% if result.response %}
+      <pre class="json-preview">{{ response | tojson(indent=2) }}</pre>
+      {% else %}
+      <p class="muted">Lopullinen JSON-vastaus näkyy tässä, kun request on ajettu.</p>
+      {% endif %}
+    </div>
+    {% if response.suggestions %}
+    <div class="result-list">
+      {% for suggestion in response.suggestions %}
+      <div class="result-item">
+        <span class="status good">{{ suggestion.field_id }}</span>
+        <p>{{ suggestion.suggested_value }}</p>
+        <small>Luottamus {{ suggestion.confidence }} · {{ suggestion.rationale }}</small>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif response.extracted_fields %}
+    <div class="result-list">
+      {% for field in response.extracted_fields %}
+      <div class="result-item">
+        <span class="status good">{{ field.field_id }}</span>
+        <p>{{ field.value }}</p>
+        <small>Luottamus {{ field.confidence }} · evidence {{ field.evidence_refs|length }}</small>
+      </div>
+      {% endfor %}
+    </div>
+    {% if response.document_inventory %}
+    <h3>Document inventory</h3>
+    <table>
+      <tr><th>Tiedosto</th><th>Rooli</th><th>Scope</th><th>Merkit</th></tr>
+      {% for doc in response.document_inventory %}
+      <tr><td>{{ doc.filename }}</td><td>{{ doc.document_role }}</td><td>{{ doc.delivery_scope }}</td><td>{{ doc.text_chars }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% else %}
+    <p class="muted">Ei vielä API-vastausta.</p>
+    {% endif %}
+    <div class="result-item embedded-widget-preview">
+      <h3>Embedded widget preview</h3>
+      <p class="muted">Sama ehdotuspalvelu voidaan upottaa asiointipalveluun iframe- tai widget-mallilla. Widget näyttää jobin, events-virran ja hyväksyntää odottavat kenttäehdotukset.</p>
+      <div class="widget-shell">
+        <span class="system-badge ai">AI-ehdotuspalvelu</span>
+        <strong>{{ response.status or result.job.status if result.job else "odottaa requestia" }}</strong>
+        <small>Tenant: {{ response.tenant_id or "valitse tenant" }} · Evidence: {{ response.evidence_refs|length if response.evidence_refs else 0 }}</small>
+      </div>
+    </div>
+    <p class="muted">Endpointit: <code>POST /api/v1/application-packages:analyze</code>, <code>GET /api/v1/jobs/{job_id}/events</code>, <code>GET /api/v1/jobs/{job_id}/result</code> tai <code>POST /api/v1/suggestions/field</code> · Header: <code>X-Lupademo-Api-Key</code></p>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+{
+  "pages": [
+    {"slug": "lv", "title": "LV", "show_in_nav": true, "widgets": []},
+    {"slug": "building", "title": "Rakennuslupa", "show_in_nav": true, "widgets": []},
+    {"slug": "environmental", "title": "Ympäristölupa", "show_in_nav": true, "widgets": []},
+    {"slug": "event", "title": "Tapahtuma", "show_in_nav": true, "widgets": []},
+    {"slug": "authority", "title": "Viranomainen", "show_in_nav": true, "widgets": []},
+    {"slug": "suggestion_service", "title": "Ehdotuspalvelu", "show_in_nav": true, "widgets": []},
+    {"slug": "metrics", "title": "Mittarit", "show_in_nav": true, "widgets": []}
+  ]
+}

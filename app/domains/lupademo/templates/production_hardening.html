@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="band service-shell authority-shell">
+  <p class="eyebrow">Admin</p>
+  <h1>Tuotantokovennus</h1>
+  <p class="muted">Phase 6 -tarkistukset ennen tuotantomaista käyttöä.</p>
+</section>
+<section class="metric-grid">
+  <div><strong>{{ hardening.ready_count }}</strong><span>Valmiita</span></div>
+  <div><strong>{{ hardening.total_count }}</strong><span>Tarkistuksia</span></div>
+</section>
+<section>
+  <h2>Tarkistukset</h2>
+  <table>
+    <tr><th>ID</th><th>Tila</th><th>Näyttö</th></tr>
+    {% for item in hardening["items"] %}
+    <tr>
+      <td>{{ item.id }}</td>
+      <td><span class="status {% if item.status == 'ready' %}good{% else %}warn{% endif %}">{{ item.status }}</span></td>
+      <td>{{ item.evidence }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

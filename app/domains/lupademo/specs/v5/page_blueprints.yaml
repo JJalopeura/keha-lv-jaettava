@@ -1,0 +1,45 @@
+front_door:
+  hero_title: Tee lupahakemuksestasi käsittelyvalmis AI:n avulla
+  primary_card:
+    title: Tarkista valmis hakemuspaketti
+    body: Lataa hakemus ja liitteet. AI poimii tiedot, löytää puutteet ja ehdottaa korjauksia.
+    cta: Lataa aineisto
+  secondary_cards:
+    - title: Laadi hakemus AI:n kanssa
+      cta: Aloita ohjatusti
+    - title: Jatka LV:ssä
+      cta: Näytä asiointikokonaisuus
+    - title: Näytä AI-ehdotuspalvelu
+      cta: Avaa API-demo
+
+package_workbench:
+  top_bar:
+    fields: [package_name, permit_type, tenant, readiness, ai_status]
+  main_cards:
+    - ai_job_banner
+    - readiness_dashboard
+    - next_best_actions
+    - extraction_review_queue
+    - findings_and_contradictions
+    - attachments_scope
+  side_rail:
+    - copilot
+    - active_ai_jobs
+    - help
+
+authority_detail:
+  cards:
+    - ai_brief
+    - readiness_and_blockers
+    - evidence_findings
+    - completion_request_draft
+    - document_inventory
+
+api_playground:
+  panels:
+    - scenario_picker
+    - request_body
+    - job_response
+    - event_stream
+    - final_response
+    - embedded_widget_preview

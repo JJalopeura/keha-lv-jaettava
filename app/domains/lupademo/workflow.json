@@ -1,0 +1,8 @@
+{
+  "workflows": {
+    "applicant_application_check": ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"],
+    "field_suggestion": ["retrieval_context", "field_suggestion_agent", "validate_suggestion", "persist_pending_suggestion"],
+    "submit_application": ["ensure_no_blockers", "package_composer", "lv_status_update", "authority_queue_insert"],
+    "authority_review": ["caseworker_summary_agent", "additional_info_request_agent", "authority_memo_draft_agent"]
+  }
+}

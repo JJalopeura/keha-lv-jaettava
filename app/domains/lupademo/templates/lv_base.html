@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LV-mock · Lupademo</title>
+  <link rel="stylesheet" href="/static/style.css?v=20260702-phase1">
+</head>
+<body class="service-lv">
+  {% set present_suffix = '?present=1' if request and request.query_params.get('present') == '1' else '' %}
+  <header class="topbar lv-topbar">
+    <a href="/lv{{ present_suffix }}" class="brand">Luvat ja valvonta · LV-mock</a>
+    <nav>
+      <a href="/{{ present_suffix }}">Demo</a>
+      {% if case_id %}
+      <a href="/lv/projects/{{ case_id }}{{ present_suffix }}">Hanke</a>
+      <a href="/cases/{{ case_id }}/lupademo/application/building_residential{{ present_suffix }}">Kevytasiointi</a>
+      <a href="/cases/{{ case_id }}/lupademo/authority/queue{{ present_suffix }}">Viranomainen</a>
+      <a href="/cases/{{ case_id }}/lupademo/admin/criteria{{ present_suffix }}">Admin</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

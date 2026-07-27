@@ -1,0 +1,218 @@
+{
+  "schema_id": "environmental_industrial_v1",
+  "permit_type": "environmental_industrial",
+  "title": "Ympäristölupa / teollinen uusiutuvan energian toiminta",
+  "authority_default": "Aluehallintovirasto / kunnan ympäristönsuojeluviranomainen",
+  "tabs": [
+    {
+      "id": "applicant",
+      "label": "Hakija ja toiminnan tiedot"
+    },
+    {
+      "id": "location",
+      "label": "Sijainti ja kaavoitus"
+    },
+    {
+      "id": "activity",
+      "label": "Toiminnan kuvaus"
+    },
+    {
+      "id": "materials",
+      "label": "Raaka-aineet ja kemikaalit"
+    },
+    {
+      "id": "emissions",
+      "label": "Päästöt, jätteet ja vaikutukset"
+    },
+    {
+      "id": "risk_bat_monitoring",
+      "label": "Riskit, BAT ja tarkkailu"
+    },
+    {
+      "id": "attachments",
+      "label": "Liitteet"
+    },
+    {
+      "id": "summary",
+      "label": "Yhteenveto"
+    }
+  ],
+  "fields": [
+    {
+      "id": "applicant_name",
+      "tab": "applicant",
+      "label": "Hakija",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "business_id",
+      "tab": "applicant",
+      "label": "Y-tunnus",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "activity_name",
+      "tab": "applicant",
+      "label": "Toiminnan nimi",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "permit_basis",
+      "tab": "applicant",
+      "label": "Toiminnan luvanvaraisuus",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "competent_authority",
+      "tab": "applicant",
+      "label": "Toimivaltainen lupaviranomainen",
+      "type": "text",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "site_location",
+      "tab": "location",
+      "label": "Sijainti",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "zoning_context",
+      "tab": "location",
+      "label": "Kaavoitus ja maankäyttö",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "sensitive_receptors",
+      "tab": "location",
+      "label": "Häiriintyvät kohteet ja suojelukohteet",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "activity_description",
+      "tab": "activity",
+      "label": "Toiminnan yleiskuvaus",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "production_capacity",
+      "tab": "activity",
+      "label": "Tuotanto ja kapasiteetti",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "process_description",
+      "tab": "activity",
+      "label": "Tuotantoprosessit",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "raw_materials_chemicals",
+      "tab": "materials",
+      "label": "Raaka-aineet, kemikaalit ja varastointi",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "water_and_wastewater",
+      "tab": "emissions",
+      "label": "Veden käyttö ja jätevedet",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "air_emissions",
+      "tab": "emissions",
+      "label": "Päästöt ilmaan",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "waste",
+      "tab": "emissions",
+      "label": "Jätteet",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "environmental_impacts",
+      "tab": "emissions",
+      "label": "Arvio ympäristövaikutuksista",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "risk_preparedness",
+      "tab": "risk_bat_monitoring",
+      "label": "Riskit, onnettomuudet ja häiriötilanteet",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "bat_assessment",
+      "tab": "risk_bat_monitoring",
+      "label": "BAT-arviointi",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "monitoring_plan",
+      "tab": "risk_bat_monitoring",
+      "label": "Tarkkailu ja raportointi",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "yva_context",
+      "tab": "risk_bat_monitoring",
+      "label": "YVA ja perusteltu päätelmä",
+      "type": "textarea",
+      "required": false,
+      "ai_suggest": true
+    }
+  ],
+  "required_attachments": [
+    "environmental_application",
+    "site_map",
+    "zoning_extract",
+    "public_summary"
+  ],
+  "conditional_attachments": [
+    "baseline_report",
+    "chemical_inventory",
+    "air_quality_model",
+    "noise_model",
+    "yva_statement",
+    "bat_assessment",
+    "monitoring_plan",
+    "risk_preparedness_plan",
+    "stormwater_plan"
+  ]
+}

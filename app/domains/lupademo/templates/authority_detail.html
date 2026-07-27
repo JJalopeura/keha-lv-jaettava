@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Käsittelijän työtila{% endblock %}
+{% block content %}
+{% set present = request.query_params.get('present') == '1' %}
+{% set field_labels = {} %}
+{% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
+<header class="casework-header">
+  <div><a class="back-link" href="/cases/{{ case_id }}/lupademo/authority/queue">← Työjonoon</a><p class="section-kicker">{{ schema.title }}</p><h1>{{ project.name }}</h1><p>{{ application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija' }} · {{ common.data.get('municipality') or 'Kunta ei tiedossa' }}</p></div>
+  <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/status" class="case-status-form"><label>Tila<select name="status"><option>Käsittelyssä</option><option>Täydennyspyyntö luonnosteltu</option><option>Päätetty</option></select></label><button class="secondary compact">Päivitä</button></form>
+</header>
+{% if present %}<section class="present-card"><strong>Mitä tämä todistaa</strong><p>Käsittelijä saa lähteistetyn AI-briefin, tarkistaa havainnot ja tuottaa muokattavat luonnokset. AI ei tee viranomaispäätöstä.</p></section>{% endif %}
+
+<nav class="casework-tabs" aria-label="Hakemuksen osiot"><a class="active" href="#overview">Tilannekuva</a><a href="#application-material">Hakemus ja liitteet</a><a href="#drafts">Luonnokset</a><a href="#event-log">Tapahtumat</a></nav>
+
+<section class="authority-brief" id="overview">
+  <div class="brief-heading">
+    <span class="assistant-mark large" aria-hidden="true">✦</span>
+    <div><p class="section-kicker">Command center</p><h2>AI-brief</h2><p>AI-havainnot ovat valmistelun tukea, eivät päätöksiä. Tarkista kaikki havainnot ennen käyttöä.</p></div>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/ai/summary"><button class="{% if present %}next-action{% endif %}">{% if authority_summary %}Päivitä AI-brief{% else %}Muodosta AI-brief{% endif %}</button></form>
+  </div>
+  {% if authority_summary %}
+  <div class="brief-content">
+    <div class="brief-summary"><h3>Tiivistelmä</h3><p>{{ authority_summary.summary_md }}</p>{% for fact in authority_summary.key_facts[:4] %}<div class="fact-row"><span>✓</span>{{ fact }}</div>{% endfor %}</div>
+    <div><h3>Avoimet kysymykset</h3>{% for question in authority_summary.open_questions[:5] %}<div class="open-question"><span>!</span>{{ question }}</div>{% else %}<p class="empty-copy">Ei avoimia kysymyksiä.</p>{% endfor %}</div>
+    <div><h3>Lähteet</h3>{% for ref in authority_summary.evidence_refs[:6] %}<div class="source-row"><span>§</span><div><strong>{{ ref.title }}</strong><small>{{ ref.locator }}</small></div></div>{% else %}<p class="empty-copy">Ei lähdeviitteitä vielä.</p>{% endfor %}</div>
+  </div>
+  {% endif %}
+</section>
+
+<div class="casework-grid">
+  <section class="review-column">
+    <div class="column-heading"><div><p class="section-kicker">Käsittelijän työlista</p><h2>Tarkista seuraavaksi</h2></div><span>{{ caseworker_observations.caseworker_checklist|length }}</span></div>
+    {% for item in caseworker_observations.caseworker_checklist %}
+    <article class="review-row {{ item.status }}"><span class="review-icon">{% if item.status == 'ready' %}✓{% else %}!{% endif %}</span><div><strong>{{ item.title }}</strong><p>{{ item.detail }}</p><small>{{ item.source }}</small></div></article>
+    {% endfor %}
+    <div class="column-heading findings-heading"><div><p class="section-kicker">AI-havainnot</p><h2>Vaatii ihmisen arvion</h2></div></div>
+    {% for observation in caseworker_observations.top_ai_observations %}
+    <article class="observation-review {{ observation.severity }}" id="observation-{{ observation.id }}"><div><span class="status warn">{{ observation.review_status }}</span><strong>{{ observation.title }}</strong><p>{{ observation.detail }}</p><small>{{ observation.source }}</small></div><div class="review-actions"><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="accepted"><button class="secondary compact">Hyväksy havainto</button></form><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="needs_human_review"><button class="text-button">Jätä tarkistettavaksi</button></form><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="rejected"><button class="text-button danger-text">Hylkää</button></form></div></article>
+    {% else %}<p class="empty-copy">Ei uusia AI-havaintoja.</p>{% endfor %}
+  </section>
+
+  <aside class="casework-tools">
+    <div><p class="section-kicker">AI-työkalut</p><h2>Valmistele seuraava asiakirja</h2><p>Luonnokset muodostetaan hakemuksen ja sallittujen lähteiden perusteella.</p></div>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/ai/request-info-draft"><button class="tool-action"><span>+</span><span><strong>Täydennyspyyntö</strong><small>Muokattava luonnos avoimista puutteista</small></span><b>→</b></button></form>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/ai/decision-support"><button class="tool-action"><span>≡</span><span><strong>Käsittelymuistio</strong><small>Faktat, havainnot ja tarkistettavat asiat</small></span><b>→</b></button></form>
+    <div class="decision-boundary"><strong>AI ei tee päätöstä</strong><p>Kaikki tuotokset ovat virkailijan tarkistettavia ja muokattavia valmisteluluonnoksia.</p></div>
+    <div class="source-boundaries"><strong>Aineistorajaus</strong><p>Hakemus ja viranomaiselle toimitetut liitteet ovat käsittelyn varsinaista aineistoa.</p><p>Hakijan AI-tausta-aineisto ei kuulu viranomaispakettiin ilman erillistä hyväksyntää.</p></div>
+  </aside>
+</div>
+
+<section class="application-material" id="application-material">
+  <div class="section-heading-line"><div><p class="section-kicker">Hakemusaineisto</p><h2>Hakemus ja viranomaiselle toimitetut liitteet</h2></div><span>{{ attachments|selectattr('delivery_scope', 'equalto', 'official_submission')|list|length }} liitettä</span></div>
+  <div class="material-split"><dl class="data-list">{% for key, value in application.form_data.items() if value %}<div class="data-row"><dt>{{ field_labels.get(key, key|replace('_',' ')|capitalize) }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl><div class="official-document-list">{% for att in attachments if att.delivery_scope == 'official_submission' %}<div class="document-row"><span class="file-icon">{{ att.filename.split('.')[-1][:3]|upper }}</span><div><strong>{{ att.filename }}</strong><small>{{ att.primary_type|replace('_',' ') }}</small></div></div>{% else %}<p class="empty-copy">Ei toimitettuja liitteitä.</p>{% endfor %}</div></div>
+</section>
+
+<section class="drafts-section" id="drafts">
+  <div class="section-heading-line"><div><p class="section-kicker">Luonnokset</p><h2>Tarkista ja muokkaa ennen käyttöä</h2></div></div>
+  <div class="draft-grid">
+    <article><h3>Täydennyspyyntö</h3>{% if additional_info_draft %}<label>Otsikko<input value="{{ additional_info_draft.subject }}"></label><label>Sisältö<textarea rows="10">{{ additional_info_draft.body_md }}</textarea></label>{% for item in additional_info_draft.requested_items %}<div class="open-question"><span>!</span><div><strong>{{ item.title }}</strong><small>{{ item.reason }}</small></div></div>{% endfor %}{% else %}<p class="empty-copy">Täydennyspyyntöä ei ole vielä muodostettu.</p>{% endif %}</article>
+    <article><h3>Käsittelymuistio</h3>{% if authority_memo %}<textarea rows="12">{{ authority_memo.memo_md }}</textarea>{% for check in authority_memo.caseworker_checks %}<div class="review-row needs_review"><span class="review-icon">!</span><div>{{ check }}</div></div>{% endfor %}{% else %}<p class="empty-copy">Käsittelymuistiota ei ole vielä muodostettu.</p>{% endif %}</article>
+  </div>
+</section>
+
+<section class="event-log" id="event-log"><div class="section-heading-line"><div><p class="section-kicker">Audit trail</p><h2>Tapahtumat</h2></div></div>{% for event in project.integration_events or [] %}<div class="event-row"><span>{{ event.id }}</span><strong>{{ event.label }}</strong><small>{{ event.status }}</small></div>{% endfor %}</section>
+{% endblock %}

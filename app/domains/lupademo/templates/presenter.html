@@ -1,0 +1,50 @@
+{% extends "lv_base.html" %}
+{% block content %}
+<section class="band presenter-hero">
+  <p class="eyebrow">Demo Lab · Presenter</p>
+  <h1>Kolmen minuutin lupademo</h1>
+  <p>Esittäjänäkymä kokoaa v5-polun: hakija lataa aineiston, AI analysoi näkyvästi, käyttäjä hyväksyy ehdotukset, viranomainen näkee AI-briefin ja API-demo todistaa integraatiomallin.</p>
+  <div class="presenter-actions">
+    <a class="button next-action" href="/?present=1">Aloita etuovesta</a>
+    <a class="button secondary" href="/applicant/packages/new?present=1">Näytä pakettityöpöytä</a>
+    <a class="button secondary" href="/demo/scenarios?present=1">Avaa Demo Lab</a>
+  </div>
+</section>
+
+<section class="presenter-grid" aria-label="Demo script">
+  <article>
+    <span class="system-badge ai">0:00</span>
+    <h2>Hakijan tehtävä</h2>
+    <p>Avaa etuovi ja näytä, että primääripolku on valmis hakemuspaketti, ei tekninen case-lista.</p>
+    <a href="/?present=1">Etusivu</a>
+  </article>
+  <article>
+    <span class="system-badge ai">0:45</span>
+    <h2>AI työskentelee</h2>
+    <p>Lataa aineisto tai käytä pakettityöpöytää. Korosta jobin ETA, agenttivaiheet, poiminnat ja lähdeviitteet.</p>
+    <a href="/applicant/packages/new?present=1">Pakettityöpöytä</a>
+  </article>
+  <article>
+    <span class="system-badge ai">1:30</span>
+    <h2>Käyttäjä hallitsee</h2>
+    <p>Näytä Hakemusapuri, pending-ehdotukset ja hyväksyntälogiikka: AI ei muuta lomaketta ilman ihmisen hyväksyntää.</p>
+    <a href="/demo/scenarios?present=1">Käynnistä skenaario</a>
+  </article>
+  <article>
+    <span class="system-badge ai">2:15</span>
+    <h2>Viranomainen ja API</h2>
+    <p>Näytä AI-brief, täydennyspyyntöluonnos sekä API-demon request, job, event stream ja final response JSON.</p>
+    <a href="/demo/scenarios?present=1">Viranomainen ja API</a>
+  </article>
+</section>
+
+<section class="surface presenter-checklist">
+  <h2>Esityksen hyväksyntäpisteet</h2>
+  <ul>
+    <li>Normaali käyttäjäpolku ei näytä P2X/Ren-Gas/SharpCell-benchmarkkeja.</li>
+    <li>AI-tuotoksissa näkyy lähde, kriteeri tai tarkistusvastuun huomio.</li>
+    <li>Mock-LLM riittää paikalliseen demoon ilman Azure-avaimia.</li>
+    <li>Viranomaisnäkymä erottaa valmistelun tuen viranomaispäätöksestä.</li>
+  </ul>
+</section>
+{% endblock %}

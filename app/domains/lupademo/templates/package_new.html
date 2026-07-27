@@ -1,0 +1,100 @@
+{% extends "light_base.html" %}
+{% block title %}Tuo hakemuspaketti{% endblock %}
+{% block content %}
+<nav class="flow-progress" aria-label="Hakemuspaketin tarkistuksen vaiheet">
+  <span class="active"><b>1</b> Tuo aineisto</span>
+  <span><b>2</b> AI:n tulkinta</span>
+  <span><b>3</b> Korjaa ja vahvista</span>
+</nav>
+
+<section class="page-heading upload-heading">
+  <a class="back-link" href="/">← Takaisin</a>
+  <p class="section-kicker">Hakemuspaketin tarkistus</p>
+  <h1>Lataa valmis hakemuspaketti AI-tarkistukseen</h1>
+  <p>Voit tuoda useita tiedostoja tai yhden zip-paketin. Aineistoa ei lähetetä viranomaiselle tässä vaiheessa.</p>
+</section>
+
+<form method="post" enctype="multipart/form-data" action="/applicant/packages/new" class="upload-workspace" data-upload-form>
+  <div class="upload-main">
+    <section class="upload-zone" data-dropzone>
+      <input id="package-files" type="file" name="files" multiple accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.tif,.tiff,.webp" data-file-input>
+      <label for="package-files" class="upload-zone-label">
+        <span class="upload-symbol" aria-hidden="true">↑</span>
+        <strong>Valitse hakemus ja liitteet</strong>
+        <span>tai vedä tiedostot tähän</span>
+        <small>PDF, Word, Excel, kuvat ja tekstitiedostot</small>
+      </label>
+      <div class="selected-files" data-selected-files aria-live="polite"></div>
+    </section>
+
+    <div class="upload-divider"><span>tai</span></div>
+
+    <section class="zip-upload">
+      <div><strong>Tuo koko aineisto zip-pakettina</strong><p>Hakemukset ja liitteet tunnistetaan paketin sisältä automaattisesti.</p></div>
+      <label class="file-button" for="package-zip">Valitse zip</label>
+      <input id="package-zip" type="file" name="zip_file" accept=".zip" data-zip-input>
+      <span class="zip-name" data-zip-name>Ei valittua tiedostoa</span>
+    </section>
+
+    <details class="text-material">
+      <summary>Lisää myös hankkeen kuvaus tekstinä</summary>
+      <label>Vapaa kuvaus<textarea name="text_body" rows="5" placeholder="Kuvaile hanketta tai lisää saate. Teksti merkitään AI:n tausta-aineistoksi."></textarea></label>
+    </details>
+  </div>
+
+  <aside class="upload-details">
+    <div class="aside-heading"><span>Hakemuksen tiedot</span><small>Voit muuttaa näitä myöhemmin</small></div>
+    <label>Paketin nimi<input name="package_name" value="Uusi ympäristölupapaketti" required></label>
+    <label>Lupatyyppi
+      <select name="permit_type">
+        <option value="environmental_industrial" selected>Ympäristölupa</option>
+        <option value="building_residential">Rakennuslupa</option>
+        <option value="event_public">Tapahtuman luvat</option>
+      </select>
+    </label>
+    <label>Hakija tai organisaatio<input name="applicant_name" value="Hakija Oy"></label>
+    <label>Kunta<input name="municipality" value="Vantaa"></label>
+    <div class="data-boundary">
+      <strong>Mitä aineistolle tapahtuu?</strong>
+      <p>AI erottaa hakemuksen, lähetettävät liitteet ja vain tarkistuksessa käytettävän tausta-aineiston.</p>
+      <p><b>Viranomaisen omat asiakirjat ohitetaan</b>, eikä niitä tallenneta hakemuksen AI-hakukontekstiin.</p>
+    </div>
+    <button class="primary-cta" data-submit-button disabled>Jatka AI-tarkistukseen <span aria-hidden="true">→</span></button>
+    <p class="submit-hint" data-submit-hint>Valitse vähintään yksi tiedosto tai lisää kuvaus.</p>
+  </aside>
+</form>
+
+<script>
+(function () {
+  const form = document.querySelector("[data-upload-form]");
+  const files = document.querySelector("[data-file-input]");
+  const zip = document.querySelector("[data-zip-input]");
+  const list = document.querySelector("[data-selected-files]");
+  const zipName = document.querySelector("[data-zip-name]");
+  const submit = document.querySelector("[data-submit-button]");
+  const hint = document.querySelector("[data-submit-hint]");
+  const textarea = form.querySelector("textarea[name='text_body']");
+  const dropzone = document.querySelector("[data-dropzone]");
+  function render() {
+    const chosen = Array.from(files.files || []);
+    list.innerHTML = chosen.map((file) => `<span><b>${file.name}</b><small>${Math.max(1, Math.round(file.size / 1024))} kt</small></span>`).join("");
+    zipName.textContent = zip.files && zip.files[0] ? zip.files[0].name : "Ei valittua tiedostoa";
+    const ready = chosen.length > 0 || (zip.files && zip.files.length > 0) || textarea.value.trim().length > 0;
+    submit.disabled = !ready;
+    hint.textContent = ready ? `${chosen.length + (zip.files && zip.files.length ? 1 : 0)} tiedostoa valittu. Voit jatkaa.` : "Valitse vähintään yksi tiedosto tai lisää kuvaus.";
+  }
+  files.addEventListener("change", render);
+  zip.addEventListener("change", render);
+  textarea.addEventListener("input", render);
+  ["dragenter", "dragover"].forEach((eventName) => dropzone.addEventListener(eventName, () => dropzone.classList.add("drag-active")));
+  ["dragleave", "drop"].forEach((eventName) => dropzone.addEventListener(eventName, () => dropzone.classList.remove("drag-active")));
+  form.addEventListener("submit", () => {
+    submit.disabled = true;
+    submit.innerHTML = 'Aineistoa vastaanotetaan <span aria-hidden="true">…</span>';
+    hint.textContent = "Siirryt seuraavaksi etenemisnäkymään. Voit jatkaa työskentelyä käsittelyn aikana.";
+    dropzone.classList.add("is-uploading");
+  });
+  render();
+})();
+</script>
+{% endblock %}

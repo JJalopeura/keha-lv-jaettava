@@ -1,0 +1,37 @@
+api_version: v1
+security:
+  header: X-API-Key
+  demo_valid_key: demo-api-key
+endpoints:
+  POST /api/v1/application-packages:analyze:
+    request: multipart_or_json
+    response:
+      status: 202
+      body:
+        job_id: string
+        status: queued
+        events_url: string
+        result_url: string
+  GET /api/v1/jobs/{job_id}:
+    response: AIJob
+  GET /api/v1/jobs/{job_id}/events:
+    response: text/event-stream
+    must_emit_at_least:
+      - job.started
+      - step.started
+      - job.completed
+  GET /api/v1/jobs/{job_id}/result:
+    response: PackageAnalysisResult
+  POST /api/v1/suggestions/fields:
+    response:
+      suggestions: list
+      evidence_refs: list
+  POST /api/v1/applications:precheck:
+    response:
+      readiness: object
+      findings: list
+      questions: list
+error_responses:
+  missing_api_key: 401
+  invalid_api_key: 401
+  missing_job: 404

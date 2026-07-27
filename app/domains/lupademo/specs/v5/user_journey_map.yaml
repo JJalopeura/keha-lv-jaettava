@@ -1,0 +1,43 @@
+journeys:
+  ready_package_applicant:
+    persona: Hakija, valmis hakemuspaketti
+    goal: Tarkista ja paranna ennen lähettämistä
+    steps:
+      - front_door_select_ready_package
+      - upload_zip_or_many_files
+      - review_inventory
+      - start_ai_analysis
+      - watch_ai_progress_eta
+      - review_readiness_dashboard
+      - accept_extracted_fields
+      - fix_top_findings_with_copilot
+      - rerun_precheck
+      - preview_submit
+  draft_with_ai_applicant:
+    persona: Hakija, aloittaa alusta
+    goal: Muodosta hakemusluonnos AI:n avulla
+    steps:
+      - front_door_select_draft_with_ai
+      - answer_minimal_questions
+      - attach_supporting_documents
+      - ai_drafts_form
+      - user_reviews_and_accepts
+  authority_caseworker:
+    persona: Viranomainen
+    goal: Nopeuta ensiarviota ja täydennyspyyntöä
+    steps:
+      - open_queue
+      - open_case
+      - read_ai_brief
+      - inspect_evidence
+      - edit_completion_request
+  integrator:
+    persona: Asiointipalvelun kehittäjä
+    goal: Ymmärrä API/upotus
+    steps:
+      - open_api_playground
+      - inspect_request
+      - submit_request
+      - watch_job_stream
+      - inspect_final_json
+      - inspect_embedded_widget_callback

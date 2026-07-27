@@ -1,0 +1,32 @@
+colors:
+  background: "#F6F8FB"
+  surface: "#FFFFFF"
+  text: "#122033"
+  muted: "#5B6575"
+  ai_blue: "#175CD3"
+  info_cyan: "#0E7490"
+  success_green: "#067647"
+  warning_orange: "#B54708"
+  danger_red: "#B42318"
+  border: "#D8E0EA"
+spacing:
+  page_max_width: 1180px
+  card_radius: 20px
+  gap: 16px
+components:
+  hero:
+    min_height: 360px
+    title_size: clamp(2rem, 4vw, 4rem)
+  ai_job_banner:
+    position: sticky-top
+    aria_live: polite
+  copilot_rail:
+    desktop_width: 360px
+    mobile: bottom-sheet
+status_copy:
+  queued: Odottaa aloitusta
+  running: AI työskentelee
+  waiting_for_user: Odottaa hyväksyntääsi
+  completed: Valmis
+  failed: Epäonnistui
+  cancelled: Keskeytetty

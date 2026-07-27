@@ -1,0 +1,159 @@
+{
+  "schema_id": "building_residential_v1",
+  "permit_type": "building_residential",
+  "title": "Rakennuslupa / asuinrakennusdemo",
+  "authority_default": "Vantaan rakennusvalvonta",
+  "tabs": [
+    {
+      "id": "basic",
+      "label": "Perustiedot"
+    },
+    {
+      "id": "building",
+      "label": "Rakennus ja sen käyttö"
+    },
+    {
+      "id": "plans",
+      "label": "Suunnitelmat"
+    },
+    {
+      "id": "responsibilities",
+      "label": "Vastuutiedot"
+    },
+    {
+      "id": "other",
+      "label": "Muut tiedot"
+    },
+    {
+      "id": "summary",
+      "label": "Yhteenveto"
+    }
+  ],
+  "fields": [
+    {
+      "id": "applicant_name",
+      "tab": "basic",
+      "label": "Hakijan nimi",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "business_id",
+      "tab": "basic",
+      "label": "Y-tunnus",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "contact_person",
+      "tab": "basic",
+      "label": "Yhteyshenkilö",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "email",
+      "tab": "basic",
+      "label": "Sähköposti",
+      "type": "email",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "address",
+      "tab": "basic",
+      "label": "Rakennuspaikan osoite",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "property_id",
+      "tab": "basic",
+      "label": "Kiinteistötunnus",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "intended_use",
+      "tab": "building",
+      "label": "Käyttötarkoitus",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "project_description",
+      "tab": "building",
+      "label": "Hankkeen kuvaus",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "floor_area_m2",
+      "tab": "building",
+      "label": "Kerrosala (m²)",
+      "type": "number",
+      "required": true
+    },
+    {
+      "id": "building_height_m",
+      "tab": "building",
+      "label": "Rakennuksen korkeus (m)",
+      "type": "number",
+      "required": true
+    },
+    {
+      "id": "distance_to_boundary_m",
+      "tab": "building",
+      "label": "Etäisyys rajasta (m)",
+      "type": "number",
+      "required": true
+    },
+    {
+      "id": "wastewater_handling",
+      "tab": "other",
+      "label": "Jätevesien käsittely",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "stormwater_management",
+      "tab": "other",
+      "label": "Hulevesien hallinta",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "noise_context",
+      "tab": "other",
+      "label": "Melu- ja tärinähuomiot",
+      "type": "textarea",
+      "required": false,
+      "ai_suggest": true
+    },
+    {
+      "id": "designer",
+      "tab": "responsibilities",
+      "label": "Pääsuunnittelija",
+      "type": "text",
+      "required": true
+    }
+  ],
+  "required_attachments": [
+    "site_plan",
+    "main_drawings",
+    "facade_drawings"
+  ],
+  "recommended_attachments": [
+    "stormwater_plan",
+    "energy_report",
+    "power_of_attorney"
+  ]
+}

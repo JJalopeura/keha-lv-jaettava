@@ -1,0 +1,48 @@
+ApplicationPackage:
+  fields:
+    id: string
+    case_id: string
+    name: string
+    permit_type: string
+    tenant_id: string
+    status: uploaded|analyzing|analysis_ready|needs_user_action|ready_for_precheck|submitted
+    documents: list[DocumentAsset]
+    analysis_result_id: string|null
+    created_at: datetime
+    updated_at: datetime
+
+DocumentAsset:
+  fields:
+    id: string
+    filename: string
+    content_type: string
+    size_bytes: integer
+    text_extract_status: pending|completed|failed|unsupported
+    text_excerpt: string
+    scope: official_attachment|ai_context_only|do_not_send|needs_user_decision
+    classification_confidence: number
+    source: upload|zip_entry|free_text
+
+ExtractionCandidate:
+  fields:
+    id: string
+    field_id: string
+    label: string
+    proposed_value: any
+    confidence: number
+    evidence_refs: list[string]
+    status: pending|accepted|edited|rejected
+    accepted_value: any|null
+
+Finding:
+  fields:
+    id: string
+    severity: blocking|major|minor|info
+    category: missing_required_info|contradiction|weak_description|attachment_scope|criteria_gap
+    title: string
+    explanation: string
+    suggested_fix: string
+    question_to_applicant: string|null
+    evidence_refs: list[string]
+    criteria_refs: list[string]
+    status: open|in_progress|resolved|accepted_risk

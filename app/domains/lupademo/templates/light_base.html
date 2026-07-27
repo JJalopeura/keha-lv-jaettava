@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>{% block title %}Lupa-apuri{% endblock %} · Luvat ja valvonta</title>
+  <link rel="stylesheet" href="/static/style.css?v=20260710-ux6a">
+</head>
+<body class="service-light">
+  <a class="skip-link" href="#main-content">Siirry sisältöön</a>
+  <header class="app-header">
+    <a href="/" class="app-brand" aria-label="Lupa-apurin etusivu">
+      <span class="brand-mark" aria-hidden="true">L</span>
+      <span><strong>Lupa-apuri</strong><small>Luvat ja valvonta</small></span>
+    </a>
+    <nav class="app-nav" aria-label="Päänavigaatio">
+      {% if case_id %}
+      <a href="/lv/projects/{{ case_id }}">Hanke</a>
+      <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id if application else 'building_residential' }}/wizard/1">Hakemus</a>
+      <a href="/cases/{{ case_id }}/lupademo/authority/queue">Viranomainen</a>
+      {% else %}
+      <a href="/applicant">Uusi hakemus</a>
+      <a href="/applicant/packages/new">Tarkista aineisto</a>
+      {% endif %}
+      <a href="/integrations/api-playground">Rajapinnat</a>
+    </nav>
+  </header>
+  {% if case_id %}
+  <div class="project-context" aria-label="Avoin hanke">
+    <div>
+      <span class="context-kicker">Avoin hanke</span>
+      <strong>{{ project.name }}</strong>
+    </div>
+    <div class="context-meta">
+      <span>{{ schema.title if schema else 'Lupahanke' }}</span>
+      <span>Yhteiset tiedot v{{ common.version or 1 }}</span>
+    </div>
+  </div>
+  {% endif %}
+  <main id="main-content">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

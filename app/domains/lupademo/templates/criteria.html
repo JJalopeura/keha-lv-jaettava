@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="band"><h1>Kriteeristöt</h1></section>
+<section class="grid two">
+  <div>
+    <h2>Lähdeaineistojen ingest</h2>
+    <p class="muted">Käsittelee `source_materials/`- tai `esimerkkihakemukset/`-kansion zipit ja dokumentit. Mock-moodissa vector store on mock; Azure-moodissa käytetään Responses API:n tiedosto-/vector store -polkua.</p>
+    <p class="button-row">
+      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/admin/benchmark-lab">Benchmark lab</a>
+      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/admin/production-hardening">Tuotantokovennus</a>
+      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/admin/audit-trail">Audit trail</a>
+    </p>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/admin/source-materials/ingest">
+      <button>Aja lähdeaineistojen ingest</button>
+    </form>
+    {% if source_ingest %}
+    <dl class="data-list">
+      <div class="data-row"><dt>Lähdehakemisto</dt><dd>{{ source_ingest.source_dir }}</dd></div>
+      <div class="data-row"><dt>Järjestelmään ingestoitu</dt><dd>{{ source_ingest.file_count }} / {{ source_ingest.analysis.document_count or source_ingest.file_count }} dokumenttia</dd></div>
+      <div class="data-row"><dt>Valmis vector storessa</dt><dd>{{ source_ingest.ready_file_count if source_ingest.ready_file_count is defined else source_ingest.file_count }}</dd></div>
+      <div class="data-row"><dt>Upload estetty</dt><dd>{{ source_ingest.blocked_file_count or 0 }}</dd></div>
+      <div class="data-row"><dt>Epäonnistuneet tiedostot</dt><dd>{{ source_ingest.failed_file_count or 0 }}</dd></div>
+      <div class="data-row"><dt>Ohje-/lakiaineisto ingestoitu</dt><dd>{{ source_ingest.analysis.guidance_reference_count or 0 }}</dd></div>
+      <div class="data-row"><dt>Viranomaisesimerkit eroteltu</dt><dd>{{ source_ingest.analysis.excluded_authority_example_count or 0 }}</dd></div>
+      <div class="data-row"><dt>Teksti poimittu</dt><dd>{{ source_ingest.analysis.extracted_text_document_count or 0 }} / {{ source_ingest.analysis.document_count or source_ingest.file_count }}</dd></div>
+      <div class="data-row"><dt>Tekstimerkkejä</dt><dd>{{ source_ingest.analysis.total_text_chars or 0 }}</dd></div>
+      <div class="data-row"><dt>Vector store</dt><dd>{{ source_ingest.vector_store_id or "ei luotu" }}</dd></div>
+      <div class="data-row"><dt>Puuttuvat zipit</dt><dd>{{ source_ingest.missing_expected|join(", ") if source_ingest.missing_expected else "ei puuttuvia" }}</dd></div>
+    </dl>
+    {% if source_ingest.analysis %}
+    {% if source_ingest.external_upload_blocked %}
+    <div class="result-item">
+      <h3>Ulkoinen upload estetty</h3>
+      <p>{{ source_ingest.external_upload_block_reason }}</p>
+    </div>
+    {% endif %}
+    {% if source_ingest.file_errors %}
+    <h3>Tiedostovirheet</h3>
+    <table>
+      <tr><th>Tiedosto</th><th>Virhe</th></tr>
+      {% for item in source_ingest.file_errors %}
+      <tr><td>{{ item.filename }}</td><td>{{ item.error }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    <div class="grid two">
+      <div>
+        <h3>Case-jakauma</h3>
+        <table>
+          <tr><th>Case</th><th>Tiedostoja</th></tr>
+          {% for key, value in source_ingest.analysis.by_case.items() %}
+          <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+      <div>
+        <h3>Dokumenttityypit</h3>
+        <table>
+          <tr><th>Tyyppi</th><th>Tiedostoja</th></tr>
+          {% for key, value in source_ingest.analysis.by_type.items() %}
+          <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+    {% if source_ingest.analysis.by_role %}
+    <h3>Aineistoroolit</h3>
+    <table>
+      <tr><th>Rooli</th><th>Dokumentteja</th></tr>
+      {% for key, value in source_ingest.analysis.by_role.items() %}
+      <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% if source_ingest.analysis.sample_documents %}
+    <h3>Analyysin näyte</h3>
+    <table>
+      <tr><th>Case</th><th>Tiedosto</th><th>Rooli</th><th>Tyyppi</th><th>Tekstipoiminta</th></tr>
+      {% for doc in source_ingest.analysis.sample_documents %}
+      <tr>
+        <td>{{ doc.case }}</td>
+        <td>{{ doc.filename }}</td>
+        <td>{{ doc.document_role }}</td>
+        <td>{{ doc.primary_type }}</td>
+        <td>{{ doc.extraction_status }} · {{ doc.text_chars }} merkkiä</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% if source_ingest.analysis.sample_guidance_references %}
+    <h3>Ohje-/lakiaineisto, ingestoitu</h3>
+    <table>
+      <tr><th>Case</th><th>Tiedosto</th><th>Tyyppi</th><th>Tekstipoiminta</th></tr>
+      {% for doc in source_ingest.analysis.sample_guidance_references %}
+      <tr>
+        <td>{{ doc.case }}</td>
+        <td>{{ doc.filename }}</td>
+        <td>{{ doc.primary_type }}</td>
+        <td>{{ doc.extraction_status }} · {{ doc.text_chars }} merkkiä</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% if source_ingest.analysis.sample_authority_examples %}
+    <h3>Viranomaisesimerkit, ei ingestoitu</h3>
+    <table>
+      <tr><th>Case</th><th>Tiedosto</th><th>Tyyppi</th></tr>
+      {% for doc in source_ingest.analysis.sample_authority_examples %}
+      <tr>
+        <td>{{ doc.case }}</td>
+        <td>{{ doc.filename }}</td>
+        <td>{{ doc.primary_type }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% if source_ingest.authority_benchmark %}
+    <h3>Agenttien benchmark-aineisto</h3>
+    <p class="muted">{{ source_ingest.authority_benchmark.usage_policy }}</p>
+    <table>
+      <tr><th>Agentti</th><th>Esimerkkejä</th><th>Caset</th><th>Arviointiohje</th></tr>
+      {% for target in source_ingest.authority_benchmark.agent_comparison_targets %}
+      <tr>
+        <td>{{ target.agent }}</td>
+        <td>{{ target.example_count }}</td>
+        <td>{{ target.cases|join(", ") }}</td>
+        <td>{{ target.rubric[0] if target.rubric else "" }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% endif %}
+    {% endif %}
+  </div>
+  <div>
+    <h2>Versiointi</h2>
+    <p>Muokkaus tallentaa nykyisen version historiaan. Uudet AI-ehdotukset käyttävät aktiivista versiota ja ehdotusvastauksessa näkyy `criteria_version`.</p>
+  </div>
+</section>
+{% for criteria in criteria_sets %}
+<section>
+  <h2>{{ criteria.criteria_set_id }} · {{ criteria.version }}</h2>
+  <div class="grid two-wide">
+    <div>
+      <dl class="data-list">
+        <div class="data-row"><dt>Tila</dt><dd><span class="status good">{{ criteria.status or "active" }}</span></dd></div>
+        <div class="data-row"><dt>Lupatyyppi</dt><dd>{{ criteria.permit_type }}</dd></div>
+        <div class="data-row"><dt>Päivitetty</dt><dd>{{ criteria.updated_at or "alkuperäinen" }}</dd></div>
+        <div class="data-row"><dt>Päivittäjä</dt><dd>{{ criteria.updated_by or "seed" }}</dd></div>
+        <div class="data-row"><dt>Lähteet</dt><dd>{{ (criteria.source_files or criteria.sources or [])|join(", ") }}</dd></div>
+        <div class="data-row"><dt>Sääntöjä</dt><dd>{{ criteria.rules|length if criteria.rules else 0 }}</dd></div>
+      </dl>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/test">
+        <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+        <button class="secondary">Aja testipyyntö</button>
+      </form>
+      {% set test_result = criteria_test_results.get(criteria.permit_type, {}) %}
+      {% if test_result %}
+      <div class="result-item">
+        <h3>Viimeisin testipyyntö</h3>
+        <p>Kriteeriversio: {{ test_result.result.criteria_version }}</p>
+        {% for suggestion in test_result.result.suggestions %}
+        <p><span class="status good">{{ suggestion.field_id }}</span> {{ suggestion.suggested_value }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% set history_rows = criteria_history_rows.get(criteria.permit_type, []) %}
+      <h3>Historia</h3>
+      {% if history_rows %}
+      <table>
+        <tr><th>Aika</th><th>Muokkaaja</th><th>Versio</th><th>Sääntöjä</th><th>Toiminto</th></tr>
+        {% for item in history_rows %}
+        <tr>
+          <td>{{ item.ts }}</td>
+          <td>{{ item.editor }}</td>
+          <td>{{ item.version }}</td>
+          <td>{{ item.rule_count }}</td>
+          <td>
+            <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/restore">
+              <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+              <input type="hidden" name="history_index" value="{{ item.history_index }}">
+              <button class="secondary">Palauta aktiiviseksi</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <p class="muted">Ei aiempia versioita.</p>
+      {% endif %}
+    </div>
+    <div>
+      <h3>Säännöt</h3>
+      {% set rule_rows = criteria_rule_rows.get(criteria.permit_type, []) %}
+      {% if rule_rows %}
+      <div class="rule-list">
+        {% for rule in rule_rows %}
+        <div class="result-item">
+          <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule">
+            <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+            <div class="form-grid">
+              <label>Sääntö-ID<input name="rule_id" value="{{ rule.id }}"></label>
+              <label>Kenttä<input name="field_id" value="{{ rule.field_id }}"></label>
+              <label>Liitetyyppi<input name="attachment_type" value="{{ rule.attachment_type }}"></label>
+              <label>Vakavuus
+                <select name="severity">
+                  {% for severity in ["blocking", "major", "minor", "recommendation"] %}
+                  <option value="{{ severity }}" {% if rule.severity == severity %}selected{% endif %}>{{ severity }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>Ohje<textarea name="instruction">{{ rule.instruction }}</textarea></label>
+            <div class="button-row">
+              <button>Tallenna sääntö</button>
+            </div>
+          </form>
+          <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule/delete" class="inline-action">
+            <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+            <input type="hidden" name="rule_id" value="{{ rule.id }}">
+            <button class="secondary">Poista sääntö</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">Ei sääntöjä.</p>
+      {% endif %}
+      <div class="result-item">
+        <h3>Lisää sääntö</h3>
+        <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule">
+          <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+          <div class="form-grid">
+            <label>Sääntö-ID<input name="rule_id" placeholder="uusi_saanto"></label>
+            <label>Kenttä<input name="field_id" placeholder="field_id"></label>
+            <label>Liitetyyppi<input name="attachment_type" placeholder="attachment_type"></label>
+            <label>Vakavuus
+              <select name="severity">
+                <option value="major">major</option>
+                <option value="blocking">blocking</option>
+                <option value="minor">minor</option>
+                <option value="recommendation">recommendation</option>
+              </select>
+            </label>
+          </div>
+          <label>Ohje<textarea name="instruction" placeholder="Kirjoita kriteerin arviointiohje."></textarea></label>
+          <button>Lisää sääntö</button>
+        </form>
+      </div>
+      <details>
+        <summary>JSON-muokkaus</summary>
+        <form method="post">
+          <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+          <textarea name="criteria_json" class="json-editor">{{ criteria | tojson(indent=2) }}</textarea>
+          <button>Tallenna uusi kriteeriversio</button>
+        </form>
+      </details>
+    </div>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

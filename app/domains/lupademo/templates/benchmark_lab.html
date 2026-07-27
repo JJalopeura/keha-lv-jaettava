@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="band service-shell metrics-shell">
+  <p class="eyebrow">Admin / eval</p>
+  <h1>Benchmark lab</h1>
+  <p class="muted">Viranomaisdokumenttien vertailuaineisto agenttien laadunarviointiin.</p>
+</section>
+<section class="grid two">
+  <div>
+    <h2>Käyttörajaus</h2>
+    <dl class="data-list">
+      <div class="data-row"><dt>Scope</dt><dd>{{ benchmark_lab.scope }}</dd></div>
+      <div class="data-row"><dt>Normaalipolussa</dt><dd>{{ "kyllä" if benchmark_lab.normal_path_available else "ei" }}</dd></div>
+      <div class="data-row"><dt>Viranomaisesimerkkejä</dt><dd>{{ benchmark_lab.authority_example_count }}</dd></div>
+      <div class="data-row"><dt>Agenttikohteita</dt><dd>{{ benchmark_lab.target_count }}</dd></div>
+      <div class="data-row"><dt>Eval-runner</dt><dd>{{ benchmark_lab.eval_runner }}</dd></div>
+    </dl>
+    <p class="muted">{{ benchmark_lab.usage_policy }}</p>
+    <p class="muted">{{ benchmark_lab.vector_store_policy }}</p>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/admin/benchmark-lab/run">
+      <button>Päivitä benchmark-kooste</button>
+    </form>
+  </div>
+  <div>
+    <h2>Agenttikohteet</h2>
+    {% for target in benchmark_lab.agent_comparison_targets %}
+    <div class="result-item">
+      <strong>{{ target.agent }}</strong>
+      <p>Esimerkkejä {{ target.example_count }} · {{ target.cases|join(", ") }}</p>
+      <small>{{ target.rubric[0] if target.rubric else "" }}</small>
+    </div>
+    {% else %}
+    <p class="muted">Ei benchmark-kohteita. Aja lähdeaineistojen ingest adminin kriteerinäkymästä.</p>
+    {% endfor %}
+  </div>
+</section>
+<section>
+  <h2>Esimerkit</h2>
+  <table>
+    <tr><th>Case</th><th>Tiedosto</th><th>Tyyppi</th><th>Ote</th></tr>
+    {% for item in benchmark_lab.sample_examples %}
+    <tr>
+      <td>{{ item.case }}</td>
+      <td>{{ item.filename }}</td>
+      <td>{{ item.primary_type }}</td>
+      <td>{{ item.excerpt or item.text_excerpt }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

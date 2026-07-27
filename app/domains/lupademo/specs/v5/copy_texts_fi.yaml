@@ -1,0 +1,21 @@
+front_door:
+  hero_title: Tee lupahakemuksestasi käsittelyvalmis AI:n avulla
+  hero_body: Lataa valmis hakemuspaketti tai aloita hakemus alusta. AI lukee asiakirjat, poimii lomaketiedot, tunnistaa puutteet ja ristiriidat sekä auttaa parantamaan hakemusta ennen lähettämistä.
+  trust_note: AI tekee ehdotuksia. Sinä tarkistat ja hyväksyt muutokset ennen lähettämistä.
+buttons:
+  upload_package: Lataa aineisto
+  analyze_package: Analysoi hakemuspaketti AI:lla
+  accept_high_confidence: Hyväksy korkean varmuuden poiminnat
+  rerun_check: Tarkista uudelleen
+  preview_submit: Siirry lähetyksen esikatseluun
+ai_jobs:
+  reading: AI lukee asiakirjoja
+  classifying: AI tunnistaa liitteiden tarkoitusta
+  extracting: AI poimii lomaketietoja
+  checking: AI tarkistaa puutteita ja ristiriitoja
+  improving: AI muodostaa korjaussuunnitelmaa
+findings:
+  blocking: Estävä puute
+  major: Merkittävä täydennystarve
+  minor: Pieni täydennys
+  info: Huomio

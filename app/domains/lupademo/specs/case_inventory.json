@@ -1,0 +1,988 @@
+[
+  {
+    "case": "P2X",
+    "path": "12315_2025_EI_julkaistavat_asiakirjat.pdf",
+    "filename": "12315_2025_EI_julkaistavat_asiakirjat.pdf",
+    "extension": ".pdf",
+    "size_bytes": 111332,
+    "category": "muu",
+    "pages": 2
+  },
+  {
+    "case": "P2X",
+    "path": "12315_2025_Hakemuskuulutus.pdf",
+    "filename": "12315_2025_Hakemuskuulutus.pdf",
+    "extension": ".pdf",
+    "size_bytes": 131573,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 5
+  },
+  {
+    "case": "P2X",
+    "path": "Etusijamenettely_kannanotto_PX2 Solutions Oy.pdf",
+    "filename": "Etusijamenettely_kannanotto_PX2 Solutions Oy.pdf",
+    "extension": ".pdf",
+    "size_bytes": 87895,
+    "category": "muu",
+    "pages": 2
+  },
+  {
+    "case": "P2X",
+    "path": "Karttakuva_yl_721_luonnonyleiskuvaus.pdf",
+    "filename": "Karttakuva_yl_721_luonnonyleiskuvaus.pdf",
+    "extension": ".pdf",
+    "size_bytes": 187936,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Karttakuva_yl_725_vesistoyleiskuvaus.pdf",
+    "filename": "Karttakuva_yl_725_vesistoyleiskuvaus.pdf",
+    "extension": ".pdf",
+    "size_bytes": 212589,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Karttakuva_yl_746_maaperayleiskuvaus.pdf",
+    "filename": "Karttakuva_yl_746_maaperayleiskuvaus.pdf",
+    "extension": ".pdf",
+    "size_bytes": 184704,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Karttakuva_yl_836_toiminnansijainti.pdf",
+    "filename": "Karttakuva_yl_836_toiminnansijainti.pdf",
+    "extension": ".pdf",
+    "size_bytes": 184704,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 1. DNSH-selvitys.pdf",
+    "filename": "Liite 1. DNSH-selvitys.pdf",
+    "extension": ".pdf",
+    "size_bytes": 314240,
+    "category": "liite/taustaselvitys",
+    "pages": 11
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 1. Hiilidioksidin talteenotto.pdf",
+    "filename": "Liite 1. Hiilidioksidin talteenotto.pdf",
+    "extension": ".pdf",
+    "size_bytes": 87378,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 10. Lay-out piirros toimintojen sijoittumisesta alueella.pdf",
+    "filename": "Liite 10. Lay-out piirros toimintojen sijoittumisesta alueella.pdf",
+    "extension": ".pdf",
+    "size_bytes": 559277,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 10. Methyl Formate safety data sheet.pdf",
+    "filename": "Liite 10. Methyl Formate safety data sheet.pdf",
+    "extension": ".pdf",
+    "size_bytes": 359836,
+    "category": "liite/taustaselvitys",
+    "pages": 10
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 11. N2 safety data sheet.pdf",
+    "filename": "Liite 11. N2 safety data sheet.pdf",
+    "extension": ".pdf",
+    "size_bytes": 142976,
+    "category": "liite/taustaselvitys",
+    "pages": 11
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 12. Hulevesij#U00e4rjestelm#U00e4.pdf",
+    "filename": "Liite 12. Hulevesij#U00e4rjestelm#U00e4.pdf",
+    "extension": ".pdf",
+    "size_bytes": 327973,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 12. Propanol safety data sheet.pdf",
+    "filename": "Liite 12. Propanol safety data sheet.pdf",
+    "extension": ".pdf",
+    "size_bytes": 395250,
+    "category": "liite/taustaselvitys",
+    "pages": 12
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 13. Ilmanlaatumallinnus.pdf",
+    "filename": "Liite 13. Ilmanlaatumallinnus.pdf",
+    "extension": ".pdf",
+    "size_bytes": 5691977,
+    "category": "liite/taustaselvitys",
+    "pages": 20
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 13. MeOH Cat safety data sheet.PDF",
+    "filename": "Liite 13. MeOH Cat safety data sheet.PDF",
+    "extension": ".pdf",
+    "size_bytes": 298860,
+    "category": "liite/taustaselvitys",
+    "pages": 14
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 14a. Ymp#U00e4rist#U00f6vaikutusten arviointiselostus_www.pdf",
+    "filename": "Liite 14a. Ymp#U00e4rist#U00f6vaikutusten arviointiselostus_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 16117644,
+    "category": "liite/taustaselvitys",
+    "pages": 200
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 14b. Perusteltu p#U00e4#U00e4telm#U00e4.pdf",
+    "filename": "Liite 14b. Perusteltu p#U00e4#U00e4telm#U00e4.pdf",
+    "extension": ".pdf",
+    "size_bytes": 313288,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 33
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 14c. Lausunto perustellun p#U00e4#U00e4telm#U00e4n ajantasaisuudesta P2X Solutions.pdf",
+    "filename": "Liite 14c. Lausunto perustellun p#U00e4#U00e4telm#U00e4n ajantasaisuudesta P2X Solutions.pdf",
+    "extension": ".pdf",
+    "size_bytes": 119900,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 5
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 15. Ymp#U00e4rist#U00f6riskeihin varautumissuunnitelma.pdf",
+    "filename": "Liite 15. Ymp#U00e4rist#U00f6riskeihin varautumissuunnitelma.pdf",
+    "extension": ".pdf",
+    "size_bytes": 598743,
+    "category": "liite/taustaselvitys",
+    "pages": 15
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 16. BAT-arviointi.pdf",
+    "filename": "Liite 16. BAT-arviointi.pdf",
+    "extension": ".pdf",
+    "size_bytes": 750157,
+    "category": "liite/taustaselvitys",
+    "pages": 33
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 17. Tarkkailusuunnitelma.pdf",
+    "filename": "Liite 17. Tarkkailusuunnitelma.pdf",
+    "extension": ".pdf",
+    "size_bytes": 370156,
+    "category": "liite/taustaselvitys",
+    "pages": 13
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 17.2. Tarkkailusuunnitelma.pdf",
+    "filename": "Liite 17.2. Tarkkailusuunnitelma.pdf",
+    "extension": ".pdf",
+    "size_bytes": 389704,
+    "category": "liite/taustaselvitys",
+    "pages": 13
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 18. GHP02_Perustamistapalausunto.pdf",
+    "filename": "Liite 18. GHP02_Perustamistapalausunto.pdf",
+    "extension": ".pdf",
+    "size_bytes": 687142,
+    "category": "liite/taustaselvitys",
+    "pages": 9
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 2. Metanolisynteesin poistokaasujen k#U00e4sittely.pdf",
+    "filename": "Liite 2. Metanolisynteesin poistokaasujen k#U00e4sittely.pdf",
+    "extension": ".pdf",
+    "size_bytes": 108488,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 3. Sijaintikartta.pdf",
+    "filename": "Liite 3. Sijaintikartta.pdf",
+    "extension": ".pdf",
+    "size_bytes": 11644703,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 5. CO2 safety data sheet.pdf",
+    "filename": "Liite 5. CO2 safety data sheet.pdf",
+    "extension": ".pdf",
+    "size_bytes": 142947,
+    "category": "liite/taustaselvitys",
+    "pages": 11
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 5. Lausunto Tukes.pdf",
+    "filename": "Liite 5. Lausunto Tukes.pdf",
+    "extension": ".pdf",
+    "size_bytes": 7668444,
+    "category": "liite/taustaselvitys",
+    "pages": 4
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 6. Asemakaavaote.pdf",
+    "filename": "Liite 6. Asemakaavaote.pdf",
+    "extension": ".pdf",
+    "size_bytes": 746234,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 6. H2 safety data sheet.pdf",
+    "filename": "Liite 6. H2 safety data sheet.pdf",
+    "extension": ".pdf",
+    "size_bytes": 157724,
+    "category": "liite/taustaselvitys",
+    "pages": 11
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 7. Crude Methanol safety data sheet.pdf",
+    "filename": "Liite 7. Crude Methanol safety data sheet.pdf",
+    "extension": ".pdf",
+    "size_bytes": 60345,
+    "category": "liite/taustaselvitys",
+    "pages": 15
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 7. Perustilaselvitys_www.pdf",
+    "filename": "Liite 7. Perustilaselvitys_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 9456561,
+    "category": "liite/taustaselvitys",
+    "pages": 68
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 8. Methanol safety data sheet.pdf",
+    "filename": "Liite 8. Methanol safety data sheet.pdf",
+    "extension": ".pdf",
+    "size_bytes": 217306,
+    "category": "liite/taustaselvitys",
+    "pages": 12
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 8. Yleis#U00f6lle tarkoitettu tiivistelm#U00e4.pdf",
+    "filename": "Liite 8. Yleis#U00f6lle tarkoitettu tiivistelm#U00e4.pdf",
+    "extension": ".pdf",
+    "size_bytes": 32055,
+    "category": "liite/taustaselvitys",
+    "pages": 2
+  },
+  {
+    "case": "P2X",
+    "path": "Liite 9. Ethanol safety data sheet.pdf",
+    "filename": "Liite 9. Ethanol safety data sheet.pdf",
+    "extension": ".pdf",
+    "size_bytes": 163788,
+    "category": "liite/taustaselvitys",
+    "pages": 12
+  },
+  {
+    "case": "P2X",
+    "path": "Lupahakemus-3812628-2024-12-18-16.18_www.pdf",
+    "filename": "Lupahakemus-3812628-2024-12-18-16.18_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 109253,
+    "category": "hakemus",
+    "pages": 12
+  },
+  {
+    "case": "P2X",
+    "path": "P#U00e4#U00e4t#U00f6skuulutus_ISAVI-12315-2024_15122025-21012026.pdf",
+    "filename": "P#U00e4#U00e4t#U00f6skuulutus_ISAVI-12315-2024_15122025-21012026.pdf",
+    "extension": ".pdf",
+    "size_bytes": 120403,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 2
+  },
+  {
+    "case": "P2X",
+    "path": "P2X Joensuu ISAVI-12315-2024 T#U00e4ydennykset_11.4.2025_www.pdf",
+    "filename": "P2X Joensuu ISAVI-12315-2024 T#U00e4ydennykset_11.4.2025_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 229955,
+    "category": "muu",
+    "pages": 4
+  },
+  {
+    "case": "P2X",
+    "path": "P2X Joensuu ISAVI-12315-2024 T#U00e4ydennykset_17.3.2025_www.pdf",
+    "filename": "P2X Joensuu ISAVI-12315-2024 T#U00e4ydennykset_17.3.2025_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 217680,
+    "category": "muu",
+    "pages": 7
+  },
+  {
+    "case": "P2X",
+    "path": "P2X Joensuu ISAVI-12315-2024 T#U00e4ydennykset_2.5.2025_www.pdf",
+    "filename": "P2X Joensuu ISAVI-12315-2024 T#U00e4ydennykset_2.5.2025_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 203716,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "P2X Joensuu ISAVI-12315-2024 T#U00e4ydennykset_www.pdf",
+    "filename": "P2X Joensuu ISAVI-12315-2024 T#U00e4ydennykset_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 211722,
+    "category": "muu",
+    "pages": 8
+  },
+  {
+    "case": "P2X",
+    "path": "P2X_Solutions_Oy_Joensuu_Ymp#U00e4rist#U00f6lupahakemus_www.pdf",
+    "filename": "P2X_Solutions_Oy_Joensuu_Ymp#U00e4rist#U00f6lupahakemus_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 4839451,
+    "category": "hakemus",
+    "pages": 63
+  },
+  {
+    "case": "P2X",
+    "path": "Vireilletulotiedot (3).pdf",
+    "filename": "Vireilletulotiedot (3).pdf",
+    "extension": ".pdf",
+    "size_bytes": 75423,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "P2X",
+    "path": "p25097 www.pdf",
+    "filename": "p25097 www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 3855662,
+    "category": "muu",
+    "pages": 140
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "EI_julkaistavat_asiakirjat (3).pdf",
+    "filename": "EI_julkaistavat_asiakirjat (3).pdf",
+    "extension": ".pdf",
+    "size_bytes": 104734,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Kuulutus_11062025-23072025_fi.pdf",
+    "filename": "Kuulutus_11062025-23072025_fi.pdf",
+    "extension": ".pdf",
+    "size_bytes": 153401,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 5
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 10. Arvio hulevesien vaikutuksista Keravanjoen pohjaeli#U00f6st#U00f6#U00f6n.pdf",
+    "filename": "Liite 10. Arvio hulevesien vaikutuksista Keravanjoen pohjaeli#U00f6st#U00f6#U00f6n.pdf",
+    "extension": ".pdf",
+    "size_bytes": 393373,
+    "category": "liite/taustaselvitys",
+    "pages": 6
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 12. Ennaltavarautumissuunnitelma Ren-Gas Kerava.pdf",
+    "filename": "Liite 12. Ennaltavarautumissuunnitelma Ren-Gas Kerava.pdf",
+    "extension": ".pdf",
+    "size_bytes": 1212290,
+    "category": "liite/taustaselvitys",
+    "pages": 24
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 13 BAT-vertailu_Ren-Gas Kerava.pdf",
+    "filename": "Liite 13 BAT-vertailu_Ren-Gas Kerava.pdf",
+    "extension": ".pdf",
+    "size_bytes": 142172,
+    "category": "liite/taustaselvitys",
+    "pages": 13
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 14 a. Etel#U00e4-Suomen aluehallintoviraston p#U00e4#U00e4t#U00f6s Nro 65-2019.pdf",
+    "filename": "Liite 14 a. Etel#U00e4-Suomen aluehallintoviraston p#U00e4#U00e4t#U00f6s Nro 65-2019.pdf",
+    "extension": ".pdf",
+    "size_bytes": 1327229,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 51
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 14 b. Etel#U00e4-Suomen aluehallintoviraston p#U00e4#U00e4t#U00f6s Nro 2-2020.pdf",
+    "filename": "Liite 14 b. Etel#U00e4-Suomen aluehallintoviraston p#U00e4#U00e4t#U00f6s Nro 2-2020.pdf",
+    "extension": ".pdf",
+    "size_bytes": 1404304,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 15
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 4 a. YVA-selostus ja perusteltu p#U00e4#U00e4telm#U00e4_Ren-Gas Kerava.pdf",
+    "filename": "Liite 4 a. YVA-selostus ja perusteltu p#U00e4#U00e4telm#U00e4_Ren-Gas Kerava.pdf",
+    "extension": ".pdf",
+    "size_bytes": 12008483,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 207
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 4 b. Perustellun p#U00e4#U00e4telm#U00e4n yhteenveto_Ren-Gas Kerava.pdf",
+    "filename": "Liite 4 b. Perustellun p#U00e4#U00e4telm#U00e4n yhteenveto_Ren-Gas Kerava.pdf",
+    "extension": ".pdf",
+    "size_bytes": 129157,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 4
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 4 c. UUDELY_lausunto Ren-Gas_YVA_ajantasaisuus_24032025.pdf",
+    "filename": "Liite 4 c. UUDELY_lausunto Ren-Gas_YVA_ajantasaisuus_24032025.pdf",
+    "extension": ".pdf",
+    "size_bytes": 92242,
+    "category": "liite/taustaselvitys",
+    "pages": 3
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 7. Kemikaaliluettelo_Ren-Gas Kerava.pdf",
+    "filename": "Liite 7. Kemikaaliluettelo_Ren-Gas Kerava.pdf",
+    "extension": ".pdf",
+    "size_bytes": 111198,
+    "category": "liite/taustaselvitys",
+    "pages": 2
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Liite 8. Savukaasumallinnus_Ren-Gas Kerava.pdf",
+    "filename": "Liite 8. Savukaasumallinnus_Ren-Gas Kerava.pdf",
+    "extension": ".pdf",
+    "size_bytes": 587412,
+    "category": "liite/taustaselvitys",
+    "pages": 20
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "P#U00e4#U00e4t#U00f6s 396 2025_www.pdf",
+    "filename": "P#U00e4#U00e4t#U00f6s 396 2025_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 886946,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 107
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "P#U00e4#U00e4t#U00f6skuulutus_ESAVI-14858-2025_17122025-23012026.pdf",
+    "filename": "P#U00e4#U00e4t#U00f6skuulutus_ESAVI-14858-2025_17122025-23012026.pdf",
+    "extension": ".pdf",
+    "size_bytes": 122885,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 2
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Ren-Gas Kerava - Melumallinnus p#U00e4ivitetty 2025_03.pdf",
+    "filename": "Ren-Gas Kerava - Melumallinnus p#U00e4ivitetty 2025_03.pdf",
+    "extension": ".pdf",
+    "size_bytes": 8978733,
+    "category": "liite/taustaselvitys",
+    "pages": 42
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Ren-Gas Kerava - Perustilaselvitys p#U00e4ivitetty 2025_0417.pdf",
+    "filename": "Ren-Gas Kerava - Perustilaselvitys p#U00e4ivitetty 2025_0417.pdf",
+    "extension": ".pdf",
+    "size_bytes": 16557879,
+    "category": "liite/taustaselvitys",
+    "pages": 396
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Ren-Gas Kerava - T#U00e4ydennys ilmap#U00e4#U00e4st#U00f6ihin_2025_0527.pdf",
+    "filename": "Ren-Gas Kerava - T#U00e4ydennys ilmap#U00e4#U00e4st#U00f6ihin_2025_0527.pdf",
+    "extension": ".pdf",
+    "size_bytes": 197095,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 6
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Ren-Gas Kerava - Ymp#U00e4rist#U00f6lupahakemus 2025_0415.pdf",
+    "filename": "Ren-Gas Kerava - Ymp#U00e4rist#U00f6lupahakemus 2025_0415.pdf",
+    "extension": ".pdf",
+    "size_bytes": 3948800,
+    "category": "hakemus",
+    "pages": 65
+  },
+  {
+    "case": "Ren-Gas",
+    "path": "Vireilletulotiedot (3).pdf",
+    "filename": "Vireilletulotiedot (3).pdf",
+    "extension": ".pdf",
+    "size_bytes": 75810,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "233-2018-1_ SharpCell Oy Ymp#U00e4rist#U00f6lupa 2018_www.pdf",
+    "filename": "233-2018-1_ SharpCell Oy Ymp#U00e4rist#U00f6lupa 2018_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 219020,
+    "category": "muu",
+    "pages": 39
+  },
+  {
+    "case": "Sharpcell",
+    "path": "4234_001_www.pdf",
+    "filename": "4234_001_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 1063656,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Asemakaava_Tervasaari.pdf",
+    "filename": "Asemakaava_Tervasaari.pdf",
+    "extension": ".pdf",
+    "size_bytes": 2927458,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Asemakaavam#U00e4#U00e4r#U00e4ykset_Tervasaari_www.pdf",
+    "filename": "Asemakaavam#U00e4#U00e4r#U00e4ykset_Tervasaari_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 834521,
+    "category": "liite/taustaselvitys",
+    "pages": 6
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Ei_julkaistavat_asiakirjat (3).pdf",
+    "filename": "Ei_julkaistavat_asiakirjat (3).pdf",
+    "extension": ".pdf",
+    "size_bytes": 101749,
+    "category": "muu",
+    "pages": 2
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Etusijan hakemus SharpCell Oy Aurora projekti 4_2025 rev 1_www.pdf",
+    "filename": "Etusijan hakemus SharpCell Oy Aurora projekti 4_2025 rev 1_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 174935,
+    "category": "muu",
+    "pages": 7
+  },
+  {
+    "case": "Sharpcell",
+    "path": "J#U00e4tevesien tarkkailupiste ja liittymispiste UPM Tervasaaren j#U00e4tevesilinjaan_www.pdf",
+    "filename": "J#U00e4tevesien tarkkailupiste ja liittymispiste UPM Tervasaaren j#U00e4tevesilinjaan_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 69648,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Karttakuva_yl_721_luonnonyleiskuvaus.pdf",
+    "filename": "Karttakuva_yl_721_luonnonyleiskuvaus.pdf",
+    "extension": ".pdf",
+    "size_bytes": 185978,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Karttakuva_yl_725_vesistoyleiskuvaus.pdf",
+    "filename": "Karttakuva_yl_725_vesistoyleiskuvaus.pdf",
+    "extension": ".pdf",
+    "size_bytes": 185978,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Karttakuva_yl_746_maaperayleiskuvaus.pdf",
+    "filename": "Karttakuva_yl_746_maaperayleiskuvaus.pdf",
+    "extension": ".pdf",
+    "size_bytes": 185978,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Karttakuva_yl_836_toiminnansijainti-2.pdf",
+    "filename": "Karttakuva_yl_836_toiminnansijainti-2.pdf",
+    "extension": ".pdf",
+    "size_bytes": 186034,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Karttakuva_yl_836_toiminnansijainti.pdf",
+    "filename": "Karttakuva_yl_836_toiminnansijainti.pdf",
+    "extension": ".pdf",
+    "size_bytes": 185978,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Kemikaaliluettelo_www.xlsx",
+    "filename": "Kemikaaliluettelo_www.xlsx",
+    "extension": ".xlsx",
+    "size_bytes": 17666,
+    "category": "liite/taustaselvitys"
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Kirjeenvaihto.pdf",
+    "filename": "Kirjeenvaihto.pdf",
+    "extension": ".pdf",
+    "size_bytes": 266806,
+    "category": "muu",
+    "pages": 2
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Kuulutus_LSSAVI-8122-2025_09102025-17112025.pdf",
+    "filename": "Kuulutus_LSSAVI-8122-2025_09102025-17112025.pdf",
+    "extension": ".pdf",
+    "size_bytes": 133783,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Liite 7.6 - J#U00e4tejakeet 2024_www.xlsx",
+    "filename": "Liite 7.6 - J#U00e4tejakeet 2024_www.xlsx",
+    "extension": ".xlsx",
+    "size_bytes": 18705,
+    "category": "liite/taustaselvitys"
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Lupahakemus-3688813-2025-04-16-10.15_www.pdf",
+    "filename": "Lupahakemus-3688813-2025-04-16-10.15_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 164430,
+    "category": "hakemus",
+    "pages": 41
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Maakuntakaava_Tervasaari_www.pdf",
+    "filename": "Maakuntakaava_Tervasaari_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 360752,
+    "category": "liite/taustaselvitys",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "P#U00e4#U00e4t#U00f6s (3).pdf",
+    "filename": "P#U00e4#U00e4t#U00f6s (3).pdf",
+    "extension": ".pdf",
+    "size_bytes": 4442569,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 85
+  },
+  {
+    "case": "Sharpcell",
+    "path": "P#U00e4#U00e4t#U00f6skuulutus_LSSAVI-8122-2025_08122025-14012026.pdf",
+    "filename": "P#U00e4#U00e4t#U00f6skuulutus_LSSAVI-8122-2025_08122025-14012026.pdf",
+    "extension": ".pdf",
+    "size_bytes": 122147,
+    "category": "päätös/kuulutus/vireille",
+    "pages": 2
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Raportti_Sharpcell_2025_p#U00f6lymallinnus_www.pdf",
+    "filename": "Raportti_Sharpcell_2025_p#U00f6lymallinnus_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 2466075,
+    "category": "liite/taustaselvitys",
+    "pages": 14
+  },
+  {
+    "case": "Sharpcell",
+    "path": "S#U00e4hk#U00f6postisaate (1).pdf",
+    "filename": "S#U00e4hk#U00f6postisaate (1).pdf",
+    "extension": ".pdf",
+    "size_bytes": 102958,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "S#U00e4hk#U00f6postisaate (2).pdf",
+    "filename": "S#U00e4hk#U00f6postisaate (2).pdf",
+    "extension": ".pdf",
+    "size_bytes": 89759,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "S#U00e4hk#U00f6postisaate.pdf",
+    "filename": "S#U00e4hk#U00f6postisaate.pdf",
+    "extension": ".pdf",
+    "size_bytes": 171102,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "SharpCell Oy Tervasaari j#U00e4tevesien kuormitusenneuste 28.5.2025_www.xlsx",
+    "filename": "SharpCell Oy Tervasaari j#U00e4tevesien kuormitusenneuste 28.5.2025_www.xlsx",
+    "extension": ".xlsx",
+    "size_bytes": 50508,
+    "category": "muu"
+  },
+  {
+    "case": "Sharpcell",
+    "path": "SharpCell Oy VLK Ennaltavarautumissuunnitelma ymp#U00e4rist#U00f6riskit_www.pdf",
+    "filename": "SharpCell Oy VLK Ennaltavarautumissuunnitelma ymp#U00e4rist#U00f6riskit_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 189741,
+    "category": "liite/taustaselvitys",
+    "pages": 4
+  },
+  {
+    "case": "Sharpcell",
+    "path": "SharpCell Valkeakoski, kuivapaperikoneen meluselvitys_03092025_www.pdf",
+    "filename": "SharpCell Valkeakoski, kuivapaperikoneen meluselvitys_03092025_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 18961793,
+    "category": "liite/taustaselvitys",
+    "pages": 15
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Sharpcell Oy Tervasaaren tehtaan tarkkailusuunnitelma 4_2025_www.pdf",
+    "filename": "Sharpcell Oy Tervasaaren tehtaan tarkkailusuunnitelma 4_2025_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 92696,
+    "category": "liite/taustaselvitys",
+    "pages": 4
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Sharpcell Valkeakoski.pdf",
+    "filename": "Sharpcell Valkeakoski.pdf",
+    "extension": ".pdf",
+    "size_bytes": 1099391,
+    "category": "muu",
+    "pages": 4
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennys (1).pdf",
+    "filename": "T#U00e4ydennys (1).pdf",
+    "extension": ".pdf",
+    "size_bytes": 137957,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennys (2).pdf",
+    "filename": "T#U00e4ydennys (2).pdf",
+    "extension": ".pdf",
+    "size_bytes": 97292,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennys (3).pdf",
+    "filename": "T#U00e4ydennys (3).pdf",
+    "extension": ".pdf",
+    "size_bytes": 268717,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennys s#U00e4hk#U00f6postitse_www (1).pdf",
+    "filename": "T#U00e4ydennys s#U00e4hk#U00f6postitse_www (1).pdf",
+    "extension": ".pdf",
+    "size_bytes": 115116,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennys s#U00e4hk#U00f6postitse_www.pdf",
+    "filename": "T#U00e4ydennys s#U00e4hk#U00f6postitse_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 115116,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennys, kohta 11_www.pdf",
+    "filename": "T#U00e4ydennys, kohta 11_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 238245,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennys, kohta 7_www.pdf",
+    "filename": "T#U00e4ydennys, kohta 7_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 300839,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennys.pdf",
+    "filename": "T#U00e4ydennys.pdf",
+    "extension": ".pdf",
+    "size_bytes": 172867,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 4
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennyspyynt#U00f6 j#U00e4tevesiin liittyen asiassa LSSAVI_8122_2025.pdf",
+    "filename": "T#U00e4ydennyspyynt#U00f6 j#U00e4tevesiin liittyen asiassa LSSAVI_8122_2025.pdf",
+    "extension": ".pdf",
+    "size_bytes": 89757,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennyspyynt#U00f6-20250506-145323.pdf",
+    "filename": "T#U00e4ydennyspyynt#U00f6-20250506-145323.pdf",
+    "extension": ".pdf",
+    "size_bytes": 138755,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 5
+  },
+  {
+    "case": "Sharpcell",
+    "path": "T#U00e4ydennyspyynt#U00f6_2_LSSAVI_8122_2025.pdf",
+    "filename": "T#U00e4ydennyspyynt#U00f6_2_LSSAVI_8122_2025.pdf",
+    "extension": ".pdf",
+    "size_bytes": 96209,
+    "category": "täydennys/täydennyspyyntö",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Teollisuusj#U00e4tevesisopimus 2.10.2025_NEW_www.pdf",
+    "filename": "Teollisuusj#U00e4tevesisopimus 2.10.2025_NEW_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 875278,
+    "category": "muu",
+    "pages": 3
+  },
+  {
+    "case": "Sharpcell",
+    "path": "UPM Tervasaari yleistiedot 21.5.2025_www.pdf",
+    "filename": "UPM Tervasaari yleistiedot 21.5.2025_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 570764,
+    "category": "muu",
+    "pages": 6
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Vireilletulotiedot (3).pdf",
+    "filename": "Vireilletulotiedot (3).pdf",
+    "extension": ".pdf",
+    "size_bytes": 76014,
+    "category": "muu",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Yleiskaava_Tervasaari_www.pdf",
+    "filename": "Yleiskaava_Tervasaari_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 19801070,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Yleiskaavam#U00e4#U00e4r#U00e4ykset_Tervasaari_www.pdf",
+    "filename": "Yleiskaavam#U00e4#U00e4r#U00e4ykset_Tervasaari_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 39986324,
+    "category": "liite/taustaselvitys",
+    "pages": 1
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Ymp#U00e4rist#U00f6lupahakemus_ SharpCell Oy 3_2025 Projekti Aurora_www.pdf",
+    "filename": "Ymp#U00e4rist#U00f6lupahakemus_ SharpCell Oy 3_2025 Projekti Aurora_www.pdf",
+    "extension": ".pdf",
+    "size_bytes": 136537,
+    "category": "hakemus",
+    "pages": 7
+  },
+  {
+    "case": "Sharpcell",
+    "path": "Ymp#U00e4rist#U00f6riskit 2025 SharpCell Oy Tervasaari_www.xlsx",
+    "filename": "Ymp#U00e4rist#U00f6riskit 2025 SharpCell Oy Tervasaari_www.xlsx",
+    "extension": ".xlsx",
+    "size_bytes": 706374,
+    "category": "muu"
+  }
+]

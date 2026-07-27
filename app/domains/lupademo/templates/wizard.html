@@ -1,0 +1,735 @@
+{% extends "light_base.html" %}
+{% block content %}
+{% set present = request.query_params.get('present') == '1' %}
+{% set source_labels = {
+  "lv_common_data": "LV:stä haettu",
+  "accepted_ai_suggestion": "Hyväksytty AI-ehdotus",
+  "käyttäjän syöttämä": "Käyttäjän syöttämä"
+} %}
+{% set field_labels = {} %}
+{% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
+{% set common_labels = {"applicant_name": "Hakija", "business_id": "Y-tunnus", "contact_person": "Yhteyshenkilö", "phone": "Puhelin", "email": "Sähköposti", "municipality": "Kunta", "address": "Osoite", "property_id": "Kiinteistötunnus", "project_name": "Hankkeen nimi"} %}
+<header class="application-header">
+  <div>
+    <p class="section-kicker">Hakemusluonnos</p>
+    <h1>{{ schema.title }}</h1>
+    <p>{{ project.name }} · {{ wizard.steps[step - 1].label }}</p>
+  </div>
+  <div class="application-readiness">
+    <span class="readiness-dot {% if wizard.blocking_count %}blocked{% elif wizard.missing_required_fields %}attention{% else %}ready{% endif %}"></span>
+    <div><strong>{% if wizard.blocking_count %}Lähetys estetty{% elif wizard.missing_required_fields %}Täydennettävää{% else %}Valmis tarkistukseen{% endif %}</strong><small>{{ wizard.missing_required_fields|length }} puuttuvaa kenttää · {{ wizard.pending_suggestion_count }} AI-ehdotusta</small></div>
+  </div>
+</header>
+{% if present %}
+<section class="present-card">
+  <strong>Mitä tämä todistaa</strong>
+  {% if step == 1 %}
+  <p>LV:n yhteiset tiedot siirtyvät hakemuksen pohjaksi.</p>
+  {% elif step == 2 %}
+  <p>Hakijan liitteet ja AI-tausta-aineisto erotellaan. Viranomaisen omat asiakirjat ohitetaan tuonnissa.</p>
+  {% elif step == 3 %}
+  <p>AI ei kirjoita lomaketta suoraan, vaan ehdottaa lähteistettyjä muutoksia käyttäjän hyväksyttäväksi.</p>
+  {% elif step == 4 %}
+  <p>Sääntö- ja AI-tarkistus muodostavat lähetysportin. Blocking-puutteet pysäyttävät lähetyksen.</p>
+  {% elif step == 5 %}
+  <p>Viranomaiselle lähtevä paketti on tarkistettavissa ja AI-only-aineisto jää pois.</p>
+  {% else %}
+  <p>Lähetetty hakemus näkyy LV:ssä ja viranomaisen työjonossa.</p>
+  {% endif %}
+  <div class="integration-pills"><span class="pill">R4 hakemus</span><span class="pill">R5 AI-evidence</span><span class="pill">R6 tarkistusportti</span><span class="pill">R7 lähetys</span></div>
+</section>
+{% endif %}
+
+<nav class="stepper studio-stepper" aria-label="Hakemuksen vaiheet">
+  {% for item in wizard.steps %}
+  <a class="step-link {{ 'active' if item.step == step else '' }} {{ item.status }}" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ item.step }}{% if present %}?present=1{% endif %}">
+    <span>{{ item.step }}</span>
+    <strong>{{ item.label }}</strong>
+  </a>
+  {% endfor %}
+</nav>
+
+<section class="step-guidance">
+  <div>
+    <p class="section-kicker">Vaihe {{ step }} / 6</p>
+    <h2>{{ wizard.steps[step - 1].label }}</h2>
+    {% if step == 1 %}
+    <p>Tarkista LV:stä tuodut perustiedot ja täydennä hakemuksen lähtötiedot.</p>
+    {% elif step == 2 %}
+    <p>Täytä lomake ja jaa dokumentit viranomaiselle lähteviin liitteisiin sekä AI-tausta-aineistoon.</p>
+    {% elif step == 3 %}
+    <p>Käy AI-ehdotukset läpi lähteineen ja hyväksy vain tarkistamasi muutokset.</p>
+    {% elif step == 4 %}
+    <p>Aja AI- ja sääntötarkistus. Blocking-puutteet estävät lähetyksen.</p>
+    {% elif step == 5 %}
+    <p>Tarkista viranomaiselle lähtevä asiakirjapaketti ennen lähetystä.</p>
+    {% else %}
+    <p>Katso lähetyskuitti ja siirry tarvittaessa viranomaisnäkymään.</p>
+    {% endif %}
+  </div>
+  <div class="step-counters">
+    <span><b>{{ wizard.missing_required_fields|length }}</b> puuttuvaa kenttää</span>
+    <span><b>{{ wizard.missing_attachments|length }}</b> puuttuvaa liitettä</span>
+    <span class="{% if wizard.blocking_count %}danger-text{% endif %}"><b>{{ wizard.blocking_count }}</b> estävää puutetta</span>
+  </div>
+</section>
+
+<div class="studio-layout">
+<div class="studio-main">
+
+{% if step == 1 %}
+<section class="grid two">
+  <div>
+    <h2>LV-yhteiset tiedot</h2>
+    <dl class="data-list">
+      {% for key, value in common.data.items() %}
+      <div class="data-row"><dt>{{ common_labels.get(key, field_labels.get(key, key|replace('_', ' ')|capitalize)) }}</dt><dd>{{ value or "-" }}</dd></div>
+      {% endfor %}
+    </dl>
+  </div>
+  <div>
+    <h2>Hakemuksen perustiedot</h2>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/save" class="form-grid">
+      <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2">
+      {% for field in schema.fields[:8] %}
+      <label>{{ field.label }}{% if field.required %} *{% endif %}
+        {% if field.type == "textarea" %}
+        <textarea name="{{ field.id }}">{{ application.form_data.get(field.id, "") }}</textarea>
+        {% else %}
+        <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}">
+        {% endif %}
+        {% set source_key = application.field_sources.get(field.id, "käyttäjän syöttämä") %}
+        <span class="source">{{ source_labels.get(source_key, source_key) }}</span>
+        {% for change in sync.changes if change.field_id == field.id %}
+        <span class="pill">{{ "Muuttunut LV:ssä" if change.direction == "lv_to_app" else ("Ehdotettu LV:hen" if change.direction == "app_to_lv" else "Konflikti") }}</span>
+        {% endfor %}
+      </label>
+      {% endfor %}
+      <button class="{% if present %}next-action{% endif %}">Jatka lomakkeeseen</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+{% if step == 2 %}
+<section class="grid two-wide">
+  <div>
+    <h2>Lomake</h2>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/save">
+      <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2">
+      {% for tab in schema.tabs %}
+      <h3>{{ tab.label }}</h3>
+      <div class="form-grid">
+        {% for field in schema.fields if field.tab == tab.id %}
+        <label id="field-{{ field.id }}">{{ field.label }}{% if field.required %} *{% endif %}
+          {% if field.type == "textarea" %}
+          <textarea name="{{ field.id }}">{{ application.form_data.get(field.id, "") }}</textarea>
+          {% else %}
+          <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}">
+          {% endif %}
+          {% set source_key = application.field_sources.get(field.id, "käyttäjän syöttämä") %}
+          <span class="source">{{ source_labels.get(source_key, source_key) }}</span>
+          {% for change in sync.changes if change.field_id == field.id %}
+          <span class="pill">{{ "Muuttunut LV:ssä" if change.direction == "lv_to_app" else ("Ehdotettu LV:hen" if change.direction == "app_to_lv" else "Konflikti") }}</span>
+          {% endfor %}
+        </label>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      <button class="{% if present %}next-action{% endif %}">Tallenna lomake</button>
+    </form>
+  </div>
+  <aside>
+    <h2>Dokumenttikeskus</h2>
+    <div class="result-item" id="materials">
+      <h3>Tarkista valmis hakemuspaketti</h3>
+      <p class="muted">Lataa hakemus, liitteet ja tausta-aineistot yhdellä kertaa. AI luokittelee dokumentit, poimii kenttäehdotukset ja kertoo, onko paketti valmis, täydennettävä vai ristiriitainen.</p>
+      <form method="post" enctype="multipart/form-data" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/materials/upload-files" class="upload-drop">
+        <label>Paketin nimi<input name="package_name" value="{{ material_package.display_name or 'Hakemusaineisto' }}"></label>
+        <input type="file" name="files" multiple>
+        <button class="{% if present %}next-action{% endif %}">Lataa dokumentit</button>
+      </form>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/materials/add-text" class="upload-drop">
+        <h4>Vapaamuotoinen kuvaus</h4>
+        <label>Otsikko<input name="text_title" value="Hakijan kuvaus"></label>
+        <label>Kuvaus<textarea name="text_body" rows="4" placeholder="Liitä tähän hakemuksen kuvaus, keskeneräinen luonnos tai lisäselvitys."></textarea></label>
+        <select name="delivery_scope">
+          <option value="ai_context_only">Vain AI:n tausta-aineistoksi</option>
+          <option value="official_submission">Toimitetaan viranomaiselle</option>
+        </select>
+        <button>Lisää kuvaus pakettiin</button>
+      </form>
+      {% if material_package %}
+      <dl class="data-list">
+        <div class="data-row"><dt>Nykyinen paketti</dt><dd>{{ material_package.display_name }}</dd></div>
+        <div class="data-row"><dt>Dokumentteja</dt><dd>{{ material_package.documents|length }}</dd></div>
+        <div class="data-row"><dt>Scope</dt><dd>{{ material_package.package_scope }}</dd></div>
+      </dl>
+      {% endif %}
+    </div>
+    {% if application.permit_type == "environmental_industrial" %}
+    <div class="result-item" id="environmental-material-package">
+      <h3>Aineistopaketti</h3>
+      <p>{{ environmental_story.story.label if environmental_story and environmental_story.story else "Ympäristölupien synteettinen aineistotarina" }}</p>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/structure-from-attachments">
+        <button class="{% if present %}next-action{% endif %}">Jäsennä hakemus liitteistä</button>
+      </form>
+      {% if structure_extraction %}
+      <h4 id="structure-extraction">Rakenteistuksen tulokset</h4>
+      <table>
+        <tr><th>Kenttä</th><th>Arvo</th><th>Lähde</th><th>Luottamus</th></tr>
+        {% for item in structure_extraction.field_extractions %}
+        <tr>
+          <td>{{ item.field_id }}</td>
+          <td>{{ item.extracted_value }}</td>
+          <td>{{ item.source_document }}</td>
+          <td>{{ item.confidence }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% if field_extraction_queue.get("items", []) %}
+      <h4>Hyväksyttävät poiminnat</h4>
+      <table>
+        <tr><th>Kenttä</th><th>Ehdotus</th><th>Lähde</th><th>Toimi</th></tr>
+        {% for item in field_extraction_queue.get("items", [])[:8] %}
+        <tr>
+          <td>{{ item.field_id }}</td>
+          <td>{{ item.accepted_value or item.suggested_value }}</td>
+          <td>{{ item.source_document }}</td>
+          <td>
+            {% if item.status == "accepted" %}
+            <span class="status good">Hyväksytty</span>
+            {% else %}
+            <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept">
+              <input type="hidden" name="field_id" value="{{ item.field_id }}">
+              <textarea name="edited_value" rows="2">{{ item.suggested_value }}</textarea>
+              <button class="secondary">Hyväksy poiminta</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+      {% endif %}
+    </div>
+    <div class="result-item">
+      <h3>Ympäristölupaprosessi</h3>
+      <div class="timeline">
+        {% for label in ["Hakemus", "Kuulutus", "Lausunnot", "Täydennykset", "Päätös"] %}
+        <div class="timeline-row"><span class="pill">{{ loop.index }}</span><strong>{{ label }}</strong><span class="status">{{ "demo" }}</span></div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/materials/upload-zip" class="upload-drop">
+      <h3>Zip-paketti</h3>
+      <p class="muted">Pura geneerinen hakemusaineisto dokumenttikeskukseen. Scope päätellään dokumenttityypistä ja sitä voi korjata alta.</p>
+      <input type="file" name="zip_file" accept=".zip">
+      <button>Lataa zip-aineisto</button>
+    </form>
+    <form method="post" enctype="multipart/form-data" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/upload" class="upload-drop">
+      <h3>Yksittäinen dokumentti</h3>
+      <input type="file" name="file">
+      <select name="delivery_scope">
+        <option value="official_submission">Hakemuksen liite - toimitetaan viranomaiselle</option>
+        <option value="ai_context_only">Tausta-aineisto - vain AI:n käytössä</option>
+      </select>
+      <button>Lataa dokumentti</button>
+    </form>
+    <div class="result-item" id="intake-analysis">
+      <h3>Aineiston analyysi</h3>
+      <p class="muted">Muodostaa rakenteistetut kentät, puutteet ja hakijalta kysyttävät tarkennukset nykyisestä aineistosta.</p>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/intake-analysis">
+        <button class="{% if present %}next-action{% endif %}">Analysoi aineisto</button>
+      </form>
+      {% if intake_analysis %}
+      <dl class="data-list">
+        <div class="data-row"><dt>Valmius</dt><dd>{{ intake_analysis.readiness }} · {{ intake_analysis.readiness_score }}/100</dd></div>
+        <div class="data-row"><dt>Rakenteistetut kentät</dt><dd>{{ intake_analysis.structured_field_count }}</dd></div>
+        <div class="data-row"><dt>Kysymykset</dt><dd>{{ intake_analysis.questions|length }}</dd></div>
+        <div class="data-row"><dt>Liitteitä analyysissä</dt><dd>{{ intake_analysis.attachment_count }}</dd></div>
+      </dl>
+      {% if intake_analysis.findings %}
+      <h4>Löydökset</h4>
+      {% for finding in intake_analysis.findings[:6] %}
+      <div class="issue {{ finding.severity }}">
+        <strong>{{ finding.title }}</strong>
+        <p>{{ finding.detail }}</p>
+        {% if finding.suggested_fix %}<small>{{ finding.suggested_fix }}</small>{% endif %}
+      </div>
+      {% endfor %}
+      {% endif %}
+      {% for question in intake_analysis.questions %}
+      <div class="issue major">
+        <strong>{{ question.question }}</strong>
+        <p>{{ question.reason }}</p>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+    {% if package_analysis %}
+    <div class="result-item" id="package-analysis-result">
+      <h3>Pakettianalyysin yhteenveto</h3>
+      <p><span class="status {% if package_analysis.readiness == 'ready' %}good{% elif package_analysis.readiness == 'contradictory' %}warn{% else %}attention{% endif %}">{{ package_analysis.readiness }}</span> {{ package_analysis.summary }}</p>
+      <p class="muted">Valmiuspisteet {{ package_analysis.readiness_score }}/100 · {{ package_analysis.document_inventory|length }} dokumenttia · {{ package_analysis.findings|length }} havaintoa</p>
+      {% if package_analysis.extraction_queue %}
+      <h4>Kenttäkohtainen poimintajono</h4>
+      <table>
+        <tr><th>Kenttä</th><th>Ehdotus</th><th>Lähde</th><th>Luottamus</th><th>Tila</th><th>Toimi</th></tr>
+        {% for item in package_analysis.extraction_queue[:8] %}
+        <tr>
+          <td>{{ item.field_id }}</td>
+          <td>{{ item.accepted_value or item.suggested_value }}</td>
+          <td>{{ item.source_document }}</td>
+          <td>{{ item.confidence }}</td>
+          <td>{{ item.status }}</td>
+          <td>
+            {% if item.status == "accepted" %}
+            <span class="status good">Hyväksytty</span>
+            {% else %}
+            <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept">
+              <input type="hidden" name="field_id" value="{{ item.field_id }}">
+              <textarea name="edited_value" rows="2">{{ item.suggested_value }}</textarea>
+              <button class="secondary">Hyväksy poiminta</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+      <details>
+        <summary>Dokumentti-inventaario</summary>
+        <table>
+          <tr><th>Tiedosto</th><th>Rooli</th><th>Scope</th><th>Teksti</th></tr>
+          {% for item in package_analysis.document_inventory %}
+          <tr>
+            <td>{{ item.filename }}</td>
+            <td>{{ item.document_role }}</td>
+            <td>{{ item.delivery_scope }}</td>
+            <td>{{ item.text_chars }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </details>
+    </div>
+    {% endif %}
+    {% for scope, title in [("official_submission", "Hakemuksen liitteet - toimitetaan viranomaiselle"), ("ai_context_only", "Tausta-aineistot - vain AI:n käytössä")] %}
+    <h3>{{ title }}</h3>
+    {% for att in attachments if att.delivery_scope == scope %}
+    <div class="attachment-card">
+      <div class="attachment-title">{{ att.filename }}</div>
+      <div class="attachment-meta">{{ att.size_bytes }} B · {{ att.primary_type }} · {{ att.extraction_status }} · {{ att.confidence }}</div>
+      {% if att.text_excerpt %}<small>{{ att.text_excerpt[:260] }}</small>{% endif %}
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ att.id }}/metadata" class="form-grid compact-grid">
+        <input name="primary_type" value="{{ att.primary_type }}">
+        <select name="delivery_scope">
+          {% for option in ["official_submission", "ai_context_only"] %}
+          <option value="{{ option }}" {% if option == att.delivery_scope %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+        <button class="secondary">Korjaa</button>
+      </form>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ att.id }}/delete">
+        <button class="secondary">Poista</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="muted">Ei dokumentteja.</p>
+    {% endfor %}
+    {% endfor %}
+    {% set hidden_authority_count = attachments|selectattr("delivery_scope", "equalto", "internal_authority_only")|list|length %}
+    {% if hidden_authority_count %}
+    <p class="muted">{{ hidden_authority_count }} viranomais- tai eval-aineiston dokumenttia on rajattu pois hakijan normaalista aineistonäkymästä.</p>
+    {% endif %}
+  </aside>
+</section>
+{% endif %}
+
+{% if step == 3 %}
+<section class="grid two" id="contextual-chat">
+  <div>
+    <h2>Hakemuksen chat</h2>
+    <p class="muted">Hakemusapuri käyttää tämän hakemuksen tietoja, sallittuja liitteitä ja voimassa olevia ohjeita. Viranomaisaineisto ei kuulu hakijan keskustelukontekstiin.</p>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat">
+      <textarea name="message" rows="4" placeholder="Kysy hakemuksesta tai pyydä parannusehdotusta."></textarea>
+      <button>Kysy chatilta</button>
+    </form>
+  </div>
+  <div>
+    <h2>Viimeisimmät vastaukset</h2>
+    {% for turn in contextual_chat.messages[-3:]|reverse %}
+    <div class="suggestion">
+      <strong>{{ turn.message }}</strong>
+      <p>{{ turn.answer }}</p>
+      <small>Käytetyt liitteet: {{ turn.used_attachment_filenames|join(", ") if turn.used_attachment_filenames else "ei liitekontekstia" }} · benchmark poissuljettu {{ turn.excluded_attachment_count }}</small>
+      {% for change in turn.proposed_changes %}
+      <div class="issue minor">
+        <strong>{{ change.label }}</strong>
+        <p>{{ change.suggested_value }}</p>
+        <small>Hyväksyttävä ehdotus: {{ change.suggestion_id }}</small>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Ei keskustelua vielä.</p>
+    {% endfor %}
+  </div>
+</section>
+<section class="grid two" id="voice-assistant">
+  <div>
+    <h2>Puheavustin</h2>
+    <p><span class="status {% if voice_state.status == 'mock' %}good{% else %}warn{% endif %}">{{ voice_state.status }}</span> {{ voice_state.reason }}</p>
+    {% if voice_state.status == "mock" %}
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/voice/mock">
+      <textarea name="transcript" rows="3" placeholder="Mock-transkripti puhekysymyksestä."></textarea>
+      <button>Tallenna mock-puhevuoro</button>
+    </form>
+    {% else %}
+    <p class="muted">Live-puhetta ei käynnistetä ilman erillistä feature flagia. Testaa turvallisesti asettamalla `LUPADEMO_VOICE_MODE=mock`.</p>
+    {% endif %}
+  </div>
+  <div>
+    <h2>Puhehistoria</h2>
+    {% for turn in voice_chat.turns[-3:]|reverse %}
+    <div class="suggestion">
+      <strong>{{ turn.status }}</strong>
+      <p>{{ turn.transcript }}</p>
+      <p>{{ turn.answer }}</p>
+      <small>Käytetyt liitteet: {{ turn.used_attachment_filenames|join(", ") if turn.used_attachment_filenames else "ei liitekontekstia" }} · benchmark poissuljettu {{ turn.excluded_attachment_count }}</small>
+    </div>
+    {% else %}
+    <p class="muted">Ei puhevuoroja.</p>
+    {% endfor %}
+  </div>
+</section>
+<section class="grid two-wide" id="suggestions">
+  <div>
+    <h2>AI-ehdotukset</h2>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-field" class="inline">
+      <select name="field_id">
+        {% for field in schema.fields if field.ai_suggest %}
+        <option value="{{ field.id }}">{{ field.label }}</option>
+        {% endfor %}
+      </select>
+      <button class="{% if present %}next-action{% endif %}">Pyydä ehdotus</button>
+    </form>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-form">
+      <button>Täytä luonnos liitteistä</button>
+    </form>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/accept-selected">
+      <table>
+        <tr><th></th><th>Kenttä</th><th>Nykyinen arvo</th><th>AI-ehdotus</th><th>Status</th></tr>
+        {% for suggestion in suggestions %}
+        <tr id="suggestion-{{ suggestion.id }}">
+          <td>{% if suggestion.status == "pending" %}<input type="checkbox" name="suggestion_ids" value="{{ suggestion.id }}">{% endif %}</td>
+          <td>{{ suggestion.field_id }}</td>
+          <td>{{ suggestion.current_value or application.form_data.get(suggestion.field_id, "") or "-" }}</td>
+          <td>{{ suggestion.suggested_value[:180] }}</td>
+          <td>{{ suggestion.status }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      <button class="secondary">Hyväksy valitut</button>
+    </form>
+  </div>
+  <aside>
+    <h2>Ehdotusten lähteet</h2>
+    {% for suggestion in suggestions %}
+    <div class="suggestion" id="drawer-{{ suggestion.id }}">
+      <strong>{{ suggestion.field_id }}</strong>
+      <p>{{ suggestion.diff_summary }}</p>
+      <p>Luottamus {{ suggestion.confidence }} · {{ suggestion.criteria_version }} · {{ suggestion.agent }}{% if suggestion.fallback_used %} · fallback{% endif %}</p>
+      <details>
+        <summary>Mihin tämä perustuu?</summary>
+        {% for ref in suggestion.evidence_refs %}
+        <div class="evidence-item">
+          <strong>{{ ref.title }}</strong>
+          <p>{{ ref.locator }} · confidence {{ ref.confidence }}</p>
+          <small>{{ ref.quote }}</small>
+        </div>
+        {% endfor %}
+      </details>
+      {% if suggestion.status == "pending" %}
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/accept">
+        <textarea name="edited_value">{{ suggestion.suggested_value }}</textarea>
+        <button>Hyväksy muokattuna</button>
+      </form>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/reject">
+        <button class="secondary">Hylkää</button>
+      </form>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="muted">Ei ehdotuksia vielä.</p>
+    {% endfor %}
+  </aside>
+</section>
+{% endif %}
+
+{% if step == 4 %}
+<section class="grid two" id="check">
+  <div>
+    <h2>AI- ja sääntötarkistus</h2>
+    <div class="issue {% if precheck_gate.can_submit %}minor{% else %}blocking{% endif %}">
+      <strong>Tarkistusportti: {% if precheck_gate.can_submit %}lähetys sallittu{% else %}lähetys estetty{% endif %}</strong>
+      <p>Blocking-puutteet {{ precheck_gate.blocking_count }} · Tuore tarkistus: {{ "kyllä" if precheck_gate.is_fresh else "ei" }}</p>
+      {% if precheck_gate.stale_reasons %}<small>{{ precheck_gate.stale_reasons|join(", ") }}</small>{% endif %}
+    </div>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/check">
+      <button class="{% if present %}next-action{% endif %}">Aja tarkistus</button>
+    </form>
+  </div>
+  <div>
+    <h2>Tulokset</h2>
+    {% if check_report %}
+    <p>Laatupisteet {{ check_report.score }} · {{ check_report.summary }}</p>
+    {% for issue in check_report.issues %}
+    <div class="issue {{ issue.severity }}" id="{% if issue.severity == 'blocking' %}check-blocking{% endif %}">
+      <strong>{{ issue.severity }} · {{ issue.title }}</strong>
+      <p>{{ issue.detail }}</p>
+      <small>{{ issue.suggested_fix }}</small>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="muted">Tarkistusta ei ole vielä ajettu.</p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if step == 5 %}
+<section class="grid two">
+  <div>
+    <h2>Asiakirjaesitys</h2>
+    <p>Vastaanottaja: {{ package.authority }}</p>
+    <div class="package-official">
+    <h3>Viranomaiselle lähtevät liitteet</h3>
+    {% for att in package.official_attachments %}
+    <div class="attachment-card">{{ att.filename }} · {{ att.primary_type }}</div>
+    {% else %}
+    <p class="muted">Ei viranomaiselle lähteviä liitteitä.</p>
+    {% endfor %}
+    </div>
+    <div class="package-excluded">
+    <h3>Tausta-aineistot, joita ei lähetetä</h3>
+    {% for att in package.excluded_ai_context_attachments %}
+    <div class="attachment-card">{{ att.filename }} · {{ att.primary_type }} · {{ att.delivery_scope }}</div>
+    {% else %}
+    <p class="muted">Ei erillisiä AI-tausta-aineistoja.</p>
+    {% endfor %}
+    </div>
+  </div>
+  <div>
+    <h2>Lähetys</h2>
+    <div class="issue {% if precheck_gate.can_submit %}minor{% else %}blocking{% endif %}">
+      <strong>Tuore hyväksytty tarkistus</strong>
+      <p>{% if precheck_gate.can_submit %}Lähetys on mahdollinen.{% else %}Lähetys estyy, kunnes tarkistus on tuore ja blocking-puutteeton.{% endif %}</p>
+    </div>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/submit">
+      <label><input type="checkbox" required> Vahvistan tiedot oikeiksi.</label>
+      <label><input type="checkbox" required> Ymmärrän viranomaiskäsittelyn perustuvan näihin tietoihin.</label>
+      <button class="{% if present %}next-action{% endif %}">Lähetä hakemus</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+{% if step == 6 %}
+<section class="grid two">
+  <div>
+    <h2>Lähetys ja kuitti</h2>
+    {% if receipt %}
+    <dl class="data-list">
+      <div class="data-row"><dt>Kuitti</dt><dd>{{ receipt.receipt_id }}</dd></div>
+      <div class="data-row"><dt>Vastaanotettu</dt><dd>{{ receipt.received_at }}</dd></div>
+      <div class="data-row"><dt>Viranomainen</dt><dd>{{ receipt.authority }}</dd></div>
+    </dl>
+    {% else %}
+    <p class="muted">Hakemusta ei ole vielä lähetetty.</p>
+    {% endif %}
+  </div>
+  <div>
+    <h2>Seuraavat näkymät</h2>
+    <a class="button" href="/lv/projects/{{ case_id }}{% if present %}?present=1{% endif %}">Takaisin LV:hen</a>
+    <a class="button secondary" href="/cases/{{ case_id }}/lupademo/authority/queue{% if present %}?present=1{% endif %}">Viranomaisnäkymä</a>
+  </div>
+</section>
+{% endif %}
+</div>
+
+<aside class="assistant-rail" id="hakemusapuri" aria-label="Hakemusapuri" data-ai-jobs-panel>
+  <header class="assistant-header">
+    <span class="assistant-mark" aria-hidden="true">✦</span>
+    <div><p class="section-kicker">Apua tähän vaiheeseen</p><h2>Hakemusapuri</h2></div>
+    <span class="assistant-status"><i></i> Käytössä</span>
+  </header>
+  <p class="assistant-context">Apuri tuntee tämän hakemuksen lomaketiedot, sallitut liitteet ja arvioinnissa käytettävät ohjeet.</p>
+
+  {% if ai_jobs %}
+  <section class="assistant-job" id="ai-jobs">
+    {% for job in ai_jobs[:1] %}
+    <article data-ai-job data-job-id="{{ job.id }}" data-status-url="/api/v1/jobs/{{ job.id }}" data-stream-url="/api/v1/jobs/{{ job.id }}/stream" data-cancel-url="/api/v1/jobs/{{ job.id }}/cancel" data-retry-url="/api/v1/jobs/{{ job.id }}/retry">
+      <div class="assistant-job-title"><span class="ai-orbit small"><i></i></span><div><strong data-job-summary>{{ job.summary or job.title }}</strong><small><span data-job-progress>{{ job.progress_pct }}</span>% · noin <span data-job-eta>{{ job.eta_seconds }}</span> s</small></div></div>
+      <div class="progress-track"><span data-job-progress-bar style="width: {{ job.progress_pct }}%"></span></div>
+      <div class="visually-hidden" data-job-status>{{ job.status }}</div>
+      <div class="visually-hidden" data-job-agents>{% for agent in job.agents %}<span>{{ agent.label }} · {{ agent.status }}</span>{% endfor %}</div>
+      <div class="assistant-job-actions"><button type="button" class="text-button" data-job-cancel>Peruuta</button><button type="button" class="text-button" data-job-retry>Yritä uudelleen</button><button type="button" class="text-button" data-job-background>Jatka taustalla</button></div>
+      <details class="assistant-technical"><summary>Näytä tekninen loki</summary><pre data-job-log>{{ job.agents|tojson }}</pre></details>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% set latest_chat = contextual_chat.messages[-1] if contextual_chat.messages else none %}
+  {% if latest_chat %}
+  <div class="assistant-message">
+    <span class="assistant-avatar" aria-hidden="true">AI</span>
+    <div><p>{{ latest_chat.answer }}</p>{% if latest_chat.proposed_changes %}<a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#suggestions">{{ latest_chat.proposed_changes|length }} ehdotusta odottaa hyväksyntää →</a>{% endif %}</div>
+  </div>
+  {% else %}
+  <div class="assistant-message">
+    <span class="assistant-avatar" aria-hidden="true">AI</span>
+    <div><p>{% if step == 1 %}Voin auttaa tarkistamaan perustiedot ja kertoa, mitä seuraavaksi tarvitaan.{% elif step == 2 %}Voin verrata lomaketta liitteisiin ja etsiä puuttuvia tietoja.{% elif step == 3 %}Voin perustella ehdotukset ja muotoilla tekstiä selkeämmäksi.{% elif step == 4 %}Voin selittää tarkistuksen havainnot ja ehdottaa korjausjärjestystä.{% elif step == 5 %}Voin tarkistaa, mitä aineistoa olet lähettämässä.{% else %}Voin selittää kuitin ja seuraavat käsittelyvaiheet.{% endif %}</p></div>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat" class="assistant-compose">
+    <label for="assistant-message" class="visually-hidden">Kysy Hakemusapurilta</label>
+    <textarea id="assistant-message" name="message" rows="3" placeholder="Kysy tästä hakemuksesta…" required></textarea>
+    <button aria-label="Lähetä kysymys">Lähetä <span aria-hidden="true">↑</span></button>
+  </form>
+  <div class="assistant-prompts" aria-label="Valmiit kysymykset">
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat"><button name="message" value="Mitä hakemuksesta puuttuu juuri nyt?">Mitä puuttuu?</button></form>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat"><button name="message" value="Mitkä AI-poiminnat minun kannattaa tarkistaa ensin?">Tarkista poiminnat</button></form>
+  </div>
+  <div class="assistant-boundary"><span aria-hidden="true">ⓘ</span><p>Ehdotukset eivät muuta lomaketta ennen hyväksyntää. Sinä päätät jokaisesta muutoksesta.</p></div>
+</aside>
+</div>
+<script>
+(function () {
+  const panel = document.querySelector("[data-ai-jobs-panel]");
+  if (!panel) return;
+
+  const terminalStatuses = new Set(["succeeded", "failed", "cancelled"]);
+
+  function setText(row, selector, value) {
+    const target = row.querySelector(selector);
+    if (target && value !== undefined && value !== null) target.textContent = String(value);
+  }
+
+  function renderEvents(row, payload) {
+    const container = row.querySelector("[data-job-agents]");
+    if (!container || !Array.isArray(payload.events) || payload.events.length === 0) return;
+    container.innerHTML = "";
+    payload.events.slice(0, 4).forEach((event) => {
+      const pill = document.createElement("span");
+      pill.className = "pill";
+      const label = event.step || event.agent || payload.current_step_label || "AI-vaihe";
+      const progress = event.progress_percent ?? payload.progress_percent ?? 0;
+      pill.textContent = `${label} · ${progress}%`;
+      container.appendChild(pill);
+    });
+    const log = row.querySelector("[data-job-log]");
+    if (log) log.textContent = JSON.stringify(payload.events, null, 2);
+  }
+
+  function applyStatus(row, payload) {
+    if (!payload || typeof payload !== "object") return false;
+    const progress = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
+    setText(row, "[data-job-status]", payload.status);
+    setText(row, "[data-job-progress]", progress);
+    setText(row, "[data-job-eta]", payload.estimated_seconds_remaining ?? 0);
+    const bar = row.querySelector("[data-job-progress-bar]");
+    if (bar) bar.style.width = `${progress}%`;
+    const summary = payload.events && payload.events.length ? payload.events[payload.events.length - 1].message : payload.title;
+    setText(row, "[data-job-summary]", summary);
+    renderEvents(row, payload);
+    const done = terminalStatuses.has(payload.status);
+    const cancel = row.querySelector("[data-job-cancel]");
+    if (cancel) cancel.disabled = done;
+    return done;
+  }
+
+  async function fetchStatus(row) {
+    const url = row.getAttribute("data-status-url");
+    if (!url) return false;
+    try {
+      const response = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!response.ok) return false;
+      return applyStatus(row, await response.json());
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  async function cancelJob(row) {
+    const url = row.getAttribute("data-cancel-url");
+    if (!url) return;
+    try {
+      const response = await fetch(url, { method: "POST", headers: { "Accept": "application/json" } });
+      if (response.ok) applyStatus(row, await response.json());
+    } catch (_error) {
+      return;
+    }
+  }
+
+  async function retryJob(row) {
+    const url = row.getAttribute("data-retry-url");
+    if (!url) return;
+    try {
+      const response = await fetch(url, { method: "POST", headers: { "Accept": "application/json" } });
+      if (!response.ok) return;
+      const payload = await response.json();
+      row.setAttribute("data-job-id", payload.job_id);
+      row.setAttribute("data-status-url", `/api/v1/jobs/${payload.job_id}`);
+      row.setAttribute("data-stream-url", `/api/v1/jobs/${payload.job_id}/stream`);
+      row.setAttribute("data-cancel-url", `/api/v1/jobs/${payload.job_id}/cancel`);
+      row.setAttribute("data-retry-url", `/api/v1/jobs/${payload.job_id}/retry`);
+      row.hidden = false;
+      applyStatus(row, payload);
+    } catch (_error) {
+      return;
+    }
+  }
+
+  panel.querySelectorAll("[data-ai-job]").forEach((row) => {
+    row.querySelector("[data-job-cancel]")?.addEventListener("click", () => cancelJob(row));
+    row.querySelector("[data-job-retry]")?.addEventListener("click", () => retryJob(row));
+    row.querySelector("[data-job-background]")?.addEventListener("click", () => { row.hidden = true; });
+    const streamUrl = row.getAttribute("data-stream-url");
+    let pollingId = null;
+    const stopPolling = () => {
+      if (pollingId) window.clearInterval(pollingId);
+      pollingId = null;
+    };
+
+    if (streamUrl && "EventSource" in window) {
+      const source = new EventSource(streamUrl);
+      source.addEventListener("status", (event) => {
+        try {
+          if (applyStatus(row, JSON.parse(event.data))) {
+            source.close();
+            stopPolling();
+          }
+        } catch (_error) {
+          source.close();
+        }
+      });
+      source.onerror = () => {
+        source.close();
+      };
+    }
+
+    fetchStatus(row).then((done) => {
+      if (!done) {
+        pollingId = window.setInterval(async () => {
+          if (await fetchStatus(row)) stopPolling();
+        }, 2500);
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}
