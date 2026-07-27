@@ -522,7 +522,7 @@ def criteria_history_rows(history: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(versions, list):
         return rows
     for index, item in enumerate(versions):
-        criteria = item.get("criteria", {}) if isinstance(item, dict) else {}
+        criteria = _dict(item).get("criteria", {})
         rows.append(
             {
                 "history_index": index,
@@ -4352,7 +4352,7 @@ def _parse_jsonish(value: Any) -> dict[str, Any]:
     if isinstance(value, str) and value.strip():
         try:
             parsed = json.loads(value)
-            return parsed if isinstance(parsed, dict) else {}
+            return _dict(parsed)
         except Exception:
             return {}
     return {}
@@ -5042,7 +5042,7 @@ def caseworker_observation_panel(db: Any, case_id: str, permit_type: str) -> dic
     decisions = artifact_json(db, case_id, "caseworker_observation_decisions", permit_type, {"items": {}})
     decision_items = _dict(decisions.get("items"))
     for observation in observations:
-        decision = decision_items.get(observation["id"], {}) if isinstance(decision_items, dict) else {}
+        decision = _dict(decision_items.get(observation["id"]))
         observation["review_status"] = decision.get("status", "new")
         observation["review_note"] = decision.get("note", "")
         observation["reviewed_at"] = decision.get("updated_at", "")
@@ -5208,9 +5208,9 @@ def _compact_authority_context(db: Any, case_id: str, app: dict[str, Any]) -> di
         text = str(value or "").strip()
         if text:
             compact_form_data[str(key)] = text[:320]
-    issues = check_report.get("issues") if isinstance(check_report, dict) else []
+    issues = _list(_dict(check_report).get("issues"))
     compact_issues = []
-    for issue in issues[:8] if isinstance(issues, list) else []:
+    for issue in issues[:8]:
         if not isinstance(issue, dict):
             continue
         compact_issues.append(

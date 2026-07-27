@@ -27,6 +27,7 @@ koske `data/`-hakemistoon eivätkä tarvitse Azure-yhteyttä.
 ## Aineisto ja data
 
 - `testiaineisto/esimerkkihakemukset/` sisältää erilliset testipaketit.
+- `docs/specs/` sisältää määrittelydokumentit, joita sovelluskoodi ei lataa.
 - `data/` syntyy ensimmäisellä käynnistyksellä ja on jätetty versionhallinnan ulkopuolelle.
 - `.env.example` näyttää vain paikkamerkit mahdolliselle Azure OpenAI -asetukselle.
 

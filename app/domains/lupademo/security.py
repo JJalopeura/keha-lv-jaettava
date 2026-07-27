@@ -1,7 +1,7 @@
 from __future__ import annotations
 import hmac
 import json
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -22,8 +22,10 @@ def _load_tenants() -> list[dict[str, Any]]:
 
 
 def _get_client_by_key(api_key: str) -> dict[str, Any] | None:
+    # compare_digest on str rejects non-ASCII, so compare bytes: a non-ASCII header must 403, not crash.
+    supplied = api_key.encode("utf-8")
     for c in _load_tenants():
-        if hmac.compare_digest(str(c.get("api_key") or ""), api_key):
+        if hmac.compare_digest(str(c.get("api_key") or "").encode("utf-8"), supplied):
             return c
     return None
 
@@ -72,7 +74,7 @@ def client_can_access_criteria(client: dict[str, Any], criteria_set_id: str) -> 
 
 
 def annotate_api_response(client: dict[str, Any], payload: Any) -> dict[str, Any]:
-    out = asdict(payload) if is_dataclass(payload) and not isinstance(payload, type) else dict(payload)
+    out: dict[str, Any] = dict(payload) if isinstance(payload, dict) else asdict(payload)
     out["tenant_id"] = client["tenant_id"]
     out["api_client_name"] = client["name"]
     suffix = client["criteria_version_suffix"]

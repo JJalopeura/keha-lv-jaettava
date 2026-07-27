@@ -14,6 +14,7 @@ os.environ["KEHA_LV_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="keha-test-
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+import app.domains.lupademo.security as security  # noqa: E402
 import app.domains.lupademo.services as svc  # noqa: E402
 from app.core.db import DB  # noqa: E402
 from app.main import app  # noqa: E402
@@ -126,6 +127,18 @@ class Authentication(unittest.TestCase):
             headers={"X-Lupademo-Api-Key": "bogus"},
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_non_ascii_key_is_rejected_not_crashed(self) -> None:
+        """hmac.compare_digest raises TypeError on non-ASCII str; headers arrive latin-1 decoded.
+
+        Tested below the HTTP layer because httpx refuses to send such a header at all.
+        """
+        for key in ("\u00e4-non-ascii", "\u043a\u043b\u044e\u0447", "demo-avi-ke\u00ff"):
+            with self.subTest(key=key):
+                self.assertIsNone(security._get_client_by_key(key))
+
+    def test_valid_key_still_resolves(self) -> None:
+        self.assertEqual(security._get_client_by_key("demo-avi-key")["tenant_id"], "avi_demo")
 
     def test_cross_tenant_payload_is_rejected(self) -> None:
         """This check was dead code: the assignment ran before the comparison."""
