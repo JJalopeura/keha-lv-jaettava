@@ -57,6 +57,10 @@ class AzureOpenAIClient:
     model: str
     timeout_s: float = 180.0
 
+    def __post_init__(self) -> None:
+        self.api_path_prefix = "/openai/v1/" if "services.ai.azure.com" in self.host else "/openai/"
+        self._uses_api_version = self.api_path_prefix == "/openai/"
+
     def _headers(self) -> Dict[str, str]:
         return {"api-key": self.api_key}
 
@@ -70,12 +74,11 @@ class AzureOpenAIClient:
         *,
         json_body: Optional[Dict[str, Any]] = None,
         files: Optional[Dict[str, Tuple[str, bytes, str]]] = None,
-        include_api_version: bool = True,
         query_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         url = self._url(path)
         params = dict(query_params or {})
-        if include_api_version:
+        if self._uses_api_version:
             params["api-version"] = self.api_version
 
         with httpx.Client(timeout=self.timeout_s) as client:
@@ -103,19 +106,19 @@ class AzureOpenAIClient:
         body: Dict[str, Any] = {}
         if name:
             body["name"] = name
-        data = self.request_json("POST", "/openai/vector_stores", json_body=body)
+        data = self.request_json("POST", f"{self.api_path_prefix}vector_stores", json_body=body)
         return data["id"]
 
     def attach_file_to_vector_store(self, vector_store_id: str, file_id: str) -> str:
         data = self.request_json(
             "POST",
-            f"/openai/vector_stores/{vector_store_id}/files",
+            f"{self.api_path_prefix}vector_stores/{vector_store_id}/files",
             json_body={"file_id": file_id},
         )
         return data["id"]
 
     def get_vector_store_file(self, vector_store_id: str, vector_store_file_id: str) -> Dict[str, Any]:
-        return self.request_json("GET", f"/openai/vector_stores/{vector_store_id}/files/{vector_store_file_id}")
+        return self.request_json("GET", f"{self.api_path_prefix}vector_stores/{vector_store_id}/files/{vector_store_file_id}")
 
     def wait_vector_store_file_completed(
         self,
@@ -140,7 +143,7 @@ class AzureOpenAIClient:
     def start_upload(self, filename: str, size_bytes: int, mime_type: str, purpose: str = "assistants") -> str:
         data = self.request_json(
             "POST",
-            "/openai/uploads",
+            f"{self.api_path_prefix}uploads",
             json_body={
                 "purpose": purpose,
                 "filename": filename,
@@ -153,7 +156,7 @@ class AzureOpenAIClient:
     def upload_part_bytes(self, upload_id: str, filename: str, chunk: bytes, mime_type: str) -> str:
         data = self.request_json(
             "POST",
-            f"/openai/uploads/{upload_id}/parts",
+            f"{self.api_path_prefix}uploads/{upload_id}/parts",
             files={"data": (filename, chunk, mime_type)},
         )
         return data["id"]
@@ -161,7 +164,7 @@ class AzureOpenAIClient:
     def complete_upload(self, upload_id: str, part_ids: List[str]) -> str:
         data = self.request_json(
             "POST",
-            f"/openai/uploads/{upload_id}/complete",
+            f"{self.api_path_prefix}uploads/{upload_id}/complete",
             json_body={"part_ids": part_ids},
         )
         if isinstance(data, dict):
@@ -216,7 +219,7 @@ class AzureOpenAIClient:
             reasoning_effort=reasoning_effort,
             text_verbosity=text_verbosity,
         )
-        return self.request_json("POST", "/openai/responses", json_body=payload)
+        return self.request_json("POST", f"{self.api_path_prefix}responses", json_body=payload)
 
     def extract_output_text(self, resp: dict[str, Any]) -> str | None:
         try:

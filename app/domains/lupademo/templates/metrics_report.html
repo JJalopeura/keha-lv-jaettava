@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fi">
+<head><meta charset="utf-8"><title>Lupademo mittariraportti</title></head>
+<body>
+<h1>Lupademo mittariraportti</h1>
+<p>Hakemuksia: {{ metrics_payload.get("application_count", 0) }} · Lähetetty: {{ metrics_payload.get("submitted_count", 0) }}</p>
+<h2>Ennen ja jälkeen</h2>
+<ul>
+  <li>Laatupisteet ennen AI:tä: {{ metrics_payload.get("quality_score_before_ai", 0) }}</li>
+  <li>Laatupisteet nyt: {{ metrics_payload.get("quality_score_after_ai", 0) }}</li>
+  <li>Puutteet ennen AI:tä: {{ metrics_payload.get("issue_count_before_ai", 0) }}</li>
+  <li>Puutteet nyt: {{ metrics_payload.get("issue_count_after_ai", 0) }}</li>
+  <li>Arvioitu käsittelijäaikasäästö: {{ metrics_payload.get("estimated_caseworker_minutes_saved", 0) }} min</li>
+</ul>
+<h2>Auditointi</h2>
+<ul>
+  <li>LLM-kutsuja: {{ metrics_payload.get("agent_call_count", 0) }}</li>
+  <li>File search -kutsuja: {{ metrics_payload.get("file_search_call_count", 0) }}</li>
+  <li>Fallbackeja: {{ metrics_payload.get("fallback_count", 0) }}</li>
+</ul>
+</body>
+</html>

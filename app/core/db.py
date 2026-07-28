@@ -69,7 +69,11 @@ class DB:
             )
         return case_id
 
+    _ALLOWED_CASE_COLUMNS = {"case_vector_store_id", "research_vector_store_id", "status"}
+
     def _set_case_value(self, case_id: str, field: str, value: str) -> None:
+        if field not in self._ALLOWED_CASE_COLUMNS:
+            raise ValueError(f"Column {field} is not allowed for dynamic update")
         with self._conn() as conn:
             conn.execute(f"UPDATE cases SET {field}=?, updated_at=? WHERE id=?", (value, time.time(), case_id))
 

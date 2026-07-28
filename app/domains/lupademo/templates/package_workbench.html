@@ -6,8 +6,8 @@
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
 <nav class="flow-progress" aria-label="Hakemuspaketin tarkistuksen vaiheet">
   <span class="complete"><b>✓</b> Tuo aineisto</span>
-  <span class="active"><b>2</b> AI:n tulkinta</span>
-  <span><b>3</b> Korjaa ja vahvista</span>
+  <span class="{% if package_analysis %}complete{% else %}active{% endif %}"><b>{% if package_analysis %}✓{% else %}2{% endif %}</b> AI:n tulkinta</span>
+  <span class="{% if package_analysis %}active{% endif %}"><b>3</b> Korjaa ja vahvista</span>
 </nav>
 
 <header class="workbench-header">

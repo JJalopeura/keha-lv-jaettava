@@ -920,31 +920,9 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
         return JSONResponse(svc.metrics_snapshot(db(), case_id))
 
     @router.get("/cases/{case_id}/lupademo/metrics/report.html", response_class=HTMLResponse)
-    def metrics_report_html(case_id: str):
+    def metrics_report_html(request: Request, case_id: str):
         metrics_payload = svc.metrics_snapshot(db(), case_id)
-        html = f"""<!doctype html>
-    <html lang="fi">
-    <head><meta charset="utf-8"><title>Lupademo mittariraportti</title></head>
-    <body>
-    <h1>Lupademo mittariraportti</h1>
-    <p>Hakemuksia: {metrics_payload.get("application_count", 0)} · Lähetetty: {metrics_payload.get("submitted_count", 0)}</p>
-    <h2>Ennen ja jälkeen</h2>
-    <ul>
-      <li>Laatupisteet ennen AI:tä: {metrics_payload.get("quality_score_before_ai", 0)}</li>
-      <li>Laatupisteet nyt: {metrics_payload.get("quality_score_after_ai", 0)}</li>
-      <li>Puutteet ennen AI:tä: {metrics_payload.get("issue_count_before_ai", 0)}</li>
-      <li>Puutteet nyt: {metrics_payload.get("issue_count_after_ai", 0)}</li>
-      <li>Arvioitu käsittelijäaikasäästö: {metrics_payload.get("estimated_caseworker_minutes_saved", 0)} min</li>
-    </ul>
-    <h2>Auditointi</h2>
-    <ul>
-      <li>LLM-kutsuja: {metrics_payload.get("agent_call_count", 0)}</li>
-      <li>File search -kutsuja: {metrics_payload.get("file_search_call_count", 0)}</li>
-      <li>Fallbackeja: {metrics_payload.get("fallback_count", 0)}</li>
-    </ul>
-    </body>
-    </html>"""
-        return HTMLResponse(html)
+        return templates.TemplateResponse("metrics_report.html", {"request": request, "metrics_payload": metrics_payload})
 
     @router.post("/cases/{case_id}/lupademo/admin/agent-chain/audit-run")
     def agent_chain_audit_run(case_id: str):
@@ -983,9 +961,15 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
         }
 
     def _complete_api_job(case_id: str, application_id: str, job: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-        svc.complete_ai_job(db(), case_id, application_id, job["id"], summary="API job completed.", result_artifact=f"api_result:{job['kind']}")
-        found = svc.find_ai_job(db(), job["id"])
-        return found["job"]
+        return svc.complete_ai_job(db(), case_id, application_id, job["id"], summary="API job completed.", result_artifact=f"api_result:{job['kind']}")
+
+    def _find_or_404(job_id: str) -> dict[str, Any]:
+        try:
+            svc.refresh_ai_job(db(), job_id)
+            found = svc.find_ai_job(db(), job_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="job_not_found")
+        return found
 
     @router.post("/api/ai/jobs")
     async def api_ai_jobs(request: Request):
@@ -997,40 +981,24 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
 
     @router.get("/api/ai/jobs/{job_id}")
     def api_ai_job_status(job_id: str):
-        try:
-            svc.refresh_ai_job(db(), job_id)
-            found = svc.find_ai_job(db(), job_id)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="job_not_found")
+        found = _find_or_404(job_id)
         return svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
 
     @router.get("/api/ai/jobs/{job_id}/stream")
     def api_ai_job_stream(job_id: str):
-        try:
-            svc.refresh_ai_job(db(), job_id)
-            found = svc.find_ai_job(db(), job_id)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="job_not_found")
+        found = _find_or_404(job_id)
         payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
         return Response("event: status\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n", media_type="text/event-stream")
 
     @router.get("/api/ai/jobs/{job_id}/events")
     def api_ai_job_events(job_id: str):
-        try:
-            svc.refresh_ai_job(db(), job_id)
-            found = svc.find_ai_job(db(), job_id)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="job_not_found")
+        found = _find_or_404(job_id)
         payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
         return {"job_id": job_id, "status": payload["status"], "events": payload["events"]}
 
     @router.get("/api/ai/jobs/{job_id}/result")
     def api_ai_job_result(job_id: str):
-        try:
-            svc.refresh_ai_job(db(), job_id)
-            found = svc.find_ai_job(db(), job_id)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="job_not_found")
+        found = _find_or_404(job_id)
         result = svc.artifact_json(db(), found["case_id"], "api_job_result", job_id, {})
         if not result:
             raise HTTPException(status_code=404, detail="result_not_ready")
@@ -1104,23 +1072,18 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
 
     @router.post("/api/v1/application-packages:analyze")
     async def api_v1_application_packages_analyze(request: Request):
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid JSON in request body")
         client = security.require_api_client(request)
-        payload = security.validate_client_payload(client, await request.json())
+        payload = security.validate_client_payload(client, body)
         case_id = _demo_case_for_api()
         application_id = svc.application_id_for(str(payload.get("permit_type") or "building_residential"))
         request_id = str(payload.get("request_id") or f"analyze_{uuid.uuid4().hex[:8]}")
-        job = svc.start_ai_job(
-            db(),
-            case_id,
-            application_id,
-            "api_package_analysis",
-            "Application package analysis API",
-            ["request_validator", "document_classifier", "structure_extractor", "gap_analyzer"],
-            eta_seconds=15,
-        )
         documents = payload.get("documents") or []
-        document_text_parts = []
-        document_inventory = []
+        document_text_parts: list[str] = []
+        document_inventory: list[dict[str, Any]] = []
         for index, doc in enumerate(documents):
             if not isinstance(doc, dict):
                 continue
@@ -1137,6 +1100,17 @@ def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callab
                 }
             )
         source_text = str(payload.get("source_text") or payload.get("text") or "") + "".join(document_text_parts)
+        if not source_text.strip():
+            raise HTTPException(status_code=422, detail="At least one document with text content or source_text is required")
+        job = svc.start_ai_job(
+            db(),
+            case_id,
+            application_id,
+            "api_package_analysis",
+            "Application package analysis API",
+            ["request_validator", "document_classifier", "structure_extractor", "gap_analyzer"],
+            eta_seconds=15,
+        )
         result = security.annotate_api_response(
             client,
             svc.structure_extract(

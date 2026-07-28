@@ -8,9 +8,6 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
   set +a
 fi
 
-export KEHA_LV_LLM_PROVIDER="${KEHA_LV_LLM_PROVIDER:-mock}"
-export KEHA_LV_DEMO_MODE="${KEHA_LV_DEMO_MODE:-true}"
-export KEHA_LV_FORCE_MOCK_LLM="${KEHA_LV_FORCE_MOCK_LLM:-true}"
 PYTHON="${PYTHON:-$SCRIPT_DIR/.venv/bin/python}"
 [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3 || command -v python)"
-exec "$PYTHON" -m uvicorn app.main:app --host "${HOST:-127.0.0.1}" --port "${PORT:-8000}"
+exec "$PYTHON" -m uvicorn app.main:app --host "${APP_HOST:-127.0.0.1}" --port "${APP_PORT:-8001}"
