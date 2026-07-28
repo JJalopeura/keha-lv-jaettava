@@ -2416,6 +2416,19 @@ button:disabled {
   color: #475467;
 }
 
+.finding-category {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #475467;
+  background: #eef2f6;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 6px;
+}
+
 .task-row a {
   color: #0d675d;
   font-weight: 750;

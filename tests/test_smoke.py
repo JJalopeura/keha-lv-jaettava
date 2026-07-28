@@ -6,8 +6,12 @@ Stdlib unittest on purpose: no pytest dependency.
 
 import io
 import os
+import sys
 import tempfile
 import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, so `import app...` works from any cwd
 
 os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 os.environ["KEHA_LV_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="keha-test-"), "test.db")

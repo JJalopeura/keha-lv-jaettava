@@ -4,8 +4,9 @@ import os
 import sqlite3
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import asdict
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 
 class DB:
@@ -16,10 +17,15 @@ class DB:
         self.db_path = db_path
         self._init_db()
 
-    def _conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _conn(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_db(self) -> None:
         with self._conn() as conn:

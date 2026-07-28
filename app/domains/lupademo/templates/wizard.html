@@ -194,11 +194,13 @@
         {% for item in field_extraction_queue.get("items", [])[:8] %}
         <tr>
           <td>{{ item.field_id }}</td>
-          <td>{{ item.accepted_value or item.suggested_value }}</td>
+          <td>{{ item.get('accepted_value') or item.get('suggested_value') }}</td>
           <td>{{ item.source_document }}</td>
           <td>
             {% if item.status == "accepted" %}
             <span class="status good">Hyväksytty</span>
+            {% elif item.status == "edited" %}
+            <span class="status good">Hyväksytty (muokattu)</span>
             {% else %}
             <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept">
               <input type="hidden" name="field_id" value="{{ item.field_id }}">
@@ -254,9 +256,10 @@
       <h4>Löydökset</h4>
       {% for finding in intake_analysis.findings[:6] %}
       <div class="issue {{ finding.severity }}">
-        <strong>{{ finding.title }}</strong>
+        <strong>{{ finding.title }}</strong> <span class="finding-category">{{ FINDING_CATEGORY_LABELS.get(finding.category, finding.category) }}</span>
         <p>{{ finding.detail }}</p>
         {% if finding.suggested_fix %}<small>{{ finding.suggested_fix }}</small>{% endif %}
+        {% if finding.question_to_applicant %}<small>Kysymys: {{ finding.question_to_applicant }}</small>{% endif %}
       </div>
       {% endfor %}
       {% endif %}
@@ -287,6 +290,8 @@
           <td>
             {% if item.status == "accepted" %}
             <span class="status good">Hyväksytty</span>
+            {% elif item.status == "edited" %}
+            <span class="status good">Hyväksytty (muokattu)</span>
             {% else %}
             <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept">
               <input type="hidden" name="field_id" value="{{ item.field_id }}">
@@ -409,7 +414,7 @@
     <h2>AI-ehdotukset</h2>
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-field" class="inline">
       <select name="field_id">
-        {% for field in schema.fields if field.ai_suggest %}
+        {% for field in schema.get('fields', []) if field.get('ai_suggest') %}
         <option value="{{ field.id }}">{{ field.label }}</option>
         {% endfor %}
       </select>
@@ -622,7 +627,7 @@
   function renderEvents(row, payload) {
     const container = row.querySelector("[data-job-agents]");
     if (!container || !Array.isArray(payload.events) || payload.events.length === 0) return;
-    container.innerHTML = "";
+    container.replaceChildren();
     payload.events.slice(0, 4).forEach((event) => {
       const pill = document.createElement("span");
       pill.className = "pill";

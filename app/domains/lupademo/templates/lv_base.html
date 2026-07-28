@@ -12,7 +12,7 @@
     <a href="/lv{{ present_suffix }}" class="brand">Luvat ja valvonta · LV-mock</a>
     <nav>
       <a href="/{{ present_suffix }}">Demo</a>
-      {% if case_id %}
+      {% if case_id is defined %}
       <a href="/lv/projects/{{ case_id }}{{ present_suffix }}">Hanke</a>
       <a href="/cases/{{ case_id }}/lupademo/application/building_residential{{ present_suffix }}">Kevytasiointi</a>
       <a href="/cases/{{ case_id }}/lupademo/authority/queue{{ present_suffix }}">Viranomainen</a>

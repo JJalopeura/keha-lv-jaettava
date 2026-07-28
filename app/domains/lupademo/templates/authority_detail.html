@@ -61,5 +61,5 @@
   </div>
 </section>
 
-<section class="event-log" id="event-log"><div class="section-heading-line"><div><p class="section-kicker">Audit trail</p><h2>Tapahtumat</h2></div></div>{% for event in project.integration_events or [] %}<div class="event-row"><span>{{ event.id }}</span><strong>{{ event.label }}</strong><small>{{ event.status }}</small></div>{% endfor %}</section>
+<section class="event-log" id="event-log"><div class="section-heading-line"><div><p class="section-kicker">Audit trail</p><h2>Tapahtumat</h2></div></div>{% for event in project.get('integration_events', []) %}<div class="event-row"><span>{{ event.id }}</span><strong>{{ event.label }}</strong><small>{{ event.status }}</small></div>{% endfor %}</section>
 {% endblock %}

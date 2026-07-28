@@ -15,9 +15,9 @@
       <span><strong>Lupa-apuri</strong><small>Luvat ja valvonta</small></span>
     </a>
     <nav class="app-nav" aria-label="Päänavigaatio">
-      {% if case_id %}
+      {% if case_id is defined %}
       <a href="/lv/projects/{{ case_id }}">Hanke</a>
-      <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id if application else 'building_residential' }}/wizard/1">Hakemus</a>
+      <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id if application is defined and application else 'building_residential' }}/wizard/1">Hakemus</a>
       <a href="/cases/{{ case_id }}/lupademo/authority/queue">Viranomainen</a>
       {% else %}
       <a href="/applicant">Uusi hakemus</a>
@@ -26,14 +26,14 @@
       <a href="/integrations/api-playground">Rajapinnat</a>
     </nav>
   </header>
-  {% if case_id %}
+  {% if case_id is defined %}
   <div class="project-context" aria-label="Avoin hanke">
     <div>
       <span class="context-kicker">Avoin hanke</span>
       <strong>{{ project.name }}</strong>
     </div>
     <div class="context-meta">
-      <span>{{ schema.title if schema else 'Lupahanke' }}</span>
+      <span>{{ schema.title if schema is defined and schema else 'Lupahanke' }}</span>
       <span>Yhteiset tiedot v{{ common.version or 1 }}</span>
     </div>
   </div>
