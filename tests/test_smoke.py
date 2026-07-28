@@ -5,6 +5,7 @@ Stdlib unittest on purpose: no pytest dependency.
 """
 
 import io
+import json
 import os
 import sys
 import tempfile
@@ -187,16 +188,57 @@ class Uploads(unittest.TestCase):
 
 
 class Pages(unittest.TestCase):
-    def test_package_workbench_polling_script_is_well_formed(self) -> None:
-        template = Path("app/domains/lupademo/templates/package_workbench.html").read_text(encoding="utf-8")
-        self.assertIn('window.setInterval(async () => {', template)
-        self.assertNotIn('}, 900);\n      );', template)
-        self.assertIn("item.get('accepted_value')", template)
+    def test_wizard_reviews_extraction_suggestions_without_redirecting(self) -> None:
+        queue = svc.artifact_json(db, case, "field_extraction_queue", PERMIT, {"items": []})["items"]
+        pending_count = sum(item.get("status") == "pending" for item in queue)
+        self.assertGreater(pending_count, 0)
+        self.assertEqual(svc.wizard_step_status(db, case, PERMIT)["pending_suggestion_count"], pending_count)
 
+        suggestions_page = client.get(f"{base}/wizard/3")
+        self.assertEqual(suggestions_page.status_code, 200)
+        self.assertIn("Tarkista AI-ehdotukset", suggestions_page.text)
+        self.assertIn(f"{pending_count} odottaa käsittelyä", suggestions_page.text)
+        self.assertIn("Seuraava: AI- ja sääntötarkistus", suggestions_page.text)
+
+        check_page = client.get(f"{base}/wizard/4")
+        self.assertEqual(check_page.status_code, 200)
+        self.assertIn("AI- ja sääntötarkistus", check_page.text)
+
+    def test_package_workbench_and_wizard_are_independent(self) -> None:
+        package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
+        workbench = client.get(f"/applicant/packages/{package_id}")
+        self.assertEqual(workbench.status_code, 200)
+        self.assertIn("Aineistotyöpöytä", workbench.text)
+        self.assertNotIn("Vaihe 2 / 6", workbench.text)
+
+        wizard = client.get(f"{base}/wizard/2")
+        self.assertEqual(wizard.status_code, 200)
+        self.assertIn("Vaihe 2 / 6", wizard.text)
+        self.assertNotIn("Aineistotyöpöytä", wizard.text)
+
+    def test_specs_resolve_to_runtime_paths(self) -> None:
+        ui = json.loads(Path("docs/specs/ui.json").read_text(encoding="utf-8"))
+        roles = json.loads(Path("docs/specs/roles.json").read_text(encoding="utf-8"))
+        workflow = json.loads(Path("docs/specs/workflow.json").read_text(encoding="utf-8"))
+        self.assertIn("material_package_workbench", workflow["workflows"])
+        self.assertIn("deterministic_checks", workflow["workflows"]["applicant_application_check"])
+        self.assertIn("use_package_workbench", next(role for role in roles["roles"] if role["key"] == "applicant")["capabilities"])
+        for page in ui["pages"]:
+            route = page["route"].replace("{case_id}", case)
+            with self.subTest(page=page["slug"]):
+                self.assertIn(client.get(route).status_code, (200, 303))
+
+    def test_wizard_job_script_is_well_formed(self) -> None:
         wizard = Path("app/domains/lupademo/templates/wizard.html").read_text(encoding="utf-8")
         self.assertIn('data-job-initial-status="{{ job.status }}"', wizard)
         self.assertIn("window.location.reload();", wizard)
+        self.assertIn("}, 5000);", wizard)
         self.assertIn("ai_jobs[0].status != 'completed'", wizard)
+
+        workbench = Path("app/domains/lupademo/templates/package_workbench.html").read_text(encoding="utf-8")
+        self.assertIn("new EventSource(row.dataset.streamUrl)", workbench)
+        self.assertIn("window.setInterval(poll, 5000)", workbench)
+        self.assertIn("window.location.reload();", workbench)
 
     def test_every_demo_page_renders(self) -> None:
         paths = [

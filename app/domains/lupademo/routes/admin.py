@@ -1,17 +1,13 @@
 from __future__ import annotations
 import json
-import io
-import time
 import uuid
-import zipfile
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from jinja2 import StrictUndefined
 from fastapi.templating import Jinja2Templates
-from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
 
@@ -264,9 +260,6 @@ def create_admin_router(db_getter: Callable[[], Any], settings_getter: Callable[
         svc.ingest_source_materials(db(), app_settings, case_id, source_dir=getattr(app_settings, "source_material_dir", "source_materials"))
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria", status_code=303)
 
-    def _demo_case_for_api() -> str:
-        return scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
-
     def _service_payload(payload: dict[str, Any], request_id: str, application_id: str) -> dict[str, Any]:
         """Fill in the request fields the route already resolved, so the service layer never sees them missing."""
         return {
@@ -294,67 +287,5 @@ def create_admin_router(db_getter: Callable[[], Any], settings_getter: Callable[
             "tenant_id": client["tenant_id"],
             "result": result,
         }
-
-    def _complete_api_job(case_id: str, application_id: str, job: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-        return svc.complete_ai_job(db(), case_id, application_id, job["id"], summary="API job completed.", result_artifact=f"api_result:{job['kind']}")
-
-    def _find_or_404(job_id: str) -> dict[str, Any]:
-        try:
-            svc.refresh_ai_job(db(), job_id)
-            found = svc.find_ai_job(db(), job_id)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="job_not_found")
-        return found
-
-    @router.post("/api/ai/jobs")
-    async def api_ai_jobs(request: Request):
-        payload = await request.json()
-        case_id = str(payload.get("project_id") or payload.get("case_id") or _demo_case_for_api())
-        application_id = svc.application_id_for(str(payload.get("application_id") or payload.get("permit_type") or "building_residential"))
-        job = svc.start_ai_job(db(), case_id, application_id, str(payload.get("job_type") or "intake_analysis"), str(payload.get("title") or "AI job"), ["request_router"], eta_seconds=10)
-        return svc.ai_job_status_payload(job, case_id=case_id, application_id=application_id)
-
-    @router.get("/api/ai/jobs/{job_id}")
-    def api_ai_job_status(job_id: str):
-        found = _find_or_404(job_id)
-        return svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
-
-    @router.get("/api/ai/jobs/{job_id}/stream")
-    def api_ai_job_stream(job_id: str):
-        found = _find_or_404(job_id)
-        payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
-        return Response("event: status\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n", media_type="text/event-stream")
-
-    @router.get("/api/ai/jobs/{job_id}/events")
-    def api_ai_job_events(job_id: str):
-        found = _find_or_404(job_id)
-        payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
-        return {"job_id": job_id, "status": payload["status"], "events": payload["events"]}
-
-    @router.get("/api/ai/jobs/{job_id}/result")
-    def api_ai_job_result(job_id: str):
-        found = _find_or_404(job_id)
-        result = svc.artifact_json(db(), found["case_id"], "api_job_result", job_id, {})
-        if not result:
-            raise HTTPException(status_code=404, detail="result_not_ready")
-        return result
-
-    @router.post("/api/ai/jobs/{job_id}/cancel")
-    def api_ai_job_cancel(job_id: str):
-        try:
-            job = svc.cancel_ai_job(db(), job_id)
-            found = svc.find_ai_job(db(), job_id)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="job_not_found")
-        return svc.ai_job_status_payload(job, case_id=found["case_id"], application_id=found["application_id"])
-
-    @router.post("/api/ai/jobs/{job_id}/retry")
-    def api_ai_job_retry(job_id: str):
-        try:
-            job = svc.retry_ai_job(db(), job_id)
-            found = svc.find_ai_job(db(), job["id"])
-        except KeyError:
-            raise HTTPException(status_code=404, detail="job_not_found")
-        return svc.ai_job_status_payload(job, case_id=found["case_id"], application_id=found["application_id"])
 
     return router

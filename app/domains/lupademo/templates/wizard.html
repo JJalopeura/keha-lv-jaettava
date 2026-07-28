@@ -353,6 +353,34 @@
 {% endif %}
 
 {% if step == 3 %}
+<section class="extraction-section" id="extraction-suggestions">
+  <div class="section-heading-line">
+    <div>
+      <p class="section-kicker">Aineistosta poimitut tiedot</p>
+      <h2>Tarkista AI-ehdotukset</h2>
+    </div>
+    <span>{{ wizard.pending_suggestion_count }} odottaa käsittelyä</span>
+  </div>
+  <p class="section-description">Vertaa ehdotusta lähteeseen, muokkaa tarvittaessa ja hyväksy tieto lomakkeelle.</p>
+  <div class="extraction-list">
+    {% for item in field_extraction_queue.get('items', []) if item.status == 'pending' %}
+    <article class="extraction-row">
+      <div class="extraction-label">
+        <strong>{{ field_labels.get(item.field_id, item.field_id|replace('_', ' ')|capitalize) }}</strong>
+        <small>{{ item.source_document }} · luottamus {{ ((item.confidence * 100) if item.confidence <= 1 else item.confidence)|round|int }} %</small>
+      </div>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept" class="inline">
+        <input type="hidden" name="field_id" value="{{ item.field_id }}">
+        <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#extraction-suggestions">
+        <textarea name="edited_value" rows="2" aria-label="{{ field_labels.get(item.field_id, item.field_id) }}">{{ item.suggested_value }}</textarea>
+        <button>Hyväksy</button>
+      </form>
+    </article>
+    {% else %}
+    <div class="empty-success"><span>✓</span><div><strong>Kaikki aineistosta poimitut ehdotukset on käsitelty</strong><p>Voit pyytää alta uusia kenttäkohtaisia ehdotuksia.</p></div></div>
+    {% endfor %}
+  </div>
+</section>
 <section class="grid two" id="contextual-chat">
   <div>
     <h2>Hakemuksen chat</h2>
@@ -562,6 +590,15 @@
   </div>
 </section>
 {% endif %}
+
+<nav class="wizard-actions" aria-label="Siirtyminen hakemuksen vaiheissa">
+  {% if step > 1 %}
+  <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ step - 1 }}{% if present %}?present=1{% endif %}">← Edellinen vaihe</a>
+  {% endif %}
+  {% if step < 6 %}
+  <a class="button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ step + 1 }}{% if present %}?present=1{% endif %}">Seuraava: {{ wizard.steps[step].label }} →</a>
+  {% endif %}
+</nav>
 </div>
 
 <aside class="assistant-rail" id="hakemusapuri" aria-label="Hakemusapuri" data-ai-jobs-panel>
@@ -735,7 +772,7 @@
       if (!done) {
         pollingId = window.setInterval(async () => {
           if (await fetchStatus(row)) stopPolling();
-        }, 2500);
+        }, 5000);
       }
     });
   });

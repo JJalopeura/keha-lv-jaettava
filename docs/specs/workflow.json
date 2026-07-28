@@ -1,5 +1,6 @@
 {
   "workflows": {
+    "material_package_workbench": ["package_upload", "material_ingest", "package_analysis", "review_findings", "review_extractions"],
     "applicant_application_check": ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"],
     "field_suggestion": ["retrieval_context", "field_suggestion_agent", "validate_suggestion", "persist_pending_suggestion"],
     "submit_application": ["ensure_no_blockers", "package_composer", "lv_status_update", "authority_queue_insert"],

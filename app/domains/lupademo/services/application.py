@@ -955,7 +955,15 @@ def deterministic_suggestion(permit_type: str, field_id: str, form_data: dict[st
 
 def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: str, settings: Any = None) -> Suggestion:
     app = ensure_application(db, case_id, permit_type)
-    job = start_ai_job(db, case_id, app["permit_type"], "field_suggestion", f"Kenttäehdotus: {field_id}", ["field_suggestion_agent"], eta_seconds=15)
+    job = start_ai_job(
+        db,
+        case_id,
+        app["permit_type"],
+        "field_suggestion",
+        f"Kenttäehdotus: {field_id}",
+        ["retrieval_context", "field_suggestion_agent", "validate_suggestion", "persist_pending_suggestion"],
+        eta_seconds=15,
+    )
     fallback_suggestion = deterministic_suggestion(app["permit_type"], field_id, app.get("form_data", {}), list_attachments(db, case_id, app["permit_type"]))
     if settings is not None:
         schema = load_form_schema(app["permit_type"])
@@ -1102,7 +1110,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         app["permit_type"],
         "application_check",
         "AI- ja sääntötarkistus",
-        ["completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"],
+        ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"],
         eta_seconds=35,
     )
     attachments = list_attachments(db, case_id, app["permit_type"])
@@ -1281,6 +1289,7 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     schema = load_form_schema(permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     suggestions = artifact_json(db, case_id, "ai_suggestions", permit_type, {"suggestions": []}).get("suggestions", [])
+    extraction_items = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []}).get("items", [])
     check_report = artifact_json(db, case_id, "check_report", permit_type, {})
     gate = precheck_gate_status(db, case_id, permit_type)
     form_data = app.get("form_data") or {}
@@ -1289,12 +1298,14 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     official_types = {a.get("primary_type") for a in attachments if a.get("delivery_scope") == "official_submission"}
     missing_attachments = [item for item in schema.get("required_attachments", []) if item not in official_types]
     pending_suggestions = [s for s in suggestions if s.get("status") == "pending"]
+    pending_extractions = [item for item in extraction_items if item.get("status") == "pending"]
+    pending_suggestion_count = len(pending_suggestions) + len(pending_extractions)
     issues = check_report.get("issues") or []
     blocking_count = sum(1 for issue in issues if issue.get("severity") == "blocking" and not issue.get("resolved"))
     steps = [
         {"step": 1, "label": "Valmistelu ja perustiedot", "status": "done" if not missing_required[:3] else "attention"},
         {"step": 2, "label": "Lomake ja liitteet", "status": "done" if not missing_required and not missing_attachments else "attention"},
-        {"step": 3, "label": "AI-ehdotusten tarkastelu", "status": "attention" if pending_suggestions else "done"},
+        {"step": 3, "label": "AI-ehdotusten tarkastelu", "status": "attention" if pending_suggestion_count else "done"},
         {"step": 4, "label": "AI- ja sääntötarkistus", "status": "done" if gate["is_fresh"] and blocking_count == 0 else "attention"},
         {"step": 5, "label": "Asiakirjaesitys", "status": "done" if gate["can_submit"] else "blocked"},
         {"step": 6, "label": "Lähetys ja kuitti", "status": "done" if app.get("status") == "submitted" else "pending"},
@@ -1303,7 +1314,7 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
         "steps": steps,
         "missing_required_fields": missing_required,
         "missing_attachments": missing_attachments,
-        "pending_suggestion_count": len(pending_suggestions),
+        "pending_suggestion_count": pending_suggestion_count,
         "blocking_count": blocking_count,
         "can_submit": gate["can_submit"],
         "gate": gate,

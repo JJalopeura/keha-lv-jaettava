@@ -17,28 +17,10 @@ Module boundaries (see /workspace/plan.md Phase 2):
 
 from __future__ import annotations
 
-import json
-import mimetypes
 import os
-import re
-import tempfile
 import time
-import unicodedata
 import uuid
-import zipfile
-from pathlib import Path
-from typing import Any, Literal, Optional
-
-import openpyxl
-import pdfplumber
-from dataclasses import asdict, dataclass, field, is_dataclass
-from dataclasses import fields as dataclass_fields
-from docx import Document as DocxDocument
-from fastapi import HTTPException
-from jinja2 import Template
-
-from app.core.llm_factory import create_llm_client
-from app.core.llm_utils import call_llm_json, vector_store_ids
+from typing import Any
 
 from .core import PERMIT_SCHEMAS, _list, application_id_for, artifact_json, event, save_artifact
 

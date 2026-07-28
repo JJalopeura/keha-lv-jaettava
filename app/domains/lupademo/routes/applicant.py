@@ -173,15 +173,9 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         attachments = svc.list_attachments(db(), case_id, permit_type)
         ai_jobs = svc.list_ai_jobs(db(), case_id, permit_type)
         active_job = next((job for job in ai_jobs if job.get("status") == "running"), None)
-        # Ingestion may finish while context() refreshes the job list. Read the
-        # package again so the page cannot combine a stale processing package
-        # with an already completed job and strand the user without an action.
-        found = svc.find_material_package(db(), package_id)
-        material_package = found["package"]
-        package_analysis = svc.artifact_json(db(), case_id, "package_analysis_result", permit_type, {})
+        material_package = svc.find_material_package(db(), package_id)["package"]
         out.update(
             {
-                "package_id": package_id,
                 "package_id": package_id,
                 "material_package": material_package,
                 "attachments": attachments,
@@ -190,9 +184,9 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
                 "material_intake": svc.artifact_json(db(), case_id, "material_intake", permit_type, {}),
                 "ai_jobs": ai_jobs,
                 "active_job": active_job,
-                "package_analysis": package_analysis,
-                "can_start_analysis": material_package.get("status") == "ready" and not package_analysis and not active_job,
+                "package_analysis": svc.artifact_json(db(), case_id, "package_analysis_result", permit_type, {}),
                 "field_extraction_queue": svc.artifact_json(db(), case_id, "field_extraction_queue", permit_type, {"items": []}),
+                "can_start_analysis": material_package.get("status") == "ready" and active_job is None,
             }
         )
         return out
@@ -221,7 +215,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             job["id"],
             settings(),
         )
-        return RedirectResponse(url=f"/applicant/packages/{package_id}#ai-job-banner", status_code=303)
+        return RedirectResponse(url=f"/applicant/packages/{package_id}#analysis", status_code=303)
 
     @router.get("/projects/new", response_class=HTMLResponse)
     def project_new(request: Request):
@@ -361,16 +355,6 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         ctx = context(case_id, application_id)
         if step == 5:
             ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
-        if step in (3, 4):
-            pkg = svc.current_material_package(db(), case_id, application_id)
-            if pkg and pkg.get("package_id"):
-                url = f"/applicant/packages/{pkg['package_id']}"
-                if step == 4:
-                    url += "#findings"
-                else:
-                    url += "#extraction-section"
-                return RedirectResponse(url=url, status_code=303)
-            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2", status_code=303)
         return templates.TemplateResponse(request, "wizard.html", {**ctx, "step": step})
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/save")
@@ -473,14 +457,26 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/extractions/accept")
-    def accept_extraction(case_id: str, application_id: str, field_id: str = Form(...), edited_value: str = Form("")):
+    def accept_extraction(case_id: str, application_id: str, field_id: str = Form(...), edited_value: str = Form(""), redirect_to: str = Form("")):
         try:
             svc.accept_extraction_queue_item(db(), case_id, application_id, field_id, edited_value)
         except KeyError:
             raise HTTPException(status_code=404, detail="Extraction not found")
         except ValueError:
             raise HTTPException(status_code=400, detail="Extraction value is empty")
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#package-analysis-result", status_code=303)
+        default_url = f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#package-analysis-result"
+        wizard_prefix = f"/cases/{case_id}/lupademo/application/{application_id}/wizard/"
+        workbench_target = ""
+        if redirect_to.startswith("/applicant/packages/"):
+            package_id = redirect_to.removeprefix("/applicant/packages/").split("#", 1)[0]
+            try:
+                found = svc.find_material_package(db(), package_id)
+                if found["case_id"] == case_id and found["permit_type"] == svc.application_id_for(application_id):
+                    workbench_target = redirect_to
+            except KeyError:
+                pass
+        target = redirect_to if redirect_to.startswith(wizard_prefix) else workbench_target or default_url
+        return RedirectResponse(url=target, status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field")
     def suggest_field(case_id: str, application_id: str, field_id: str = Form(...)):

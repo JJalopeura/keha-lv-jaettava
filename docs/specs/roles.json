@@ -1,6 +1,6 @@
 {
   "roles": [
-    {"key": "applicant", "label": "Hakija", "default_route": "/lv", "capabilities": ["view_lv_project", "edit_application", "upload_attachments", "request_ai_suggestions", "run_precheck", "submit_application"]},
+    {"key": "applicant", "label": "Hakija", "default_route": "/lv", "capabilities": ["view_lv_project", "edit_application", "upload_attachments", "use_package_workbench", "request_ai_suggestions", "run_precheck", "submit_application"]},
     {"key": "caseworker", "label": "Viranomaiskäsittelijä", "default_route": "/cases/{case_id}/lupademo/authority/queue", "capabilities": ["view_submitted_applications", "run_authority_ai", "draft_additional_info_request", "update_status"]},
     {"key": "admin", "label": "Ylläpitäjä", "default_route": "/cases/{case_id}/lupademo/admin/criteria", "capabilities": ["manage_criteria", "manage_prompts", "view_ai_logs", "seed_demo"]},
     {"key": "integrator", "label": "Integraattori", "default_route": "/cases/{case_id}/lupademo/suggestion-service/api-demo", "capabilities": ["view_api_demo", "call_local_api", "view_api_contracts"]}

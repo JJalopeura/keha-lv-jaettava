@@ -1,11 +1,12 @@
 {
   "pages": [
-    {"slug": "lv", "title": "LV", "show_in_nav": true, "widgets": []},
-    {"slug": "building", "title": "Rakennuslupa", "show_in_nav": true, "widgets": []},
-    {"slug": "environmental", "title": "Ympäristölupa", "show_in_nav": true, "widgets": []},
-    {"slug": "event", "title": "Tapahtuma", "show_in_nav": true, "widgets": []},
-    {"slug": "authority", "title": "Viranomainen", "show_in_nav": true, "widgets": []},
-    {"slug": "suggestion_service", "title": "Ehdotuspalvelu", "show_in_nav": true, "widgets": []},
-    {"slug": "metrics", "title": "Mittarit", "show_in_nav": true, "widgets": []}
+    {"slug": "lv", "title": "LV", "route": "/lv", "show_in_nav": true, "widgets": []},
+    {"slug": "package_workbench", "title": "Aineistotyöpöytä", "route": "/applicant/packages/new", "show_in_nav": true, "widgets": ["material_ingest_progress", "package_findings", "field_extractions"]},
+    {"slug": "building", "title": "Rakennuslupa", "route": "/cases/{case_id}/lupademo/application/building_residential/wizard/1", "show_in_nav": false, "widgets": []},
+    {"slug": "environmental", "title": "Ympäristölupa", "route": "/cases/{case_id}/lupademo/application/environmental_industrial/wizard/1", "show_in_nav": false, "widgets": []},
+    {"slug": "event", "title": "Tapahtuma", "route": "/cases/{case_id}/lupademo/application/event_public/wizard/1", "show_in_nav": false, "widgets": []},
+    {"slug": "authority", "title": "Viranomainen", "route": "/cases/{case_id}/lupademo/authority/queue", "show_in_nav": true, "widgets": []},
+    {"slug": "suggestion_service", "title": "Ehdotuspalvelu", "route": "/cases/{case_id}/lupademo/suggestion-service", "show_in_nav": true, "widgets": []},
+    {"slug": "metrics", "title": "Mittarit", "route": "/cases/{case_id}/lupademo/metrics", "show_in_nav": true, "widgets": []}
   ]
 }

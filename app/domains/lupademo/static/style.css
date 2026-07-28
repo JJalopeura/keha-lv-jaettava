@@ -2734,6 +2734,18 @@ button:disabled {
   border-top: 1px solid #d8dee6;
 }
 
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 24px 0;
+  border-top: 1px solid #d8dee6;
+}
+
+.wizard-actions .button:last-child {
+  margin-left: auto;
+}
+
 .studio-main > .grid > div,
 .studio-main > .grid > aside {
   padding: 20px;
@@ -3559,11 +3571,16 @@ button:disabled {
   }
 
   .step-counters,
+  .wizard-actions,
   .queue-toolbar,
   .queue-summary {
     align-items: stretch;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .wizard-actions .button:last-child {
+    margin-left: 0;
   }
 
   .queue-toolbar label {
