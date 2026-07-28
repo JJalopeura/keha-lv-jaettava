@@ -41,8 +41,8 @@ from app.core.llm_factory import create_llm_client
 from app.core.llm_utils import call_llm_json, vector_store_ids
 
 from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _as_dict, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
-from .jobs import complete_ai_job, list_ai_jobs, start_ai_job
-from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
+from .jobs import complete_ai_job, find_ai_job, list_ai_jobs, start_ai_job
+from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
 CRITERIA_FILES = {
@@ -705,6 +705,39 @@ def execute_intake_analysis_job(db: Any, case_id: str, permit_type: str, job_id:
         )
 
 
+def execute_material_ingest_and_analysis_job(
+    db: Any,
+    settings: Any,
+    case_id: str,
+    permit_type: str,
+    package_id: str,
+    ingest_job_id: str,
+    display_name: str,
+    *,
+    zip_payload: tuple[str, bytes],
+) -> None:
+    execute_material_ingest_job(
+        db,
+        settings,
+        case_id,
+        permit_type,
+        package_id,
+        ingest_job_id,
+        display_name,
+        zip_payload=zip_payload,
+    )
+    if find_ai_job(db, ingest_job_id)["job"].get("status") != "completed":
+        return
+    analysis_job = start_intake_analysis_job(
+        db,
+        case_id,
+        permit_type,
+        settings=settings,
+        managed_background=True,
+    )
+    execute_intake_analysis_job(db, case_id, permit_type, analysis_job["id"], settings)
+
+
 def contextual_chat_context(db: Any, case_id: str, permit_type: str) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     app = ensure_application(db, case_id, permit_type)
@@ -932,23 +965,24 @@ def deterministic_suggestion(permit_type: str, field_id: str, form_data: dict[st
         "traffic_arrangements": "Liikennejärjestelyissä kuvataan suljettavat alueet, opastus, esteettömät kulkureitit, huoltoajo ja vaikutukset joukkoliikenteeseen.",
         "waste_management": "Jätehuolto järjestetään lajitteluastioilla, tyhjennyksillä ja tapahtuman jälkisiivouksella.",
     }
-    suggested_value = values.get(field_id) or f"Täydennä kenttä '{field_id}' hakemuksen, liitteiden ja kriteeristön perusteella. Tämä on tarkistettava ehdotus."
-    if attachments:
+    suggested_value = values.get(field_id, "")
+    if suggested_value and attachments:
         official = [a["filename"] for a in attachments if a.get("delivery_scope") == "official_submission"]
         if official:
             suggested_value += f" Ehdotus huomioi liitteet: {', '.join(official[:3])}."
+    is_supported = field_id in values
     suggestion = Suggestion(
         field_id=field_id,
         current_value=current_value,
         suggested_value=suggested_value,
         diff_summary="Korvaa tyhjän kentän ehdotuksella." if not current_value else "Täydentää nykyistä arvoa AI-ehdotuksella.",
-        rationale="Ehdotus perustuu lomakedataan, demokriteeristöön ja liitteiden luokitteluun.",
-        confidence=0.78,
-        evidence_refs=[EvidenceRef(source_id=criteria.get("criteria_set_id", "demo"), title=source_title, locator="demo criteria", quote="Tekoälyavusteinen ehdotus, tarkista ennen käyttöä.", confidence=0.72)],
+        rationale="Ehdotus perustuu lomakedataan, demokriteeristöön ja liitteiden luokitteluun." if is_supported else "Luotettavaa ehdotusta ei voitu muodostaa.",
+        confidence=0.78 if is_supported else 0.0,
+        evidence_refs=[EvidenceRef(source_id=criteria.get("criteria_set_id", "demo"), title=source_title, locator="demo criteria", quote="Tekoälyavusteinen ehdotus, tarkista ennen käyttöä.", confidence=0.72)] if is_supported else [],
         criteria_version=str(criteria.get("version") or "demo"),
         agent="field_suggestion_agent",
-        fallback_used=False,
-        warnings=[] if field_id in values else ["Lähdetuki on rajallinen, tarkista sisältö ennen hyväksyntää."],
+        fallback_used=True,
+        warnings=[] if is_supported else ["AI-ehdotusta ei voitu muodostaa luotettavasti. Täydennä kenttä lähdeaineiston perusteella."],
     )
     return suggestion
 
@@ -990,6 +1024,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
             vector_ids=azure_vector_store_ids(db, settings, case_id),
             fallback={"request_id": f"fallback_{uuid.uuid4().hex[:8]}", "criteria_version": criteria_version(app["permit_type"], db, case_id), "suggestions": [fallback_suggestion], "warnings": []},
             max_output_tokens=3000,
+            reasoning_effort="low",
         )
         if isinstance(response, FieldSuggestionResponse) and response.suggestions:
             suggestion = response.suggestions[0]
@@ -1011,6 +1046,47 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
     complete_ai_job(db, case_id, app["permit_type"], job["id"], summary=f"Ehdotus luotu kentälle {field_id}.", result_artifact=f"ai_suggestions:{app['permit_type']}")
     event(db, case_id, "ai.suggestion.created", "AI field suggestion created", {"application_id": app["permit_type"], "field_id": field_id, "suggestion_id": suggestion.id})
     return suggestion
+
+
+def start_form_suggestions_job(db: Any, case_id: str, permit_type: str, settings: Any = None) -> dict[str, Any]:
+    permit_type = application_id_for(permit_type)
+    fields = [field["id"] for field in load_form_schema(permit_type).get("fields", []) if field.get("ai_suggest")]
+    return start_ai_job(
+        db,
+        case_id,
+        permit_type,
+        "form_suggestions",
+        "Hakemusluonnoksen AI-ehdotukset",
+        fields,
+        eta_seconds=max(10, len(fields) * (8 if settings is not None and str(getattr(settings, "llm_provider", "mock")).lower() != "mock" else 1)),
+        managed_background=True,
+    )
+
+
+def execute_form_suggestions_job(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None) -> None:
+    permit_type = application_id_for(permit_type)
+    fields = [field["id"] for field in load_form_schema(permit_type).get("fields", []) if field.get("ai_suggest")]
+    try:
+        for field_id in fields:
+            create_field_suggestion(db, case_id, permit_type, field_id, settings=settings)
+        complete_ai_job(
+            db,
+            case_id,
+            permit_type,
+            job_id,
+            summary=f"Hakemusluonnos valmis: {len(fields)} kenttäehdotusta muodostettu.",
+            result_artifact=f"ai_suggestions:{permit_type}",
+        )
+    except Exception as exc:
+        complete_ai_job(
+            db,
+            case_id,
+            permit_type,
+            job_id,
+            summary=f"Hakemusluonnoksen ehdotukset epäonnistuivat: {str(exc)[:200]}",
+            result_artifact=f"ai_suggestions:{permit_type}",
+            failed=True,
+        )
 
 
 def accept_suggestion(db: Any, case_id: str, permit_type: str, suggestion_id: str, edited_value: Optional[str] = None) -> dict[str, Any]:
@@ -1315,6 +1391,8 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
         "missing_required_fields": missing_required,
         "missing_attachments": missing_attachments,
         "pending_suggestion_count": pending_suggestion_count,
+        "pending_extraction_count": len(pending_extractions),
+        "pending_field_suggestion_count": len(pending_suggestions),
         "blocking_count": blocking_count,
         "can_submit": gate["can_submit"],
         "gate": gate,

@@ -40,7 +40,7 @@ from jinja2 import Template
 from app.core.llm_factory import create_llm_client
 from app.core.llm_utils import call_llm_json, vector_store_ids
 
-from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
+from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
 from .jobs import complete_ai_job, start_ai_job
 
 
@@ -733,7 +733,7 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
                     continue
                 clean_suggestion = dict(suggestion)
                 clean_suggestion["evidence_refs"] = _normalize_evidence_refs(clean_suggestion.get("evidence_refs", []), limit=6)
-                clean_suggestions.append(clean_suggestion)
+                clean_suggestions.append(Suggestion(**clean_suggestion))
         return {
             "request_id": str(normalized.get("request_id") or ""),
             "criteria_version": str(normalized.get("criteria_version") or ""),

@@ -21,7 +21,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import app.domains.lupademo.security as security  # noqa: E402
 import app.domains.lupademo.services as svc  # noqa: E402
+from app.core.azure_client import AzureOpenAIClient  # noqa: E402
 from app.core.db import DB  # noqa: E402
+from app.domains.lupademo.services.application import deterministic_suggestion  # noqa: E402
 from app.main import app  # noqa: E402
 
 PERMIT = "environmental_industrial"
@@ -52,6 +54,36 @@ def setUpModule() -> None:
 class AgentPipeline(unittest.TestCase):
     """Every run_json_agent call used to raise; artifacts must be real dicts."""
 
+    def test_field_suggestion_agent_loads_its_strict_prompt(self) -> None:
+        prompt = svc.render_agent_prompt(
+            "field_suggestion_agent",
+            {
+                "request_id": "req_test",
+                "criteria_version": "v1",
+                "field_id": "activity_description",
+                "field_definition": {"id": "activity_description"},
+                "form_data": {},
+                "common_data": {},
+                "criteria": {},
+                "retrieved_context": {},
+            },
+        )
+
+        self.assertIn('"suggestions"', prompt)
+        self.assertIn('"field_id": "activity_description"', prompt)
+
+    def test_field_suggestion_agent_normalizes_suggestions(self) -> None:
+        payload = svc.normalize_agent_payload(
+            svc.FieldSuggestionResponse,
+            {
+                "request_id": "req_test",
+                "criteria_version": "v1",
+                "suggestions": [{"field_id": "activity_description", "suggested_value": "Test value"}],
+            },
+        )
+
+        self.assertIsInstance(payload["suggestions"][0], svc.Suggestion)
+
     def test_check_report_is_a_populated_dict(self) -> None:
         report = svc.artifact_json(db, case, "check_report", PERMIT, {})
         self.assertIsInstance(report, dict)
@@ -76,6 +108,32 @@ class AgentPipeline(unittest.TestCase):
         self.assertIsInstance(summary, dict)
         self.assertTrue(summary["summary_md"])
 
+    def test_unsupported_fallback_is_not_presented_as_ai_output(self) -> None:
+        suggestion = deterministic_suggestion(PERMIT, "process_description", {}, [])
+        self.assertTrue(suggestion.fallback_used)
+        self.assertEqual(suggestion.suggested_value, "")
+        self.assertTrue(suggestion.warnings)
+
+
+class AzureFileUpload(unittest.TestCase):
+    def test_upload_uses_direct_files_endpoint(self) -> None:
+        client = AzureOpenAIClient("https://example.services.ai.azure.com", "preview", "key", "model")
+        calls = []
+
+        def request_json(method: str, path: str, **kwargs: object) -> dict:
+            calls.append((method, path, kwargs))
+            return {"id": "file_test"}
+
+        client.request_json = request_json  # type: ignore[method-assign]
+        with tempfile.NamedTemporaryFile(suffix=".txt") as source:
+            source.write(b"permit material")
+            source.flush()
+            upload_id, file_id = client.upload_file_from_path(source.name)
+
+        self.assertEqual((upload_id, file_id), ("file_test", "file_test"))
+        self.assertEqual(calls[0][0:2], ("POST", "/openai/v1/files"))
+        self.assertEqual(calls[0][2]["form_data"], {"purpose": "assistants"})
+
 
 class PublicApi(unittest.TestCase):
     def _check(self, **overrides: object) -> dict:
@@ -95,7 +153,7 @@ class PublicApi(unittest.TestCase):
         self.assertTrue(body["issues"])
         self.assertIn("model_audit", body)
 
-    def test_field_suggestion_carries_evidence(self) -> None:
+    def test_field_suggestion_has_evidence_or_is_an_honest_fallback(self) -> None:
         body = client.post(
             "/api/v1/suggestions/field",
             json={
@@ -108,7 +166,12 @@ class PublicApi(unittest.TestCase):
             headers=KEY,
         ).json()
         self.assertTrue(body["suggestions"])
-        self.assertTrue(body["suggestions"][0]["evidence_refs"])
+        suggestion = body["suggestions"][0]
+        if suggestion["suggested_value"]:
+            self.assertTrue(suggestion["evidence_refs"])
+        else:
+            self.assertTrue(suggestion["fallback_used"])
+            self.assertTrue(suggestion["warnings"])
 
     def test_route_fills_in_schema_the_caller_omitted(self) -> None:
         """The route resolved request_id and form_schema then threw them away."""
@@ -186,13 +249,84 @@ class Uploads(unittest.TestCase):
         self.assertEqual(self._upload("../../etc/passwd.txt"), 303)
         self.assertFalse(os.path.exists("/etc/passwd.txt"))
 
+    def test_wizard_zip_upload_starts_background_ingest_job(self) -> None:
+        archive = io.BytesIO()
+        import zipfile
+
+        with zipfile.ZipFile(archive, "w") as package:
+            package.writestr("hakemus.txt", SAMPLE)
+        response = client.post(
+            f"{base}/materials/upload-zip",
+            files={"zip_file": ("aineisto.zip", archive.getvalue(), "application/zip")},
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], f"{base}/wizard/2#ai-jobs")
+        job = next(job for job in svc.list_ai_jobs(db, case, PERMIT) if job["kind"] == "material_ingest")
+        self.assertEqual(job["kind"], "material_ingest")
+
+    def test_successful_zip_ingest_starts_visible_analysis_job(self) -> None:
+        import app.domains.lupademo.services.application as application
+
+        calls = []
+        originals = (
+            application.execute_material_ingest_job,
+            application.find_ai_job,
+            application.start_intake_analysis_job,
+            application.execute_intake_analysis_job,
+        )
+        application.execute_material_ingest_job = lambda *args, **kwargs: calls.append("ingest")
+        application.find_ai_job = lambda *_args: {"job": {"status": "completed"}}
+        application.start_intake_analysis_job = lambda *_args, **_kwargs: {"id": "analysis_test"}
+        application.execute_intake_analysis_job = lambda *_args, **_kwargs: calls.append("analysis")
+        try:
+            svc.execute_material_ingest_and_analysis_job(
+                db,
+                object(),
+                case,
+                PERMIT,
+                "package_test",
+                "ingest_test",
+                "aineisto.zip",
+                zip_payload=("aineisto.zip", b"zip"),
+            )
+        finally:
+            (
+                application.execute_material_ingest_job,
+                application.find_ai_job,
+                application.start_intake_analysis_job,
+                application.execute_intake_analysis_job,
+            ) = originals
+
+        self.assertEqual(calls, ["ingest", "analysis"])
+
 
 class Pages(unittest.TestCase):
+    def test_form_suggestions_start_visible_background_job(self) -> None:
+        original_executor = svc.execute_form_suggestions_job
+        svc.execute_form_suggestions_job = lambda *args, **kwargs: None
+        try:
+            response = client.post(f"{base}/ai/suggest-form")
+        finally:
+            svc.execute_form_suggestions_job = original_executor
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], f"{base}/wizard/3#ai-jobs")
+        job = next(job for job in svc.list_ai_jobs(db, case, PERMIT) if job["kind"] == "form_suggestions")
+        self.assertEqual(job["kind"], "form_suggestions")
+        self.assertEqual(job["status"], "running")
+        self.assertTrue(job["managed_background"])
+
     def test_wizard_reviews_extraction_suggestions_without_redirecting(self) -> None:
         queue = svc.artifact_json(db, case, "field_extraction_queue", PERMIT, {"items": []})["items"]
         pending_count = sum(item.get("status") == "pending" for item in queue)
         self.assertGreater(pending_count, 0)
-        self.assertEqual(svc.wizard_step_status(db, case, PERMIT)["pending_suggestion_count"], pending_count)
+        wizard = svc.wizard_step_status(db, case, PERMIT)
+        self.assertEqual(wizard["pending_extraction_count"], pending_count)
+        self.assertEqual(
+            wizard["pending_suggestion_count"],
+            wizard["pending_extraction_count"] + wizard["pending_field_suggestion_count"],
+        )
 
         suggestions_page = client.get(f"{base}/wizard/3")
         self.assertEqual(suggestions_page.status_code, 200)
@@ -258,6 +392,52 @@ class Pages(unittest.TestCase):
                 response = client.get(path)
                 self.assertIn(response.status_code, (200, 303))
                 self.assertNotIn("Traceback", response.text)
+
+    def test_demo_lab_links_to_standalone_tools(self) -> None:
+        response = client.get("/demo-lab")
+        self.assertEqual(response.status_code, 200)
+        paths = [
+            f"/cases/{case}/lupademo/metrics",
+            f"/cases/{case}/lupademo/admin/criteria",
+            f"/cases/{case}/lupademo/suggestion-service",
+            f"/cases/{case}/lupademo/admin/benchmark-lab",
+            f"/cases/{case}/lupademo/admin/audit-trail",
+            f"/cases/{case}/lupademo/admin/production-hardening",
+            "/demo/scenarios",
+            "/demo-lab/presenter",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn(f'href="{path}"', response.text)
+                self.assertEqual(client.get(path).status_code, 200)
+
+    def test_navigation_is_scoped_to_active_workspace(self) -> None:
+        applicant = client.get(f"{base}/wizard/1").text
+        authority = client.get(f"/cases/{case}/lupademo/authority/queue").text
+        demo_lab = client.get("/demo-lab").text
+
+        self.assertIn(">Hanke</a>", applicant)
+        self.assertIn(">Hakemus</a>", applicant)
+        self.assertNotIn(">Viranomainen</a>", applicant.split("</header>", 1)[0])
+        self.assertNotIn(">Demo Lab</a>", applicant.split("</header>", 1)[0])
+
+        authority_header = authority.split("</header>", 1)[0]
+        self.assertIn(">Työjono</a>", authority_header)
+        self.assertNotIn(">Hanke</a>", authority_header)
+        self.assertNotIn(">Hakemus</a>", authority_header)
+
+        demo_header = demo_lab.split("</header>", 1)[0]
+        self.assertIn(">Demo Lab</a>", demo_header)
+        self.assertIn(">Rajapinnat</a>", demo_header)
+        self.assertNotIn(">Hanke</a>", demo_header)
+        self.assertNotIn(">Hakemus</a>", demo_header)
+
+        for page in (applicant, authority, demo_lab):
+            footer = page.split('<footer class="service-footer">', 1)[1]
+            self.assertIn('href="/">Hakija</a>', footer)
+            self.assertIn(">Viranomaisen työtila</a>", footer)
+            self.assertIn(">Demo Lab</a>", footer)
+            self.assertEqual(page.count('<footer class="service-footer">'), 1)
 
 
 if __name__ == "__main__":

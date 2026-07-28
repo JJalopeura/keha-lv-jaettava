@@ -9,6 +9,8 @@
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
 {% set common_labels = {"applicant_name": "Hakija", "business_id": "Y-tunnus", "contact_person": "Yhteyshenkilö", "phone": "Puhelin", "email": "Sähköposti", "municipality": "Kunta", "address": "Osoite", "property_id": "Kiinteistötunnus", "project_name": "Hankkeen nimi"} %}
+{% set pending_extraction_count = wizard.get('pending_extraction_count', field_extraction_queue.get('items', [])|selectattr('status', 'equalto', 'pending')|list|length) %}
+{% set pending_field_suggestion_count = wizard.get('pending_field_suggestion_count', suggestions|selectattr('status', 'equalto', 'pending')|list|length) %}
 <header class="application-header">
   <div>
     <p class="section-kicker">Hakemusluonnos</p>
@@ -76,6 +78,18 @@
 
 <div class="studio-layout">
 <div class="studio-main">
+
+{% if ai_jobs and ai_jobs[0].status != 'completed' %}
+{% set banner_job = ai_jobs[0] %}
+<section class="wizard-job-banner" aria-live="polite">
+  <div class="assistant-job-title">
+    <span class="ai-orbit small"><i></i></span>
+    <div><strong>{{ banner_job.summary or banner_job.title }}</strong><small>{{ banner_job.progress_pct }} % · noin {{ banner_job.eta_seconds }} s</small></div>
+  </div>
+  <div class="progress-track"><span style="width: {{ banner_job.progress_pct }}%"></span></div>
+  <a href="#ai-jobs">Näytä eteneminen</a>
+</section>
+{% endif %}
 
 {% if step == 1 %}
 <section class="grid two">
@@ -321,28 +335,35 @@
     </div>
     {% endif %}
     {% for scope, title in [("official_submission", "Hakemuksen liitteet - toimitetaan viranomaiselle"), ("ai_context_only", "Tausta-aineistot - vain AI:n käytössä")] %}
-    <h3>{{ title }}</h3>
+    <h3 class="document-group-title">{{ title }}</h3>
+    <div class="managed-document-list">
     {% for att in attachments if att.delivery_scope == scope %}
-    <div class="attachment-card">
-      <div class="attachment-title">{{ att.filename }}</div>
-      <div class="attachment-meta">{{ att.size_bytes }} B · {{ att.primary_type }} · {{ att.extraction_status }} · {{ att.confidence }}</div>
-      {% if att.text_excerpt %}<small>{{ att.text_excerpt[:260] }}</small>{% endif %}
-      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ att.id }}/metadata" class="form-grid compact-grid">
-        <input name="primary_type" value="{{ att.primary_type }}">
-        <select name="delivery_scope">
-          {% for option in ["official_submission", "ai_context_only"] %}
-          <option value="{{ option }}" {% if option == att.delivery_scope %}selected{% endif %}>{{ option }}</option>
-          {% endfor %}
-        </select>
-        <button class="secondary">Korjaa</button>
-      </form>
-      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ att.id }}/delete">
-        <button class="secondary">Poista</button>
-      </form>
-    </div>
+    <article class="managed-document-row">
+      <div class="file-icon" aria-hidden="true">DOC</div>
+      <div class="managed-document-copy">
+        <strong>{{ att.filename }}</strong>
+        <small>{{ att.size_bytes }} B · {{ att.primary_type }} · {{ att.extraction_status }} · luottamus {{ att.confidence }}</small>
+        {% if att.text_excerpt %}<p>{{ att.text_excerpt[:260] }}</p>{% endif %}
+      </div>
+      <div class="managed-document-actions">
+        <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ att.id }}/metadata">
+          <input name="primary_type" value="{{ att.primary_type }}" aria-label="Dokumentin tyyppi">
+          <select name="delivery_scope" aria-label="Dokumentin käyttötarkoitus">
+            {% for option, label in [("official_submission", "Viranomaiselle"), ("ai_context_only", "Vain AI:lle")] %}
+            <option value="{{ option }}" {% if option == att.delivery_scope %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <button class="secondary compact">Tallenna</button>
+        </form>
+        <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ att.id }}/delete">
+          <button class="secondary compact">Poista</button>
+        </form>
+      </div>
+    </article>
     {% else %}
     <p class="muted">Ei dokumentteja.</p>
     {% endfor %}
+    </div>
     {% endfor %}
     {% set hidden_authority_count = attachments|selectattr("delivery_scope", "equalto", "internal_authority_only")|list|length %}
     {% if hidden_authority_count %}
@@ -359,7 +380,7 @@
       <p class="section-kicker">Aineistosta poimitut tiedot</p>
       <h2>Tarkista AI-ehdotukset</h2>
     </div>
-    <span>{{ wizard.pending_suggestion_count }} odottaa käsittelyä</span>
+    <span>{{ pending_extraction_count }} odottaa käsittelyä</span>
   </div>
   <p class="section-description">Vertaa ehdotusta lähteeseen, muokkaa tarvittaessa ja hyväksy tieto lomakkeelle.</p>
   <div class="extraction-list">
@@ -378,35 +399,6 @@
     </article>
     {% else %}
     <div class="empty-success"><span>✓</span><div><strong>Kaikki aineistosta poimitut ehdotukset on käsitelty</strong><p>Voit pyytää alta uusia kenttäkohtaisia ehdotuksia.</p></div></div>
-    {% endfor %}
-  </div>
-</section>
-<section class="grid two" id="contextual-chat">
-  <div>
-    <h2>Hakemuksen chat</h2>
-    <p class="muted">Hakemusapuri käyttää tämän hakemuksen tietoja, sallittuja liitteitä ja voimassa olevia ohjeita. Viranomaisaineisto ei kuulu hakijan keskustelukontekstiin.</p>
-    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat">
-      <textarea name="message" rows="4" placeholder="Kysy hakemuksesta tai pyydä parannusehdotusta."></textarea>
-      <button>Kysy chatilta</button>
-    </form>
-  </div>
-  <div>
-    <h2>Viimeisimmät vastaukset</h2>
-    {% for turn in contextual_chat.messages[-3:]|reverse %}
-    <div class="suggestion">
-      <strong>{{ turn.message }}</strong>
-      <p>{{ turn.answer }}</p>
-      <small>Käytetyt liitteet: {{ turn.used_attachment_filenames|join(", ") if turn.used_attachment_filenames else "ei liitekontekstia" }} · benchmark poissuljettu {{ turn.excluded_attachment_count }}</small>
-      {% for change in turn.proposed_changes %}
-      <div class="issue minor">
-        <strong>{{ change.label }}</strong>
-        <p>{{ change.suggested_value }}</p>
-        <small>Hyväksyttävä ehdotus: {{ change.suggestion_id }}</small>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <p class="muted">Ei keskustelua vielä.</p>
     {% endfor %}
   </div>
 </section>
@@ -437,9 +429,15 @@
     {% endfor %}
   </div>
 </section>
-<section class="grid two-wide" id="suggestions">
-  <div>
+<section class="suggestion-workspace" id="suggestions">
+  <div class="section-heading-line">
+    <div>
+      <p class="section-kicker">Kenttäkohtaiset luonnokset</p>
     <h2>AI-ehdotukset</h2>
+    </div>
+    <span>{{ pending_field_suggestion_count }} odottaa käsittelyä</span>
+  </div>
+  <div class="suggestion-toolbar">
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-field" class="inline">
       <select name="field_id">
         {% for field in schema.get('fields', []) if field.get('ai_suggest') %}
@@ -448,32 +446,30 @@
       </select>
       <button class="{% if present %}next-action{% endif %}">Pyydä ehdotus</button>
     </form>
-    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-form">
+    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-form" class="inline">
       <button>Täytä luonnos liitteistä</button>
     </form>
-    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/accept-selected">
-      <table>
-        <tr><th></th><th>Kenttä</th><th>Nykyinen arvo</th><th>AI-ehdotus</th><th>Status</th></tr>
-        {% for suggestion in suggestions %}
-        <tr id="suggestion-{{ suggestion.id }}">
-          <td>{% if suggestion.status == "pending" %}<input type="checkbox" name="suggestion_ids" value="{{ suggestion.id }}">{% endif %}</td>
-          <td>{{ suggestion.field_id }}</td>
-          <td>{{ suggestion.current_value or application.form_data.get(suggestion.field_id, "") or "-" }}</td>
-          <td>{{ suggestion.suggested_value[:180] }}</td>
-          <td>{{ suggestion.status }}</td>
-        </tr>
-        {% endfor %}
-      </table>
+    <form id="accept-selected-suggestions" method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/accept-selected">
       <button class="secondary">Hyväksy valitut</button>
     </form>
   </div>
-  <aside>
-    <h2>Ehdotusten lähteet</h2>
+  <div class="suggestion-review-list">
     {% for suggestion in suggestions %}
-    <div class="suggestion" id="drawer-{{ suggestion.id }}">
-      <strong>{{ suggestion.field_id }}</strong>
-      <p>{{ suggestion.diff_summary }}</p>
-      <p>Luottamus {{ suggestion.confidence }} · {{ suggestion.criteria_version }} · {{ suggestion.agent }}{% if suggestion.fallback_used %} · fallback{% endif %}</p>
+    <article class="suggestion-review-row" id="suggestion-{{ suggestion.id }}">
+      <header>
+        {% if suggestion.status == "pending" and suggestion.suggested_value %}<input type="checkbox" name="suggestion_ids" value="{{ suggestion.id }}" form="accept-selected-suggestions" aria-label="Valitse {{ field_labels.get(suggestion.field_id, suggestion.field_id) }}">{% endif %}
+        <div>
+          <strong>{{ field_labels.get(suggestion.field_id, suggestion.field_id|replace('_', ' ')|capitalize) }}</strong>
+          <small>Luottamus {{ suggestion.confidence }} · {{ suggestion.criteria_version }} · {{ suggestion.agent }}{% if suggestion.fallback_used %} · fallback{% endif %}</small>
+        </div>
+        <span class="status {% if suggestion.status == 'accepted' %}good{% elif suggestion.status == 'rejected' %}warn{% endif %}">{{ suggestion.status }}</span>
+      </header>
+      <div class="suggestion-values">
+        <div><span>Nykyinen arvo</span><p>{{ suggestion.current_value or application.form_data.get(suggestion.field_id, "") or "-" }}</p></div>
+        <div><span>AI-ehdotus</span><p>{{ suggestion.suggested_value or "Ehdotusta ei voitu muodostaa luotettavasti." }}</p></div>
+      </div>
+      {% if suggestion.diff_summary %}<p class="suggestion-summary">{{ suggestion.diff_summary }}</p>{% endif %}
+      {% for warning in suggestion.warnings %}<p class="muted">{{ warning }}</p>{% endfor %}
       <details>
         <summary>Mihin tämä perustuu?</summary>
         {% for ref in suggestion.evidence_refs %}
@@ -484,20 +480,22 @@
         </div>
         {% endfor %}
       </details>
-      {% if suggestion.status == "pending" %}
-      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/accept">
-        <textarea name="edited_value">{{ suggestion.suggested_value }}</textarea>
+      {% if suggestion.status == "pending" and suggestion.suggested_value %}
+      <div class="suggestion-review-actions">
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/accept" class="suggestion-edit-form">
+        <textarea name="edited_value" rows="3" aria-label="Muokattu ehdotus kentälle {{ field_labels.get(suggestion.field_id, suggestion.field_id) }}">{{ suggestion.suggested_value }}</textarea>
         <button>Hyväksy muokattuna</button>
       </form>
       <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/reject">
         <button class="secondary">Hylkää</button>
       </form>
+      </div>
       {% endif %}
-    </div>
+    </article>
     {% else %}
     <p class="muted">Ei ehdotuksia vielä.</p>
     {% endfor %}
-  </aside>
+  </div>
 </section>
 {% endif %}
 

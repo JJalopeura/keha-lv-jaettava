@@ -151,7 +151,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
         job = svc.start_material_ingest_job(db(), case_id, application_id, document_count, azure_enabled=azure_enabled)
         background_tasks.add_task(
-            svc.execute_material_ingest_job,
+            svc.execute_material_ingest_and_analysis_job,
             db(),
             settings(),
             case_id,
@@ -383,18 +383,40 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/upload-zip")
-    async def upload_material_zip(case_id: str, application_id: str, zip_file: UploadFile = File(...)):
+    async def upload_material_zip(
+        case_id: str,
+        application_id: str,
+        background_tasks: BackgroundTasks,
+        zip_file: UploadFile = File(...),
+    ):
         filename = zip_file.filename or "aineisto.zip"
         if not filename.lower().endswith(".zip"):
             raise HTTPException(status_code=422, detail="Only .zip material packages are supported")
         content = await zip_file.read()
         try:
-            svc.ingest_application_zip(db(), settings(), case_id, application_id, filename, content)
+            svc.validate_upload_bytes(filename, content, allow_zip=True)
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                svc.validate_zip_archive(archive)
+                document_count = sum(1 for item in archive.infolist() if not item.is_dir())
         except zipfile.BadZipFile:
             raise HTTPException(status_code=422, detail="Invalid zip file")
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#materials", status_code=303)
+        package = svc.create_pending_material_package(db(), case_id, application_id, filename, document_count)
+        azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
+        job = svc.start_material_ingest_job(db(), case_id, application_id, document_count, azure_enabled=azure_enabled)
+        background_tasks.add_task(
+            svc.execute_material_ingest_and_analysis_job,
+            db(),
+            settings(),
+            case_id,
+            application_id,
+            package["package_id"],
+            job["id"],
+            filename,
+            zip_payload=(filename, content),
+        )
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/upload-files")
     async def upload_material_files(
@@ -484,12 +506,10 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestion-{suggestion.id}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-form")
-    def suggest_form(case_id: str, application_id: str):
-        schema = svc.load_form_schema(svc.application_id_for(application_id))
-        for field in schema.get("fields", []):
-            if field.get("ai_suggest"):
-                svc.create_field_suggestion(db(), case_id, application_id, field["id"], settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestions", status_code=303)
+    def suggest_form(background_tasks: BackgroundTasks, case_id: str, application_id: str):
+        job = svc.start_form_suggestions_job(db(), case_id, application_id, settings=settings())
+        background_tasks.add_task(svc.execute_form_suggestions_job, db(), case_id, application_id, job["id"], settings())
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#ai-jobs", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/accept")
     def accept_suggestion(case_id: str, application_id: str, suggestion_id: str, edited_value: str = Form("")):

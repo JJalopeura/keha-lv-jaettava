@@ -73,23 +73,43 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
             raise HTTPException(status_code=404, detail="job_not_found")
         return found
 
+    @router.post("/api/ai/jobs")
+    async def api_ai_jobs(request: Request):
+        payload = await request.json()
+        case_id = str(payload.get("project_id") or payload.get("case_id") or _demo_case_for_api())
+        application_id = svc.application_id_for(str(payload.get("application_id") or payload.get("permit_type") or "building_residential"))
+        job = svc.start_ai_job(
+            db(),
+            case_id,
+            application_id,
+            str(payload.get("job_type") or "intake_analysis"),
+            str(payload.get("title") or "AI job"),
+            ["request_router"],
+            eta_seconds=10,
+        )
+        return svc.ai_job_status_payload(job, case_id=case_id, application_id=application_id)
+
+    @router.get("/api/ai/jobs/{job_id}")
     @router.get("/api/v1/jobs/{job_id}")
     def api_v1_job_status(job_id: str):
         found = _find_or_404(job_id)
         return svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
 
+    @router.get("/api/ai/jobs/{job_id}/stream")
     @router.get("/api/v1/jobs/{job_id}/stream")
     def api_v1_job_stream(job_id: str):
         found = _find_or_404(job_id)
         payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
         return Response("event: status\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n", media_type="text/event-stream")
 
+    @router.get("/api/ai/jobs/{job_id}/events")
     @router.get("/api/v1/jobs/{job_id}/events")
     def api_v1_job_events(job_id: str):
         found = _find_or_404(job_id)
         payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
         return {"job_id": job_id, "status": payload["status"], "events": payload["events"]}
 
+    @router.get("/api/ai/jobs/{job_id}/result")
     @router.get("/api/v1/jobs/{job_id}/result")
     def api_v1_job_result(job_id: str):
         found = _find_or_404(job_id)
@@ -98,6 +118,7 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
             raise HTTPException(status_code=404, detail="result_not_ready")
         return result
 
+    @router.post("/api/ai/jobs/{job_id}/cancel")
     @router.post("/api/v1/jobs/{job_id}/cancel")
     def api_v1_job_cancel(job_id: str):
         try:
@@ -107,6 +128,7 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
             raise HTTPException(status_code=404, detail="job_not_found")
         return svc.ai_job_status_payload(job, case_id=found["case_id"], application_id=found["application_id"])
 
+    @router.post("/api/ai/jobs/{job_id}/retry")
     @router.post("/api/v1/jobs/{job_id}/retry")
     def api_v1_job_retry(job_id: str):
         try:

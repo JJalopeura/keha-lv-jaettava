@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Demo Lab{% endblock %}
+{% block content %}
+<section class="band service-shell metrics-shell">
+  <p class="eyebrow">Demo Lab</p>
+  <h1>Demo- ja ylläpitotyökalut</h1>
+  <p class="muted">Mittarit, kriteeristöt, integraatiot ja tekninen näyttö avoimelle hankkeelle.</p>
+</section>
+<section class="grid three" aria-label="Demo Labin työkalut">
+  <article>
+    <h2>Vaikuttavuus ja tilannekuva</h2>
+    <p>Koontimittarit, AI-työn vaikutus ja toteutusvalmiuden auditointi.</p>
+    <a class="button" href="/cases/{{ case_id }}/lupademo/metrics">Avaa mittarit</a>
+  </article>
+  <article>
+    <h2>Kriteeristöt</h2>
+    <p>Sääntöjen versiointi, lähdeaineistojen ingest ja testipyynnöt.</p>
+    <a class="button" href="/cases/{{ case_id }}/lupademo/admin/criteria">Avaa kriteeristöt</a>
+  </article>
+  <article>
+    <h2>AI-ehdotuspalvelu</h2>
+    <p>API-integraation ja UI-only-käyttötavan yhteinen aloitusnäkymä.</p>
+    <a class="button" href="/cases/{{ case_id }}/lupademo/suggestion-service">Avaa ehdotuspalvelu</a>
+  </article>
+  <article>
+    <h2>Benchmark lab</h2>
+    <p>Viranomaisaineistoon perustuvat agenttien vertailukohteet.</p>
+    <a class="button" href="/cases/{{ case_id }}/lupademo/admin/benchmark-lab">Avaa benchmarkit</a>
+  </article>
+  <article>
+    <h2>Audit trail</h2>
+    <p>Hankkeen tapahtumaloki ja AI-ajojen jäljitettävyys.</p>
+    <a class="button" href="/cases/{{ case_id }}/lupademo/admin/audit-trail">Avaa audit trail</a>
+  </article>
+  <article>
+    <h2>Tuotantokovennus</h2>
+    <p>Tuotantovalmiuden vaatimukset, tila ja avoimet toimet.</p>
+    <a class="button" href="/cases/{{ case_id }}/lupademo/admin/production-hardening">Avaa kovennus</a>
+  </article>
+</section>
+<section class="grid two" aria-label="Demon esitystyökalut">
+  <article>
+    <h2>Demo-skenaariot</h2>
+    <p>Valitse valmis hakemuspolku demon lähtötilanteeksi.</p>
+    <a class="button secondary" href="/demo/scenarios">Avaa skenaariot</a>
+  </article>
+  <article>
+    <h2>Presenter mode</h2>
+    <p>Esityspolut demon keskeisiin käyttötilanteisiin.</p>
+    <a class="button secondary" href="/demo-lab/presenter">Avaa presenter</a>
+  </article>
+</section>
+{% endblock %}

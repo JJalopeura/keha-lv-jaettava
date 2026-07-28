@@ -1004,6 +1004,10 @@ button.secondary:hover {
   margin: 8px 0;
 }
 
+.suggestion small {
+  overflow-wrap: anywhere;
+}
+
 .data-list {
   display: grid;
   gap: 0;
@@ -2595,6 +2599,178 @@ button:disabled {
   font-size: 10px;
 }
 
+.document-group-title {
+  margin-top: 24px;
+}
+
+.managed-document-list,
+.suggestion-review-list {
+  display: grid;
+  border-top: 1px solid #d8dee6;
+}
+
+.managed-document-row {
+  display: grid;
+  grid-template-columns: 40px minmax(180px, 1fr) minmax(300px, auto);
+  gap: 12px;
+  align-items: start;
+  padding: 14px 2px;
+  border-bottom: 1px solid #e4e7ec;
+}
+
+.managed-document-copy strong,
+.managed-document-copy small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.managed-document-copy,
+.managed-document-actions,
+.managed-document-actions form {
+  min-width: 0;
+}
+
+.managed-document-copy small {
+  margin-top: 3px;
+  color: #667085;
+  font-size: 11px;
+}
+
+.managed-document-copy p {
+  margin: 7px 0 0;
+  color: #475467;
+  font-size: 12px;
+}
+
+.managed-document-actions,
+.managed-document-actions form,
+.suggestion-toolbar,
+.suggestion-review-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.managed-document-actions input,
+.managed-document-actions select {
+  min-width: 0;
+  width: 130px;
+}
+
+.suggestion-workspace {
+  padding: 24px 0;
+}
+
+.wizard-job-banner {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.7fr) auto;
+  gap: 18px;
+  align-items: center;
+  margin-top: 22px;
+  padding: 14px 18px;
+  color: #fff;
+  background: #173d3a;
+  border-radius: 6px;
+}
+
+.wizard-job-banner a {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.wizard-job-banner .assistant-job-title small {
+  color: #cfdfdc;
+}
+
+.wizard-job-banner .progress-track {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.wizard-job-banner .progress-track > span {
+  background: #72ccb6;
+}
+
+.suggestion-toolbar {
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.suggestion-toolbar form {
+  margin: 0;
+}
+
+.suggestion-review-row {
+  min-width: 0;
+  padding: 18px 2px;
+  border-bottom: 1px solid #e4e7ec;
+}
+
+.suggestion-review-row > header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: start;
+}
+
+.suggestion-review-row > header > div {
+  min-width: 0;
+}
+
+.suggestion-review-row header strong,
+.suggestion-review-row header small,
+.suggestion-values span {
+  display: block;
+}
+
+.suggestion-review-row header small,
+.suggestion-values span {
+  margin-top: 3px;
+  color: #667085;
+  font-size: 11px;
+}
+
+.suggestion-review-row header small {
+  overflow-wrap: anywhere;
+}
+
+.suggestion-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.suggestion-values > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: #f7f9fa;
+  border-radius: 4px;
+}
+
+.suggestion-values p,
+.suggestion-summary {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-review-actions {
+  align-items: end;
+  margin-top: 12px;
+}
+
+.suggestion-edit-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  flex: 1;
+  margin: 0;
+}
+
+.suggestion-review-actions form:last-child {
+  margin: 0;
+}
+
 .file-icon {
   display: grid;
   place-items: center;
@@ -3552,9 +3728,32 @@ button:disabled {
   .readiness-summary,
   .task-row,
   .extraction-row,
+  .managed-document-row,
+  .suggestion-values,
+  .wizard-job-banner,
   .brief-heading,
   .observation-review {
     grid-template-columns: 1fr;
+  }
+
+  .managed-document-actions,
+  .managed-document-actions form,
+  .suggestion-toolbar,
+  .suggestion-review-actions,
+  .suggestion-edit-form {
+    align-items: stretch;
+    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .managed-document-actions input,
+  .managed-document-actions select,
+  .managed-document-actions button,
+  .suggestion-toolbar form,
+  .suggestion-toolbar button,
+  .suggestion-review-actions form,
+  .suggestion-review-actions button {
+    width: 100%;
   }
 
   .agent-steps {

@@ -361,7 +361,8 @@ def load_form_schema(permit_type: str) -> dict[str, Any]:
 
 
 def load_prompt(agent: str) -> str:
-    filename = f"{agent}.prompt.md"
+    prompt_agent = {"field_suggestion_agent": "field_suggestion"}.get(agent, agent)
+    filename = f"{prompt_agent}.prompt.md"
     if not filename:
         return ""
     path = SPEC_ROOT / "prompts" / filename

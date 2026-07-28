@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="/static/style.css?v=20260710-ux6a">
 </head>
 <body class="service-light">
+  {% set current_path = request.url.path %}
+  {% set authority_workspace = '/authority/' in current_path %}
+  {% set demo_workspace = current_path.startswith('/demo-lab') or current_path.startswith('/demo/') or '/admin/' in current_path or '/metrics' in current_path or '/suggestion-service' in current_path or current_path.startswith('/integrations/') %}
   <a class="skip-link" href="#main-content">Siirry sisältöön</a>
   <header class="app-header">
     <a href="/" class="app-brand" aria-label="Lupa-apurin etusivu">
@@ -15,15 +18,22 @@
       <span><strong>Lupa-apuri</strong><small>Luvat ja valvonta</small></span>
     </a>
     <nav class="app-nav" aria-label="Päänavigaatio">
+      {% if authority_workspace %}
+      <a href="{{ '/cases/' ~ case_id ~ '/lupademo/authority/queue' if case_id is defined else '/authority/queue' }}">Työjono</a>
+      {% elif demo_workspace %}
+      <a href="/demo-lab">Demo Lab</a>
       {% if case_id is defined %}
+      <a href="/cases/{{ case_id }}/lupademo/metrics">Mittarit</a>
+      <a href="/cases/{{ case_id }}/lupademo/admin/criteria">Kriteeristöt</a>
+      {% endif %}
+      <a href="/integrations/api-playground">Rajapinnat</a>
+      {% elif case_id is defined %}
       <a href="/lv/projects/{{ case_id }}">Hanke</a>
       <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id if application is defined and application else 'building_residential' }}/wizard/1">Hakemus</a>
-      <a href="/cases/{{ case_id }}/lupademo/authority/queue">Viranomainen</a>
       {% else %}
       <a href="/applicant">Uusi hakemus</a>
       <a href="/applicant/packages/new">Tarkista aineisto</a>
       {% endif %}
-      <a href="/integrations/api-playground">Rajapinnat</a>
     </nav>
   </header>
   {% if case_id is defined %}
@@ -40,6 +50,10 @@
   {% endif %}
   <main id="main-content">
     {% block content %}{% endblock %}
+    <footer class="service-footer">
+      <span>Demo: Luvat ja valvonta</span>
+      <nav aria-label="Demon muut näkymät"><a href="/">Hakija</a><a href="{{ '/cases/' ~ case_id ~ '/lupademo/authority/queue' if case_id is defined else '/authority/queue' }}">Viranomaisen työtila</a><a href="/demo-lab">Demo Lab</a></nav>
+    </footer>
   </main>
 </body>
 </html>

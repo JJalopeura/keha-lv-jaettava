@@ -3,7 +3,7 @@ import mimetypes
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -73,7 +73,8 @@ class AzureOpenAIClient:
         path: str,
         *,
         json_body: Optional[Dict[str, Any]] = None,
-        files: Optional[Dict[str, Tuple[str, bytes, str]]] = None,
+        files: Optional[Dict[str, Any]] = None,
+        form_data: Optional[Dict[str, str]] = None,
         query_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         url = self._url(path)
@@ -83,7 +84,14 @@ class AzureOpenAIClient:
 
         with httpx.Client(timeout=self.timeout_s) as client:
             if files is not None:
-                resp = client.request(method, url, params=params, headers=self._headers(), files=files)
+                resp = client.request(
+                    method,
+                    url,
+                    params=params,
+                    headers=self._headers(),
+                    files=files,
+                    data=form_data,
+                )
             else:
                 headers = {"Content-Type": "application/json", **self._headers()}
                 resp = client.request(method, url, params=params, headers=headers, json=json_body)
@@ -140,60 +148,18 @@ class AzureOpenAIClient:
         raise TimeoutError(f"Timed out waiting for ingestion. last_status={last_status}")
 
     # -------- Uploads --------
-    def start_upload(self, filename: str, size_bytes: int, mime_type: str, purpose: str = "assistants") -> str:
-        data = self.request_json(
-            "POST",
-            f"{self.api_path_prefix}uploads",
-            json_body={
-                "purpose": purpose,
-                "filename": filename,
-                "bytes": int(size_bytes),
-                "mime_type": mime_type,
-            },
-        )
-        return data["id"]
-
-    def upload_part_bytes(self, upload_id: str, filename: str, chunk: bytes, mime_type: str) -> str:
-        data = self.request_json(
-            "POST",
-            f"{self.api_path_prefix}uploads/{upload_id}/parts",
-            files={"data": (filename, chunk, mime_type)},
-        )
-        return data["id"]
-
-    def complete_upload(self, upload_id: str, part_ids: List[str]) -> str:
-        data = self.request_json(
-            "POST",
-            f"{self.api_path_prefix}uploads/{upload_id}/complete",
-            json_body={"part_ids": part_ids},
-        )
-        if isinstance(data, dict):
-            if isinstance(data.get("file"), dict) and data["file"].get("id"):
-                return data["file"]["id"]
-            if data.get("file_id"):
-                return data["file_id"]
-            if data.get("object") == "file" and data.get("id"):
-                return data["id"]
-        raise RuntimeError(f"Could not extract file id from complete response: {data}")
-
-    def upload_file_from_path(self, local_path: str, *, chunk_size: int = 8 * 1024 * 1024) -> tuple[str, str]:
+    def upload_file_from_path(self, local_path: str) -> tuple[str, str]:
         filename = os.path.basename(local_path)
         mime_type = guess_mime_type(filename)
-        size_bytes = os.path.getsize(local_path)
-
-        upload_id = self.start_upload(filename=filename, size_bytes=size_bytes, mime_type=mime_type, purpose="assistants")
-
-        part_ids: List[str] = []
         with open(local_path, "rb") as f:
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                part_id = self.upload_part_bytes(upload_id, filename, chunk, mime_type)
-                part_ids.append(part_id)
-
-        file_id = self.complete_upload(upload_id, part_ids)
-        return upload_id, file_id
+            data = self.request_json(
+                "POST",
+                f"{self.api_path_prefix}files",
+                files={"file": (filename, f, mime_type)},
+                form_data={"purpose": "assistants"},
+            )
+        file_id = str(data["id"])
+        return file_id, file_id
 
     def responses(
         self,
