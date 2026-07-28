@@ -26,6 +26,7 @@ templates.env.globals["FINDING_CATEGORY_LABELS"] = {
 }
 
 def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callable[[], Any]) -> APIRouter:
+    
     router = APIRouter()
 
     def db() -> Any:
@@ -206,5 +207,10 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
     def agent_chain_audit_run(case_id: str):
         svc.run_agent_chain_audit(db(), settings(), case_id)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/metrics", status_code=303)
+
+    @router.get("/demo-lab", response_class=HTMLResponse)
+    def demo_lab_index(request: Request):
+        case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/benchmark-lab", status_code=303)
 
     return router

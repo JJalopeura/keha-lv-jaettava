@@ -145,7 +145,7 @@
       <h3>Tarkista valmis hakemuspaketti</h3>
       <p class="muted">Lataa hakemus, liitteet ja tausta-aineistot yhdellä kertaa. AI luokittelee dokumentit, poimii kenttäehdotukset ja kertoo, onko paketti valmis, täydennettävä vai ristiriitainen.</p>
       <form method="post" enctype="multipart/form-data" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/materials/upload-files" class="upload-drop">
-        <label>Paketin nimi<input name="package_name" value="{{ material_package.display_name or 'Hakemusaineisto' }}"></label>
+        <label>Paketin nimi<input name="package_name" value="{{ material_package.get('display_name') or 'Hakemusaineisto' }}"></label>
         <input type="file" name="files" multiple>
         <button class="{% if present %}next-action{% endif %}">Lataa dokumentit</button>
       </form>

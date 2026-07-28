@@ -1,16 +1,15 @@
 {% extends "light_base.html" %}
-{% block title %}Aloita asiointi{% endblock %}
+{% block title %}Luvat ja valvonta{% endblock %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
 <section class="service-intro">
   <div class="intro-copy">
-    <p class="section-kicker">AI-avusteinen lupa-asiointi</p>
-    <h1>Hakemus kuntoon ennen kuin lähetät sen</h1>
-    <p class="intro-lead">Lupa-apuri auttaa kokoamaan aineiston, löytää puutteet ja näyttää perustelut. Sinä päätät jokaisesta muutoksesta.</p>
+    <h1>Tee lupahakemuksestasi käsittelyvalmis AI:n avulla</h1>
+    <p class="intro-lead">Lataa valmis hakemuspaketti tai aloita hakemus alusta. AI lukee asiakirjat, poimii lomaketiedot, tunnistaa puutteet ja ristiriidat sekä auttaa parantamaan hakemusta ennen lähettämistä.</p>
   </div>
   <div class="trust-panel" aria-label="Palvelun toimintaperiaate">
     <span class="trust-icon" aria-hidden="true">✓</span>
-    <div><strong>Sinä hallitset hakemusta</strong><p>AI ei lähetä eikä muuta tietoja ilman hyväksyntääsi.</p></div>
+    <div><strong>AI tekee ehdotuksia. Sinä tarkistat ja hyväksyt muutokset ennen lähettämistä.</strong></div>
   </div>
 </section>
 
@@ -24,22 +23,24 @@
     <div class="path-copy">
       <span class="status-label">Suositeltu, jos aineisto on jo koottu</span>
       <h2>Tarkista valmis hakemuspaketti</h2>
-      <p>Tuo hakemus, liitteet tai zip-paketti. Saat ensin AI:n tulkinnan ja sen jälkeen selkeän korjauslistan.</p>
-      <ul class="inline-proof" aria-label="Tarkistuksen sisältö">
-        <li>asiakirjojen tunnistus</li><li>kenttäpoiminnat</li><li>puutteet ja ristiriidat</li>
-      </ul>
+      <p>Lataa hakemus ja liitteet. AI poimii tiedot, löytää puutteet ja ehdottaa korjauksia.</p>
     </div>
     <a class="primary-cta {% if present %}next-action{% endif %}" href="/applicant/packages/new{% if present %}?present=1{% endif %}">Lataa aineisto <span aria-hidden="true">→</span></a>
   </div>
   <div class="secondary-paths">
     <a href="/applicant" class="secondary-path">
       <span class="path-number" aria-hidden="true">02</span>
-      <span><strong>Aloita uusi hakemus</strong><small>Täytä hakemus ohjatusti alusta alkaen</small></span>
+      <span><strong>Laadi hakemus AI:n kanssa</strong><small>Aloita ohjatusti</small></span>
       <span aria-hidden="true">→</span>
     </a>
     <a href="/lv" class="secondary-path">
       <span class="path-number" aria-hidden="true">03</span>
-      <span><strong>Jatka olemassa olevaa hanketta</strong><small>Avaa Luvat ja valvonta -asiointikokonaisuus</small></span>
+      <span><strong>Jatka LV:ssä</strong><small>Näytä asiointikokonaisuus</small></span>
+      <span aria-hidden="true">→</span>
+    </a>
+    <a href="/integrations/api-playground" class="secondary-path">
+      <span class="path-number" aria-hidden="true">04</span>
+      <span><strong>Näytä AI-ehdotuspalvelu</strong><small>Avaa API-demo</small></span>
       <span aria-hidden="true">→</span>
     </a>
   </div>
@@ -64,6 +65,6 @@
 
 <footer class="service-footer">
   <span>Demo: Luvat ja valvonta</span>
-  <nav aria-label="Demon muut näkymät"><a href="/authority/queue">Viranomaisen työtila</a><a href="/integrations/api-playground">AI-ehdotuspalvelu</a><a href="/demo-lab/presenter">Demo Lab</a></nav>
+  <nav aria-label="Demon muut näkymät"><a href="/authority/queue">Viranomaisen työtila</a><a href="/demo-lab">Demo Lab</a></nav>
 </footer>
 {% endblock %}

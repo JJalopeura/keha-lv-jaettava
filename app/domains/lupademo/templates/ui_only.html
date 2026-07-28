@@ -19,15 +19,15 @@
   </form>
   <div>
     <h2>Kopioitava ehdotus</h2>
-    {% if result.tenant_id %}<p class="muted">Tenant {{ result.tenant_id }} · {{ result.criteria_version }}</p>{% endif %}
-    {% if result.source_documents %}
+    {% if result.get('tenant_id') %}<p class="muted">Tenant {{ result.get('tenant_id') }} · {{ result.get('criteria_version') }}</p>{% endif %}
+    {% if result.get('source_documents') %}
     <dl class="data-list">
       {% for doc in result.source_documents %}
       <div class="data-row"><dt>{{ doc.filename }}</dt><dd>{{ doc.text_chars }} merkkiä · {{ doc.delivery_scope }}</dd></div>
       {% endfor %}
     </dl>
     {% endif %}
-    {% if result.extracted_fields %}
+    {% if result.get('extracted_fields') %}
     <button type="button" class="secondary" data-copy-ui-only>Kopioi ehdotus</button>
     <form method="post" action="/cases/{{ case_id }}/lupademo/suggestion-service/ui-only/accept">
     <div class="result-list" id="ui-only-copy-source">

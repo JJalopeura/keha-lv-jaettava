@@ -22,7 +22,7 @@ field.label}) %}{% endfor %}
       {{ material_package.expected_document_count }} asiakirjaa käsitelty{% else
       %}{{ official_attachments|length }} lähetettävää liitettä · {{
       context_attachments|length }} tausta-aineistoa · {{
-      material_intake.skipped_count or 0 }} ohitettua tiedostoa{% endif %}
+      material_intake.get('skipped_count', 0) }} ohitettua tiedostoa{% endif %}
     </p>
   </div>
   <a class="text-link" href="/applicant/packages/new">Tuo toinen paketti</a>
@@ -338,16 +338,16 @@ field.label}) %}{% endfor %}
         {% endfor %}
       </div>
     </div>
-    {% if material_intake.skipped %}
+    {% if material_intake.get('skipped') %}
     <div class="scope-group excluded-group">
       <button type="button" class="scope-heading" aria-expanded="true">
         <span
           ><i class="scope-dot excluded"></i
           ><strong>Ohitettu turvallisesti</strong></span
-        ><b>{{ material_intake.skipped|length }}</b>
+        ><b>{{ material_intake.get('skipped', [])|length }}</b>
       </button>
       <div class="document-list">
-        {% for item in material_intake.skipped %}
+        {% for item in material_intake.get('skipped', []) %}
         <div class="document-row">
           <span class="file-icon muted-icon">–</span>
           <div>
@@ -414,13 +414,21 @@ field.label}) %}{% endfor %}
           window.location.reload();
       };
       poll();
+      let stuckCounter = 0;
       const timer = window.setInterval(async () => {
         await poll();
+        const progress = Number(row.querySelector("[data-job-progress]").textContent || 0);
+        if (progress >= 100) {
+          stuckCounter++;
+          if (stuckCounter > 10) {
+            // ponytail: 10 polls at 100% = ~10s, force reload
+            window.clearInterval(timer);
+            window.location.reload();
+          }
+        } else {
+          stuckCounter = 0;
+        }
       }, 900);
-      window.addEventListener(
-        "beforeunload",
-        () => window.clearInterval(timer),
-        { once: true },
       );
     });
   })();

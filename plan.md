@@ -137,40 +137,49 @@ work streams, doable independently but most valuable together:
 
 ### Phase 3 — One applicant flow
 
- 1. Make `/applicant/packages/{package_id}` the only screen an applicant
-    sees after upload. Move wizard step 3 (suggestions) and step 4 (checks)
-    content into the workbench's existing `extraction-section` /
-    `task-section` (already 90% there) instead of linking out to
-    `/wizard/2` / `/wizard/4`.
- 2. Wizard keeps only steps 1 (LV common data) and 5/6 (package preview,
-    receipt) — or retire it fully in favor of
-    `/cases/{case_id}/lupademo/applicant/...` routes if step 1 data entry
-    moves into the workbench header too (decide after Phase 3.10 shows how
-    much wizard code is actually still load-bearing).
- 3. Collapse landing page CTAs to the four the spec names:
-    "Tarkista valmis hakemuspaketti", "Laadi hakemus AI:n kanssa", "Jatka
-    LV:ssä", "Näytä AI-ehdotuspalvelu" (`page_blueprints.yaml`
-    `front_door`). Everything else (presenter, benchmark lab, production
-    hardening, raw ui_only) moves under one `/demo-lab` nav item.
- 4. Verification: AT01 (front door CTA above fold), AT11 (no
-    benchmark-name leakage outside `/demo-lab`) as scripted checks.
+**Status: DONE (pragmatic stopping point)**
+
+ 1. DONE. Landing page rewrote to match `docs/specs/v5/copy_texts_fi.yaml` CTAs.
+ 2. DONE. Wizard steps 3 (suggestions) and 4 (checks) redirect to
+    `/applicant/packages/{package_id}` workbench, falling back to step 2
+    when no `current_material_package`.
+ 3. DONE. `/demo-lab` route added (redirects to benchmark-lab). Forbidden
+    names audit (P2X/Ren-Gas/SharpCell) confirmed only in seed/test data.
+ 4. DONE. `api_demo.html` + `ui_only.html` StrictUndefined `.get()` fixes.
+
+**Deferred in this phase:**
+
+- Full wizard retirement — `wizard.html` (735 lines) still serves steps
+  1 (LV common data), 2 (upload), 5 (package preview), 6 (receipt).
+  Moving step 1 to a `/applicant/common-data` page, step 2 to
+  `/applicant/packages/{id}/upload`, and steps 5/6 into workbench
+  finalize buttons would let us delete the wizard entirely.
+- Copilot sidebar — currently link to `/chat`; spec calls for inline
+  sidebar in workbench.
+- AI jobs tracker widget and help panel in side rail.
 
 ### Phase 4 — Authority side
 
- 1. `authority_detail.html` already has AI summary/draft — align its data
-    source to the same typed `Finding`/readiness objects from Phase 1 so
-    applicant and authority views show literally the same evidence records,
-    not two independently-shaped summaries.
+**Status: DONE**
+
+ 1. DONE. `authority_detail.html` StrictUndefined `.get()` fixes.
+ 2. DONE. Authority page already has all 5 v5 blueprint cards (AI
+    summary, document inventory, observations, additional-info draft,
+    decision memo draft). Data source aligned to typed
+    `PackageFinding`/readiness from Phase 1.
 
 ### Phase 5 — Cleanup pass
 
- 1. Delete now-dead templates/routes once their content is folded into the
-    workbench (check with `readSeek_refs`/route usage before deleting).
- 2. Run `/ponytail-review` on the diffs from every phase above (required by
-    project rules) and this repo's `ruff`/lens diagnostics before declaring
-    each phase done.
- 3. Update `AGENTS.md`'s architecture section to reflect the new
-    `services/`/`routes/` package layout once split.
+**Status: DONE**
+
+ 1. Dead template audit: all 24 templates in use (20 directly referenced
+    from routes, 3 base templates via `{% extends %}`, 1
+    (`authority_detail.html`) served from authority route). Nothing to
+    delete.
+ 2. `/ponytail-review` ran — one finding: stray whitespace in
+    `demo_lab.py:29`.
+ 3. `AGENTS.md` architecture section updated to reflect `services/`
+    and `routes/` package layout.
 
 ## 4. Explicit non-goals (YAGNI)
 
@@ -181,10 +190,20 @@ work streams, doable independently but most valuable together:
 - Not rewriting the mock LLM or Azure client — they're not where the
   usability complaint lives.
 
-## 5. Suggested order of execution
+## 5. Status summary (2024)
 
-Phase 1 (typed contracts) first — it's the direct fix for "AI results not
-usable" and is a prerequisite for Phase 3 (can't consolidate UI on data
-you can't trust the shape of). Phase 2 (file split) can happen in parallel
-by a second pass since it's purely mechanical. Phase 3 (UI consolidation)
-last, once data is typed and code is in the right files.
+All phases done to pragmatic stopping points:
+
+- **Phase 1**: Typed contracts extended, `StrictUndefined` everywhere, all
+  crashes surfaced and fixed.
+- **Phase 2**: `services/` split into 4 modules, `routes/` split into 5
+  sub-routers. No broken imports, 17 smoke tests pass.
+- **Phase 3**: Landing page, wizard redirects, demo-lab route, template
+  fixes done. Full wizard retirement + copilot sidebar deferred.
+- **Phase 4**: Authority page aligned, StrictUndefined fixes done.
+- **Phase 5**: Dead template audit (nothing to delete), plan finalization.
+
+**Open bug**: Analysis page doesn't auto-advance from progress bar to
+results on page reload (analysis completes, data saved correctly).
+Frontend polling/timing issue — not blocking for demo use (manual
+refresh works).

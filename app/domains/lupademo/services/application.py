@@ -621,6 +621,7 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
     result["document_inventory"] = package_result["document_inventory"]
     result["extraction_queue"] = package_result["extraction_queue"]
     save_artifact(db, case_id, "intake_analysis", permit_type, result)
+    save_artifact(db, case_id, "package_analysis_result", permit_type, result)
     event(db, case_id, "ai.intake_analysis.completed", "Intake analysis completed", {"permit_type": permit_type, "questions": len(questions)})
     return result
 
@@ -632,7 +633,9 @@ def _finalize_intake_analysis_job_in_store(db: Any, case_id: str, permit_type: s
         summary = f"Analyysi valmis: {len(result.get('questions', []))} kysymystä, {len(result.get('missing_required_fields', []))} kenttäpuutetta."
         failed = False
     except Exception as exc:
-        summary = f"Aineiston analyysi epäonnistui: {exc}"
+        import traceback
+        tb = traceback.format_exc()
+        summary = f"Aineiston analyysi epäonnistui: {exc}\n{tb[-500:]}"
         failed = True
     agent_count = max(1, len(job.get("agents") or []))
     job["status"] = "failed" if failed else "completed"
@@ -688,12 +691,14 @@ def execute_intake_analysis_job(db: Any, case_id: str, permit_type: str, job_id:
             result_artifact=f"intake_analysis:{permit_type}",
         )
     except Exception as exc:
+        import traceback
+        tb = traceback.format_exc()
         complete_ai_job(
             db,
             case_id,
             permit_type,
             job_id,
-            summary=f"Aineiston analyysi epäonnistui: {str(exc)[:240]}",
+            summary=f"Aineiston analyysi epäonnistui: {str(exc)[:200]}\n{tb[-400:]}",
             result_artifact=f"intake_analysis:{permit_type}",
             failed=True,
         )
@@ -1077,11 +1082,14 @@ def deterministic_issues(permit_type: str, form_data: dict[str, Any], attachment
 
 
 def merge_issues(*groups: list[Issue]) -> list[Issue]:
-    seen: dict[str, Issue] = {}
+    seen: dict[str, Any] = {}
     for group in groups:
         for issue in group:
-            if issue.id not in seen or SEVERITY_ORDER[issue.severity] > SEVERITY_ORDER[seen[issue.id].severity]:
-                seen[issue.id] = issue
+            # ponytail: issue may be a dict (from fallback) or an Issue dataclass
+            iid = issue.id if hasattr(issue, 'id') else issue.get('id', '')
+            isev = issue.severity if hasattr(issue, 'severity') else issue.get('severity', 'major')
+            if iid not in seen or SEVERITY_ORDER.get(isev, 1) > SEVERITY_ORDER.get(seen[iid].severity if hasattr(seen[iid], 'severity') else seen[iid].get('severity', 'major'), 1):
+                seen[iid] = issue
     return list(seen.values())
 
 

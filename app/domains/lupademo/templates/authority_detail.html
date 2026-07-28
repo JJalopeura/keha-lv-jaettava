@@ -56,8 +56,8 @@
 <section class="drafts-section" id="drafts">
   <div class="section-heading-line"><div><p class="section-kicker">Luonnokset</p><h2>Tarkista ja muokkaa ennen käyttöä</h2></div></div>
   <div class="draft-grid">
-    <article><h3>Täydennyspyyntö</h3>{% if additional_info_draft %}<label>Otsikko<input value="{{ additional_info_draft.subject }}"></label><label>Sisältö<textarea rows="10">{{ additional_info_draft.body_md }}</textarea></label>{% for item in additional_info_draft.requested_items %}<div class="open-question"><span>!</span><div><strong>{{ item.title }}</strong><small>{{ item.reason }}</small></div></div>{% endfor %}{% else %}<p class="empty-copy">Täydennyspyyntöä ei ole vielä muodostettu.</p>{% endif %}</article>
-    <article><h3>Käsittelymuistio</h3>{% if authority_memo %}<textarea rows="12">{{ authority_memo.memo_md }}</textarea>{% for check in authority_memo.caseworker_checks %}<div class="review-row needs_review"><span class="review-icon">!</span><div>{{ check }}</div></div>{% endfor %}{% else %}<p class="empty-copy">Käsittelymuistiota ei ole vielä muodostettu.</p>{% endif %}</article>
+    <article><h3>Täydennyspyyntö</h3>{% if additional_info_draft %}<label>Otsikko<input value="{{ additional_info_draft.get('subject', '') }}"></label><label>Sisältö<textarea rows="10">{{ additional_info_draft.get('body_md', '') }}</textarea></label>{% for item in additional_info_draft.get('requested_items', []) %}<div class="open-question"><span>!</span><div><strong>{{ item.title }}</strong><small>{{ item.reason }}</small></div></div>{% endfor %}{% else %}<p class="empty-copy">Täydennyspyyntöä ei ole vielä muodostettu.</p>{% endif %}</article>
+    <article><h3>Käsittelymuistio</h3>{% if authority_memo %}<textarea rows="12">{{ authority_memo.get('memo_md', '') }}</textarea>{% for check in authority_memo.get('caseworker_checks', []) %}<div class="review-row needs_review"><span class="review-icon">!</span><div>{{ check }}</div></div>{% endfor %}{% else %}<p class="empty-copy">Käsittelymuistiota ei ole vielä muodostettu.</p>{% endif %}</article>
   </div>
 </section>
 

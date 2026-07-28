@@ -40,7 +40,7 @@ from jinja2 import Template
 from app.core.llm_factory import create_llm_client
 from app.core.llm_utils import call_llm_json, vector_store_ids
 
-from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, FieldSuggestionResponse, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
+from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
 from .jobs import complete_ai_job, start_ai_job
 
 
@@ -711,12 +711,12 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
             if not field_id:
                 continue
             normalized_fields.append(
-                {
-                    "field_id": field_id,
-                    "value": str(item.get("value") or item.get("text") or ""),
-                    "confidence": _coerce_confidence(item.get("confidence"), 0.55),
-                    "evidence_refs": _normalize_evidence_refs(item.get("evidence_refs", []), limit=6),
-                }
+                ExtractedField(
+                    field_id=field_id,
+                    value=str(item.get("value") or item.get("text") or ""),
+                    confidence=_coerce_confidence(item.get("confidence"), 0.55),
+                    evidence_refs=_normalize_evidence_refs(item.get("evidence_refs", []), limit=6),
+                )
             )
         return {"request_id": str(payload.get("request_id") or ""), "extracted_fields": normalized_fields}
     if response_model in {AttachmentClassificationResponse, CaseworkerSummaryResponse, AuthorityMemoDraft}:
@@ -774,19 +774,19 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
         if severity not in allowed_severities:
             severity = "major"
         normalized.append(
-            {
-                "id": str(issue.get("id") or f"agent_issue_{index + 1}"),
-                "type": issue_type,
-                "severity": severity,
-                "title": str(issue.get("title") or "Agentin havainto"),
-                "detail": str(issue.get("detail") or issue.get("description") or issue.get("rationale") or "Agentti tunnisti tarkistettavan kohdan."),
-                "confidence": _coerce_confidence(issue.get("confidence"), 0.6),
-                "field_id": issue.get("field_id") or None,
-                "attachment_id": issue.get("attachment_id") or None,
-                "suggested_fix": issue.get("suggested_fix") or issue.get("recommendation") or None,
-                "evidence_refs": _normalize_evidence_refs(issue.get("evidence_refs", []), limit=4),
-                "resolved": bool(issue.get("resolved", False)),
-            }
+            Issue(
+                id=str(issue.get("id") or f"agent_issue_{index + 1}"),
+                type=issue_type,
+                severity=severity,
+                title=str(issue.get("title") or "Agentin havainto"),
+                detail=str(issue.get("detail") or issue.get("description") or issue.get("rationale") or "Agentti tunnisti tarkistettavan kohdan."),
+                confidence=_coerce_confidence(issue.get("confidence"), 0.6),
+                field_id=issue.get("field_id") or None,
+                attachment_id=issue.get("attachment_id") or None,
+                suggested_fix=issue.get("suggested_fix") or issue.get("recommendation") or None,
+                evidence_refs=_normalize_evidence_refs(issue.get("evidence_refs", []), limit=4),
+                resolved=bool(issue.get("resolved", False)),
+            )
         )
     return {"issues": normalized}
 
@@ -1542,15 +1542,20 @@ def structure_environmental_application_from_attachments(
         else:
             fields_iter = []
         for schema_field in fields_iter:
-            if schema_field.field_id not in allowed_fields or not schema_field.value.strip():
+            # ponytail: dataclass constructors don't auto-convert dicts —
+            # the field may be a dict (from fallback) or an ExtractedField.
+            fid = schema_field.field_id if hasattr(schema_field, 'field_id') else schema_field.get('field_id', '')
+            val = schema_field.value if hasattr(schema_field, 'value') else schema_field.get('value', '')
+            if fid not in allowed_fields or not (val or '').strip():
                 continue
-            refs = [ref for ref in schema_field.evidence_refs if isinstance(ref, dict)]
+            refs_raw = schema_field.evidence_refs if hasattr(schema_field, 'evidence_refs') else schema_field.get('evidence_refs', [])
+            refs = [ref for ref in (refs_raw or []) if isinstance(ref, dict)]
             source_by_field.append(
                 {
-                    "field_id": schema_field.field_id,
-                    "extracted_value": schema_field.value.strip(),
+                    "field_id": fid,
+                    "extracted_value": val.strip(),
                     "source_document": str((refs[0].get("title") if refs else "Hakemusaineisto") or "Hakemusaineisto"),
-                    "confidence": schema_field.confidence,
+                    "confidence": schema_field.confidence if hasattr(schema_field, 'confidence') else schema_field.get('confidence', 0.78),
                     "evidence_refs": refs,
                 }
             )

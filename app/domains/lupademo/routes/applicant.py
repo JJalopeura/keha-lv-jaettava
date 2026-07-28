@@ -361,6 +361,16 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         ctx = context(case_id, application_id)
         if step == 5:
             ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
+        if step in (3, 4):
+            pkg = svc.current_material_package(db(), case_id, application_id)
+            if pkg and pkg.get("package_id"):
+                url = f"/applicant/packages/{pkg['package_id']}"
+                if step == 4:
+                    url += "#findings"
+                else:
+                    url += "#extraction-section"
+                return RedirectResponse(url=url, status_code=303)
+            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2", status_code=303)
         return templates.TemplateResponse(request, "wizard.html", {**ctx, "step": step})
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/save")

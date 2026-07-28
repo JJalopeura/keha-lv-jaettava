@@ -318,9 +318,23 @@ def _advance_ai_job_in_store(db: Any, case_id: str, permit_type: str, job: dict[
             agent["started_at"] = None
             agent["finished_at"] = None
     if elapsed >= total_seconds and job.get("managed_background"):
-        job["progress_pct"] = 95
-        job["progress_current"] = max(1, agent_count)
-        job["eta_seconds"] = 0
+        # ponytail: background-task timeout — if the external task hasn't called
+        # complete_ai_job within 3x the estimate, mark it timed out.
+        if elapsed >= total_seconds * 3:
+            job["status"] = "failed"
+            job["progress_current"] = agent_count
+            job["progress_pct"] = 100
+            job["eta_seconds"] = 0
+            job["finished_at"] = now
+            job["summary"] = "Ajo ei valmistunut odotetussa ajassa — taustatehtävä mahdollisesti keskeytyi."
+            for agent in job.get("agents") or []:
+                if isinstance(agent, dict):
+                    agent["status"] = "failed"
+                    agent["summary"] = agent.get("summary") or "Aikakatkaisu."
+        else:
+            job["progress_pct"] = 95
+            job["progress_current"] = max(1, agent_count)
+            job["eta_seconds"] = 0
     elif elapsed >= total_seconds:
         if job.get("auto_finalize") and job.get("kind") == "intake_analysis":
             # deferred import: application.py depends on jobs.py, not the reverse -
