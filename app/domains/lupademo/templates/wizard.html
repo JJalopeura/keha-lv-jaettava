@@ -274,7 +274,7 @@
     {% if package_analysis %}
     <div class="result-item" id="package-analysis-result">
       <h3>Pakettianalyysin yhteenveto</h3>
-      <p><span class="status {% if package_analysis.readiness == 'ready' %}good{% elif package_analysis.readiness == 'contradictory' %}warn{% else %}attention{% endif %}">{{ package_analysis.readiness }}</span> {{ package_analysis.summary }}</p>
+      <p><span class="status {% if package_analysis.readiness == 'ready' %}good{% elif package_analysis.readiness == 'contradictory' %}warn{% else %}attention{% endif %}">{{ package_analysis.readiness }}</span> {{ package_analysis.get('summary', '') }}</p>
       <p class="muted">Valmiuspisteet {{ package_analysis.readiness_score }}/100 · {{ package_analysis.document_inventory|length }} dokumenttia · {{ package_analysis.findings|length }} havaintoa</p>
       {% if package_analysis.extraction_queue %}
       <h4>Kenttäkohtainen poimintajono</h4>
@@ -283,7 +283,7 @@
         {% for item in package_analysis.extraction_queue[:8] %}
         <tr>
           <td>{{ item.field_id }}</td>
-          <td>{{ item.accepted_value or item.suggested_value }}</td>
+          <td>{{ item.get('accepted_value') or item.get('suggested_value') }}</td>
           <td>{{ item.source_document }}</td>
           <td>{{ item.confidence }}</td>
           <td>{{ item.status }}</td>
@@ -489,7 +489,7 @@
   <div>
     <h2>Tulokset</h2>
     {% if check_report %}
-    <p>Laatupisteet {{ check_report.score }} · {{ check_report.summary }}</p>
+    <p>Laatupisteet {{ check_report.score }} · {{ check_report.get('summary', '') }}</p>
     {% for issue in check_report.issues %}
     <div class="issue {{ issue.severity }}" id="{% if issue.severity == 'blocking' %}check-blocking{% endif %}">
       <strong>{{ issue.severity }} · {{ issue.title }}</strong>
@@ -572,10 +572,10 @@
   </header>
   <p class="assistant-context">Apuri tuntee tämän hakemuksen lomaketiedot, sallitut liitteet ja arvioinnissa käytettävät ohjeet.</p>
 
-  {% if ai_jobs %}
+  {% if ai_jobs and ai_jobs[0].status != 'completed' %}
   <section class="assistant-job" id="ai-jobs">
     {% for job in ai_jobs[:1] %}
-    <article data-ai-job data-job-id="{{ job.id }}" data-status-url="/api/v1/jobs/{{ job.id }}" data-stream-url="/api/v1/jobs/{{ job.id }}/stream" data-cancel-url="/api/v1/jobs/{{ job.id }}/cancel" data-retry-url="/api/v1/jobs/{{ job.id }}/retry">
+    <article data-ai-job data-job-id="{{ job.id }}" data-job-initial-status="{{ job.status }}" data-status-url="/api/v1/jobs/{{ job.id }}" data-stream-url="/api/v1/jobs/{{ job.id }}/stream" data-cancel-url="/api/v1/jobs/{{ job.id }}/cancel" data-retry-url="/api/v1/jobs/{{ job.id }}/retry">
       <div class="assistant-job-title"><span class="ai-orbit small"><i></i></span><div><strong data-job-summary>{{ job.summary or job.title }}</strong><small><span data-job-progress>{{ job.progress_pct }}</span>% · noin <span data-job-eta>{{ job.eta_seconds }}</span> s</small></div></div>
       <div class="progress-track"><span data-job-progress-bar style="width: {{ job.progress_pct }}%"></span></div>
       <div class="visually-hidden" data-job-status>{{ job.status }}</div>
@@ -654,6 +654,10 @@
     const done = terminalStatuses.has(payload.status);
     const cancel = row.querySelector("[data-job-cancel]");
     if (cancel) cancel.disabled = done;
+    if (payload.status === "succeeded" && row.dataset.jobInitialStatus === "running") {
+      row.dataset.jobInitialStatus = "succeeded";
+      window.location.reload();
+    }
     return done;
   }
 

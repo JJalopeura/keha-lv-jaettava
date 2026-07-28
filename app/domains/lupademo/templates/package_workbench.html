@@ -236,7 +236,7 @@ field.label}) %}{% endfor %}
             >
           </div>
           <div class="extraction-value">
-            {{ item.accepted_value or item.suggested_value }}{% if
+            {{ item.get('accepted_value') or item.suggested_value }}{% if
             item.evidence_refs %}
             <details class="evidence-disclosure compact">
               <summary>Näytä lähde</summary>
@@ -429,7 +429,6 @@ field.label}) %}{% endfor %}
           stuckCounter = 0;
         }
       }, 900);
-      );
     });
   })();
 </script>

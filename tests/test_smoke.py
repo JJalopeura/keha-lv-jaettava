@@ -187,6 +187,17 @@ class Uploads(unittest.TestCase):
 
 
 class Pages(unittest.TestCase):
+    def test_package_workbench_polling_script_is_well_formed(self) -> None:
+        template = Path("app/domains/lupademo/templates/package_workbench.html").read_text(encoding="utf-8")
+        self.assertIn('window.setInterval(async () => {', template)
+        self.assertNotIn('}, 900);\n      );', template)
+        self.assertIn("item.get('accepted_value')", template)
+
+        wizard = Path("app/domains/lupademo/templates/wizard.html").read_text(encoding="utf-8")
+        self.assertIn('data-job-initial-status="{{ job.status }}"', wizard)
+        self.assertIn("window.location.reload();", wizard)
+        self.assertIn("ai_jobs[0].status != 'completed'", wizard)
+
     def test_every_demo_page_renders(self) -> None:
         paths = [
             "/healthz",

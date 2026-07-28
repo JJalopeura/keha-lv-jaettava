@@ -726,29 +726,32 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
     if response_model is FieldSuggestionResponse:
         normalized = dict(payload) if isinstance(payload, dict) else {}
         suggestions = normalized.get("suggestions", [])
+        clean_suggestions: list[dict[str, Any]] = []
         if isinstance(suggestions, list):
-            clean_suggestions = []
             for suggestion in suggestions:
                 if not isinstance(suggestion, dict):
                     continue
                 clean_suggestion = dict(suggestion)
                 clean_suggestion["evidence_refs"] = _normalize_evidence_refs(clean_suggestion.get("evidence_refs", []), limit=6)
                 clean_suggestions.append(clean_suggestion)
-            normalized["suggestions"] = clean_suggestions
-        return normalized
+        return {
+            "request_id": str(normalized.get("request_id") or ""),
+            "criteria_version": str(normalized.get("criteria_version") or ""),
+            "suggestions": clean_suggestions,
+            "warnings": [str(w) for w in (normalized.get("warnings") or []) if isinstance(w, str)],
+        }
     if response_model is CriteriaAssessmentResponse:
         normalized = dict(payload) if isinstance(payload, dict) else {}
         results = normalized.get("criteria_results", [])
+        clean_results: list[dict[str, Any]] = []
         if isinstance(results, list):
-            clean_results = []
             for result in results:
                 if not isinstance(result, dict):
                     continue
                 clean_result = dict(result)
                 clean_result["evidence_refs"] = _normalize_evidence_refs(clean_result.get("evidence_refs", []), limit=6)
                 clean_results.append(clean_result)
-            normalized["criteria_results"] = clean_results
-        return normalized
+        return {"criteria_results": clean_results}
     if response_model is not IssueListResponse:
         return payload
     issues = payload.get("issues", []) if isinstance(payload, dict) else []

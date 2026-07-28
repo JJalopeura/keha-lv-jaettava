@@ -270,8 +270,8 @@ def _findings_are_duplicates(left: PackageFinding, right: PackageFinding) -> boo
     if not left_tokens or not right_tokens:
         return False
     overlap = len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
-    left_sources = {ref.source_id for ref in left.evidence_refs if ref.source_id}
-    right_sources = {ref.source_id for ref in right.evidence_refs if ref.source_id}
+    left_sources = {ref.get("source_id", "") if isinstance(ref, dict) else ref.source_id for ref in left.evidence_refs if (ref.get("source_id") if isinstance(ref, dict) else ref.source_id)}
+    right_sources = {ref.get("source_id", "") if isinstance(ref, dict) else ref.source_id for ref in right.evidence_refs if (ref.get("source_id") if isinstance(ref, dict) else ref.source_id)}
     return overlap >= 0.6 or (overlap >= 0.35 and bool(left_sources & right_sources))
 
 
@@ -483,7 +483,7 @@ def package_analysis_from_current_state(
                 attachment_id=issue.attachment_id,
                 suggested_fix=issue.suggested_fix,
                 question_to_applicant=_issue_question(issue),
-                criteria_refs=[ref.source_id for ref in issue.evidence_refs if ref.locator == "criteria"],
+                criteria_refs=[ref.get("source_id", "") if isinstance(ref, dict) else ref.source_id for ref in issue.evidence_refs if (ref.get("locator") if isinstance(ref, dict) else ref.locator) == "criteria"],
                 confidence=issue.confidence,
                 evidence_refs=issue.evidence_refs,
             )
@@ -616,12 +616,13 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
     package_result = package_analysis_from_current_state(db, case_id, permit_type, job_id=job_id, structure=structure, settings=settings)
     result["readiness"] = package_result["readiness"]
     result["readiness_score"] = package_result["readiness_score"]
+    result["summary"] = package_result["summary"]
     result["findings"] = package_result["findings"]
     result["suggestions"] = package_result["suggestions"]
     result["document_inventory"] = package_result["document_inventory"]
     result["extraction_queue"] = package_result["extraction_queue"]
     save_artifact(db, case_id, "intake_analysis", permit_type, result)
-    save_artifact(db, case_id, "package_analysis_result", permit_type, result)
+    # package_analysis_result already saved by package_analysis_from_current_state
     event(db, case_id, "ai.intake_analysis.completed", "Intake analysis completed", {"permit_type": permit_type, "questions": len(questions)})
     return result
 
@@ -2856,7 +2857,7 @@ def suggestion_service_field(payload: dict[str, Any], db: Any = None, settings: 
             fallback=response,
             max_output_tokens=3000,
         )
-        if isinstance(agent_response, FieldSuggestionResponse):
+        if isinstance(agent_response, FieldSuggestionResponse) and agent_response.suggestions:
             suggestions = agent_response.suggestions
             warnings = agent_response.warnings
         else:
@@ -2897,7 +2898,7 @@ def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: A
             fallback=response,
             max_output_tokens=5000,
         )
-        if isinstance(agent_response, FieldSuggestionResponse):
+        if isinstance(agent_response, FieldSuggestionResponse) and agent_response.suggestions:
             suggestions = agent_response.suggestions
             warnings = agent_response.warnings
         else:
