@@ -36,7 +36,8 @@ Keep these distinctions explicit in code, tests, logs, and UI copy:
 
 * Python environment: `.venv`
 * Test command: `.venv/bin/python -m unittest discover tests`
-* Current suite: 40 tests after the authority prompt regression was added
+* Current suite: 56 tests after provider, retrieval, job, provenance, and
+   semantic regressions were added
 * Tests set `KEHA_LV_FORCE_MOCK_LLM=true`
 * Default provider: `mock`
 * Azure provider configuration is split between `core` and `chat`
@@ -170,23 +171,13 @@ tenant.
 These are observed implementation facts. Confirm each with a focused regression
 test before changing behavior.
 
-1. External API execution resolves all tenants to the active shared demo case.
-   Persisted jobs, agent output, assessments, and logs are therefore not truly
-   tenant-isolated.
-2. Package analysis performs its service work synchronously and then returns
-   HTTP 202 with an already-completed job.
 3. Job streaming emits one current server-sent event rather than maintaining a
    live stream.
-4. Cancellation changes the persisted job status but does not interrupt active
-   provider or background work.
-5. Retry creates a new timer-shaped job but does not rerun the original feature
-   operation.
+4. Cancellation prevents a late completion from overwriting the cancelled
+   state, but it does not interrupt active provider or background work.
 6. Generic timer jobs can reach completed state through elapsed-time simulation
    without executing feature logic.
-7. API job result references are inconsistent. Completion advertises an
-   `api_result:<kind>` reference, while result lookup reads
-   `api_job_result:<job_id>`. Package analysis writes the latter, but other
-   inspected endpoints do not.
+7. API job results now use the canonical `api_job_result:<job_id>` reference.
 8. Direct wizard intake auto-finalization does not carry provider settings into
    the finalizer, so Azure validators can be skipped on that path.
 9. Contextual chat calls `client.responses` directly and bypasses the structured
@@ -225,6 +216,25 @@ Prompt resolution for `caseworker_summary_agent`,
 `additional_info_request_agent`, and `authority_memo_draft_agent` was repaired.
 Each ID now selects its authored prompt file, and a table-driven regression test
 guards the mapping.
+
+Provider contracts now cover core and chat selection, Azure request construction,
+HTTP failure parsing, malformed or missing structured output, timeout handling,
+and persisted call errors. Applicant retrieval is limited to two deduplicated
+stores in case-first order. Tests also prove that benchmark and authority scopes
+are rejected and that the final provider call receives only the bounded IDs.
+
+API package analysis now reports synchronous completion with HTTP 200. Each API
+tenant receives a stable, separately seeded case for jobs, artifacts,
+assessments, and AI logs. Public job status, result, cancellation, and retry
+operations enforce persisted tenant ownership whenever an API key is supplied.
+Terminal cancellation is rejected, cancelled jobs cannot be resurrected by late
+completion, and retry returns `job_retry_not_supported` instead of creating a
+timer-only job that does not rerun the original operation.
+
+Agent output artifacts now record provider, execution mode, selected vector
+stores, fallback state, and normalized errors. Table-driven semantic checks cover
+supported, evidenced suggestions and honest unsupported fallbacks for building,
+environmental, and public-event permits.
 
 ## Recommended implementation order
 

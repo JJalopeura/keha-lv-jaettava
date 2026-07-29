@@ -134,6 +134,8 @@ def cancel_ai_job(db: Any, job_id: str) -> dict[str, Any]:
     selected: dict[str, Any] = {}
     for job in store.get("jobs", []):
         if job.get("id") == job_id:
+            if job.get("status") not in {"pending", "running"}:
+                raise ValueError("job_not_cancellable")
             job["status"] = "cancelled"
             job["eta_seconds"] = 0
             job["updated_at"] = now
@@ -149,30 +151,9 @@ def cancel_ai_job(db: Any, job_id: str) -> dict[str, Any]:
 def retry_ai_job(db: Any, job_id: str) -> dict[str, Any]:
     found = find_ai_job(db, job_id)
     original = found["job"]
-    case_id = found["case_id"]
-    permit_type = found["application_id"]
-    agent_names = [str(agent.get("name")) for agent in original.get("agents", []) if isinstance(agent, dict) and agent.get("name")]
-    if not agent_names:
-        agent_names = ["request_router"]
-    retry = start_ai_job(
-        db,
-        case_id,
-        permit_type,
-        str(original.get("kind") or "retry"),
-        f"Uusinta: {original.get('title') or original.get('kind') or 'AI job'}",
-        agent_names,
-        eta_seconds=int(original.get("estimated_seconds_total") or original.get("eta_seconds") or 10),
-    )
-    retry["retry_of"] = job_id
-    store = _job_store(db, case_id, permit_type)
-    for job in store.get("jobs", []):
-        if job.get("id") == retry["id"]:
-            job["retry_of"] = job_id
-            retry = job
-            break
-    save_artifact(db, case_id, "ai_jobs", permit_type, store)
-    event(db, case_id, "ai.job.retry_started", "AI job retry started", {"job_id": retry["id"], "retry_of": job_id, "permit_type": permit_type})
-    return retry
+    if original.get("status") not in {"failed", "cancelled"}:
+        raise ValueError("job_not_retryable")
+    raise ValueError("job_retry_not_supported")
 
 
 def _job_agent_steps(agent_names: list[str], status: str = "pending") -> list[dict[str, Any]]:
@@ -200,6 +181,7 @@ def start_ai_job(
     *,
     auto_finalize: bool = False,
     managed_background: bool = False,
+    tenant_id: str = "",
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     now = time.time()
@@ -216,6 +198,7 @@ def start_ai_job(
         "estimated_seconds_total": eta_seconds,
         "auto_finalize": auto_finalize,
         "managed_background": managed_background,
+        "tenant_id": tenant_id,
         "agents": _job_agent_steps(agent_names),
         "created_at": now,
         "updated_at": now,
@@ -343,6 +326,8 @@ def complete_ai_job(
         if job.get("id") != job_id:
             continue
         selected = job
+        if job.get("status") == "cancelled":
+            break
         job["status"] = "failed" if failed else "completed"
         job["progress_current"] = job.get("progress_total") or len(job.get("agents") or []) or 1
         job["progress_pct"] = 100

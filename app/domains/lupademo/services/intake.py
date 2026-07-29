@@ -480,7 +480,7 @@ def azure_vector_store_ids(db: Any, settings: Any, case_id: str) -> list[str]:
             continue
         seen.add(vs_id)
         deduped.append(vs_id)
-    return deduped[:3]
+    return deduped[:2]
 
 
 def azure_vector_store_manifest(db: Any, settings: Any, case_id: str, selected_ids: list[str]) -> dict[str, Any]:
@@ -582,6 +582,7 @@ def run_json_agent(
 ) -> Any:
     prompt = render_agent_prompt(agent, prompt_values)
     retrieval_manifest = azure_vector_store_manifest(db, settings, case_id, vector_ids or [])
+    provider = str(getattr(settings, "llm_provider", "mock") or "mock").lower()
     if retrieval_manifest["stores"]:
         prompt += (
             "\n\nHAKUKONTEKSTIN SOPIMUS (pakollinen):\n"
@@ -606,7 +607,7 @@ def run_json_agent(
         )
         payload = normalize_agent_payload(response_model, payload)
         model = response_model(**payload)
-        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": False})
+        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "retrieval" if vector_ids else "direct", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": False, "error": None})
         return model
     except Exception as exc:
         if vector_ids and "vector store" in str(exc).lower():
@@ -633,10 +634,13 @@ def run_json_agent(
                     {
                         "agent": agent,
                         "output": model,
+                        "provider": provider,
+                        "execution_mode": "direct_after_retrieval_error",
                         "used_vector_store_ids": [],
                         "vector_store_scope_manifest": retrieval_manifest,
                         "vector_store_retry_reason": str(exc)[:500],
                         "fallback_used": False,
+                        "error": None,
                     },
                 )
                 return model
@@ -645,7 +649,7 @@ def run_json_agent(
         if fallback is None:
             raise
         model = fallback if isinstance(fallback, response_model) else response_model(**fallback)
-        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(exc)[:500]})
+        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "deterministic_fallback", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(exc)[:500], "error": str(exc)[:500]})
         return model
 
 

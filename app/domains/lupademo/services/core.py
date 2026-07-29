@@ -460,6 +460,7 @@ def ensure_demo_case(db: Any) -> str:
     case_id = db.create_case("Lupademo: Koivutien pientalohanke", language="fi")
     db.set_case_status(case_id, "application_draft")
     ensure_seed_state(db, case_id)
+    db.set_app_setting("lupademo_active_case_id", case_id)
     return case_id
 
 

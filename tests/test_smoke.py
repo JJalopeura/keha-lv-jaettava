@@ -12,6 +12,9 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, so `import app...` works from any cwd
 
@@ -23,8 +26,13 @@ from fastapi.testclient import TestClient  # noqa: E402
 import app.domains.lupademo.security as security  # noqa: E402
 import app.domains.lupademo.services as svc  # noqa: E402
 from app.core.azure_client import AzureOpenAIClient  # noqa: E402
+from app.core.config import Settings  # noqa: E402
 from app.core.db import DB  # noqa: E402
+from app.core.llm_factory import create_llm_client  # noqa: E402
+from app.core.llm_utils import call_llm_json, vector_store_ids  # noqa: E402
+from app.core.mock_llm import MockLLMClient  # noqa: E402
 from app.domains.lupademo.services.application import deterministic_suggestion  # noqa: E402
+from app.domains.lupademo.services.intake import azure_vector_store_ids, build_retrieval_context  # noqa: E402
 from app.main import app  # noqa: E402
 
 PERMIT = "environmental_industrial"
@@ -126,6 +134,32 @@ class AgentPipeline(unittest.TestCase):
         self.assertEqual(suggestion.suggested_value, "")
         self.assertTrue(suggestion.warnings)
 
+    def test_permit_specific_suggestions_are_supported_for_every_permit_type(self) -> None:
+        fields = {
+            "building_residential": "project_description",
+            "environmental_industrial": "activity_description",
+            "event_public": "rescue_plan",
+        }
+
+        for permit_type, field_id in fields.items():
+            with self.subTest(permit_type=permit_type):
+                schema_field_ids = {field["id"] for field in svc.load_form_schema(permit_type)["fields"]}
+                self.assertIn(field_id, schema_field_ids)
+
+                suggestion = deterministic_suggestion(permit_type, field_id, {}, [])
+                self.assertEqual(suggestion.field_id, field_id)
+                self.assertTrue(suggestion.suggested_value)
+                self.assertGreater(suggestion.confidence, 0)
+                self.assertTrue(suggestion.evidence_refs)
+                self.assertFalse(suggestion.warnings)
+
+                unsupported = deterministic_suggestion(permit_type, "unsupported_semantic_field", {}, [])
+                self.assertEqual(unsupported.suggested_value, "")
+                self.assertEqual(unsupported.confidence, 0)
+                self.assertTrue(unsupported.fallback_used)
+                self.assertFalse(unsupported.evidence_refs)
+                self.assertTrue(unsupported.warnings)
+
     def test_managed_job_completion_is_owned_by_its_executor(self) -> None:
         job = svc.start_ai_job(
             db,
@@ -149,6 +183,29 @@ class AgentPipeline(unittest.TestCase):
         completed = svc.complete_ai_job(db, case, PERMIT, job["id"], summary="Valmis.")
         self.assertEqual(completed["status"], "completed")
 
+    def test_cancelled_job_stays_cancelled_and_retry_requires_an_operation(self) -> None:
+        job = svc.start_ai_job(
+            db,
+            case,
+            PERMIT,
+            "test_background",
+            "Tenant-owned background job",
+            ["text_extractor"],
+            managed_background=True,
+            tenant_id="avi_demo",
+        )
+
+        cancelled = svc.cancel_ai_job(db, job["id"])
+        self.assertEqual(cancelled["status"], "cancelled")
+        with self.assertRaises(ValueError):
+            svc.cancel_ai_job(db, job["id"])
+
+        late_completion = svc.complete_ai_job(db, case, PERMIT, job["id"], summary="Late result")
+        self.assertEqual(late_completion["status"], "cancelled")
+
+        with self.assertRaisesRegex(ValueError, "job_retry_not_supported"):
+            svc.retry_ai_job(db, job["id"])
+
 
 class AzureFileUpload(unittest.TestCase):
     def test_upload_uses_direct_files_endpoint(self) -> None:
@@ -168,6 +225,239 @@ class AzureFileUpload(unittest.TestCase):
         self.assertEqual((upload_id, file_id), ("file_test", "file_test"))
         self.assertEqual(calls[0][0:2], ("POST", "/openai/v1/files"))
         self.assertEqual(calls[0][2]["form_data"], {"purpose": "assistants"})
+
+
+class ProviderContracts(unittest.TestCase):
+    def _settings(self, **overrides: object) -> Settings:
+        values = {
+            "db_path": ":memory:",
+            "uploads_dir": tempfile.gettempdir(),
+            "llm_provider": "azure",
+            "demo_mode": False,
+            "azure_openai_host_core": "https://core.openai.azure.com",
+            "azure_openai_host_chat": "https://chat.services.ai.azure.com",
+            "azure_openai_api_key_core": "core-key",
+            "azure_openai_api_key_chat": "chat-key",
+            "azure_openai_api_version": "2025-04-01-preview",
+            "azure_openai_model_core": "core-model",
+            "azure_openai_model_chat": "chat-model",
+            "azure_openai_timeout_s_core": 30.0,
+            "azure_openai_timeout_s_chat": 45.0,
+            "company_vector_store_ids": [],
+        }
+        values.update(overrides)
+        return Settings(**values)
+
+    def test_factory_selects_core_and_chat_configuration(self) -> None:
+        settings = self._settings()
+        with patch.dict(os.environ, {"KEHA_LV_FORCE_MOCK_LLM": "false"}):
+            core = create_llm_client(settings, purpose="core")
+            chat = create_llm_client(settings, purpose="chat")
+
+        self.assertIsInstance(core, AzureOpenAIClient)
+        self.assertEqual((core.host, core.api_key, core.model, core.timeout_s), (
+            settings.azure_openai_host_core,
+            settings.azure_openai_api_key_core,
+            settings.azure_openai_model_core,
+            settings.azure_openai_timeout_s_core,
+        ))
+        self.assertEqual((chat.host, chat.api_key, chat.model, chat.timeout_s), (
+            settings.azure_openai_host_chat,
+            settings.azure_openai_api_key_chat,
+            settings.azure_openai_model_chat,
+            settings.azure_openai_timeout_s_chat,
+        ))
+
+    def test_factory_force_mock_overrides_azure(self) -> None:
+        with patch.dict(os.environ, {"KEHA_LV_FORCE_MOCK_LLM": "true"}):
+            selected = create_llm_client(self._settings())
+
+        self.assertIsInstance(selected, MockLLMClient)
+
+    def test_azure_responses_request_contract(self) -> None:
+        captured: dict[str, object] = {}
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(200, json={"output": []})
+
+        transport = httpx.MockTransport(handle)
+        real_client = httpx.Client
+        azure = AzureOpenAIClient(
+            "https://example.openai.azure.com",
+            "2025-04-01-preview",
+            "secret-key",
+            "test-model",
+            timeout_s=12.0,
+        )
+        with patch("app.core.azure_client.httpx.Client", side_effect=lambda **kwargs: real_client(transport=transport, **kwargs)):
+            azure.responses(input_text="test", response_format="json_object", max_output_tokens=50)
+
+        request = captured["request"]
+        self.assertIsInstance(request, httpx.Request)
+        self.assertEqual(request.url.path, "/openai/responses")
+        self.assertEqual(request.url.params["api-version"], "2025-04-01-preview")
+        self.assertEqual(request.headers["api-key"], "secret-key")
+        self.assertEqual(json.loads(request.content)["model"], "test-model")
+
+    def test_azure_http_error_exposes_status_and_service_message(self) -> None:
+        transport = httpx.MockTransport(
+            lambda request: httpx.Response(429, json={"error": {"message": "rate limited"}})
+        )
+        real_client = httpx.Client
+        azure = AzureOpenAIClient("https://example.services.ai.azure.com", "preview", "key", "model")
+
+        with patch("app.core.azure_client.httpx.Client", side_effect=lambda **kwargs: real_client(transport=transport, **kwargs)):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 429: rate limited"):
+                azure.responses(input_text="test")
+
+
+class StructuredCallContracts(unittest.TestCase):
+    class FakeClient:
+        model = "fake-model"
+
+        def __init__(self, *, output: str | None = None, error: Exception | None = None) -> None:
+            self.output = output
+            self.error = error
+
+        def responses(self, **kwargs: object) -> dict:
+            if self.error:
+                raise self.error
+            if self.output is None:
+                return {"output": []}
+            return {"output": [{"type": "message", "content": [{"type": "output_text", "text": self.output}]}]}
+
+        def extract_output_text(self, response: dict) -> str | None:
+            try:
+                return response["output"][0]["content"][0]["text"]
+            except (KeyError, IndexError):
+                return None
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db = DB(str(Path(self.temp_dir.name) / "structured.db"))
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_valid_json_is_returned_and_logged(self) -> None:
+        result = call_llm_json(
+            self.FakeClient(output='{"ok": true}'),
+            "synthetic prompt",
+            db=self.db,
+            case_id="case_test",
+            agent="test.agent",
+        )
+
+        self.assertEqual(result, {"ok": True})
+        log = self.db.list_ai_logs(agent="test.agent")[0]
+        self.assertIsNone(log["error"])
+        self.assertIsNotNone(log["response_json"])
+
+    def test_missing_output_is_logged_as_error(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "No output_text"):
+            call_llm_json(self.FakeClient(), "synthetic prompt", db=self.db, agent="test.missing")
+
+        self.assertIn("No output_text", self.db.list_ai_logs(agent="test.missing")[0]["error"])
+
+    def test_malformed_json_is_logged_as_error(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "Failed to parse JSON output"):
+            call_llm_json(self.FakeClient(output="not json"), "synthetic prompt", db=self.db, agent="test.invalid")
+
+        self.assertIn("Failed to parse JSON output", self.db.list_ai_logs(agent="test.invalid")[0]["error"])
+
+    def test_provider_failure_is_logged_as_error(self) -> None:
+        with self.assertRaisesRegex(TimeoutError, "provider timed out"):
+            call_llm_json(
+                self.FakeClient(error=TimeoutError("provider timed out")),
+                "synthetic prompt",
+                db=self.db,
+                agent="test.timeout",
+            )
+
+        self.assertEqual(self.db.list_ai_logs(agent="test.timeout")[0]["error"], "provider timed out")
+
+
+class RetrievalContracts(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db = DB(str(Path(self.temp_dir.name) / "retrieval.db"))
+        self.case_id = self.db.create_case("Retrieval contract")
+        self.db.set_case_vector_store(self.case_id, "case-store")
+        self.db.set_research_vector_store(self.case_id, "research-store")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_general_vector_store_selection_prioritizes_and_deduplicates(self) -> None:
+        self.db.set_app_setting("offerings_vector_store_id", "offerings-store")
+        settings = ProviderContracts()._settings(
+            company_vector_store_ids=["case-store", "company-store"],
+        )
+
+        selected = vector_store_ids(
+            "case-store",
+            settings,
+            self.db,
+            include_offerings=True,
+            max_ids=2,
+        )
+
+        self.assertEqual(selected, ["case-store", "offerings-store"])
+
+    def test_applicant_agent_uses_only_case_and_research_stores(self) -> None:
+        settings = ProviderContracts()._settings(
+            company_vector_store_ids=["company-a", "company-b"],
+        )
+
+        with patch.dict(os.environ, {"LUPADEMO_INCLUDE_COMPANY_VECTOR_STORES": "true"}):
+            selected = azure_vector_store_ids(self.db, settings, self.case_id)
+
+        self.assertEqual(selected, ["case-store", "research-store"])
+
+    def test_agent_provider_receives_only_bounded_retrieval_ids(self) -> None:
+        settings = ProviderContracts()._settings(
+            company_vector_store_ids=["company-a", "company-b"],
+        )
+        captured_ids = []
+
+        def fake_call(*_args, **kwargs):
+            captured_ids.extend(kwargs["vector_store_ids_list"])
+            return {"request_id": "retrieval-provider", "extracted_fields": []}
+
+        with (
+            patch.dict(os.environ, {"LUPADEMO_INCLUDE_COMPANY_VECTOR_STORES": "true"}),
+            patch("app.domains.lupademo.services.intake.call_llm_json", side_effect=fake_call),
+        ):
+            svc.run_json_agent(
+                self.db,
+                settings,
+                self.case_id,
+                "structure_extractor",
+                {"request_id": "retrieval-provider", "permit_type": PERMIT, "form_schema": "{}", "source_text": SAMPLE},
+                svc.StructureExtractionResponse,
+                vector_ids=azure_vector_store_ids(self.db, settings, self.case_id),
+            )
+
+        self.assertEqual(captured_ids, ["case-store", "research-store"])
+        audit = svc.artifact_json(self.db, self.case_id, "agent_output", "structure_extractor", {})
+        self.assertEqual(audit["provider"], "azure")
+        self.assertEqual(audit["execution_mode"], "retrieval")
+        self.assertFalse(audit["fallback_used"])
+        self.assertIsNone(audit["error"])
+
+    def test_applicant_cannot_request_benchmark_or_authority_examples(self) -> None:
+        for scope in ("example_case_benchmark", "authority_example"):
+            with self.subTest(scope=scope):
+                with self.assertRaisesRegex(PermissionError, "benchmark_scope_forbidden"):
+                    build_retrieval_context(
+                        self.db,
+                        self.case_id,
+                        PERMIT,
+                        "test",
+                        [scope],
+                        user_role="applicant",
+                    )
 
 
 class PublicApi(unittest.TestCase):
@@ -216,6 +506,72 @@ class PublicApi(unittest.TestCase):
             headers=KEY,
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_package_analysis_is_synchronous_and_result_is_tenant_owned(self) -> None:
+        response = client.post(
+            "/api/v1/application-packages:analyze",
+            json={
+                "permit_type": PERMIT,
+                "request_id": "package-contract",
+                "source_text": SAMPLE,
+            },
+            headers=KEY,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "succeeded")
+        result = client.get(body["result_url"], headers=KEY)
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()["tenant_id"], "avi_demo")
+
+        other_tenant = {"X-Lupademo-Api-Key": "demo-vantaa-key"}
+        for method, path in (
+            (client.get, body["result_url"]),
+            (client.get, f"/api/v1/jobs/{body['job_id']}"),
+            (client.post, f"/api/v1/jobs/{body['job_id']}/cancel"),
+            (client.post, f"/api/v1/jobs/{body['job_id']}/retry"),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(method(path, headers=other_tenant).status_code, 403)
+
+        self.assertEqual(
+            client.post(f"/api/v1/jobs/{body['job_id']}/cancel", headers=KEY).status_code,
+            409,
+        )
+        self.assertEqual(
+            client.post(f"/api/v1/jobs/{body['job_id']}/retry", headers=KEY).status_code,
+            409,
+        )
+
+    def test_api_tenants_use_distinct_persisted_cases(self) -> None:
+        avi = client.post(
+            "/api/v1/field-suggestions",
+            json={
+                "permit_type": PERMIT,
+                "request_id": "avi-isolation",
+                "field_id": "activity_description",
+            },
+            headers=KEY,
+        ).json()
+        vantaa = client.post(
+            "/api/v1/field-suggestions",
+            json={
+                "permit_type": "building_residential",
+                "request_id": "vantaa-isolation",
+                "field_id": "project_description",
+            },
+            headers={"X-Lupademo-Api-Key": "demo-vantaa-key"},
+        ).json()
+
+        avi_status = client.get(f"/api/v1/jobs/{avi['job_id']}", headers=KEY).json()
+        vantaa_status = client.get(
+            f"/api/v1/jobs/{vantaa['job_id']}",
+            headers={"X-Lupademo-Api-Key": "demo-vantaa-key"},
+        ).json()
+        self.assertNotEqual(avi_status["case_id"], vantaa_status["case_id"])
+        self.assertEqual(db.get_app_setting("lupademo_api_case_id:avi_demo"), avi_status["case_id"])
+        self.assertEqual(db.get_app_setting("lupademo_api_case_id:vantaa_demo"), vantaa_status["case_id"])
 
 
 class Authentication(unittest.TestCase):
