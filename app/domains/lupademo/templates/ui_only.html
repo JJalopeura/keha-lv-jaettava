@@ -1,8 +1,20 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, status_summary, recommended_action %}
+{% block title %}Virkailijan ehdotustyökalu{% endblock %}
 {% block content %}
-<section class="band service-product"><p class="eyebrow">AI-ehdotuspalvelu</p><h1>Virkailijan ehdotustyökalu</h1><p>Liitä lähdeaineisto, muodosta ehdotukset ja kopioi tarkistetut tiedot omaan järjestelmääsi.</p></section>
+{% set has_suggestions = result.get('extracted_fields') %}
+{{ page_header(
+  "Virkailijan ehdotustyökalu",
+  "Liitä lähdeaineisto, tarkista ehdotukset ja kopioi valitut tiedot omaan järjestelmään.",
+  "Integraatiot",
+  [{'label': 'Integraatiot', 'href': '/cases/' ~ case_id ~ '/lupademo/suggestion-service'}, {'label': 'Ehdotustyökalu', 'href': ''}]
+) }}
+<div class="status-action-layout">
+  {{ status_summary("Ehdotukset valmiina tarkistukseen" if has_suggestions else "Valmis aineistolle", "Hyväksyminen kirjataan vain tämän demon lokiin; ulkoista järjestelmää ei muuteta." if has_suggestions else "Liitä teksti tai tiedosto ehdotusten muodostamiseksi.", "success" if has_suggestions else "neutral") }}
+  {{ recommended_action("Tarkista lähde ja sisältö" if has_suggestions else "Lisää lähdeaineisto", "Kopioi vasta tarkistetut tiedot viranomaisen omaan järjestelmään.", "#suggestions" if has_suggestions else "#source-material", "Avaa ehdotukset" if has_suggestions else "Avaa syöttö") }}
+</div>
 <section class="grid two">
-  <form method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data" id="source-material">
     <label>Asiakas
       <select name="tenant_id">
         {% for client in api_clients %}
@@ -18,7 +30,7 @@
     <button>Muodosta ehdotukset</button>
   </form>
   <div>
-    <h2>Kopioitava ehdotus</h2>
+    <h2 id="suggestions">Tarkistettavat ehdotukset</h2>
     {% if result.get('tenant_id') %}<details class="technical-details"><summary>Tekniset käsittelytiedot</summary><p>Asiakas: <code>{{ result.get('tenant_id') }}</code> · Kriteeriversio: <code>{{ result.get('criteria_version') }}</code></p></details>{% endif %}
     {% if result.get('source_documents') %}
     <details class="technical-details">
@@ -31,7 +43,8 @@
     </details>
     {% endif %}
     {% if result.get('extracted_fields') %}
-    <button type="button" class="secondary" data-copy-ui-only>Kopioi ehdotus</button>
+    <p class="muted">Valitse hyväksyttävät tiedot. Kopiointi ja hyväksyntä eivät kirjoita ulkoiseen järjestelmään.</p>
+    <button type="button" class="secondary" data-copy-ui-only>Kopioi ehdotukset</button>
     <form method="post" action="/cases/{{ case_id }}/lupademo/suggestion-service/ui-only/accept">
     <div class="result-list" id="ui-only-copy-source">
       {% for field in result.extracted_fields %}
@@ -39,7 +52,7 @@
         <label><input type="checkbox" name="accepted_fields" value="{{ field.field_id }}"> Hyväksy</label>
         <span class="status good">AI:n löytämä tieto</span>
         <p>{{ field.value }}</p>
-        <small>{% if field.confidence >= 0.8 %}Vahva{% elif field.confidence >= 0.5 %}Tarkistettava{% else %}Epävarma{% endif %}</small>
+        <small>{% if field.confidence >= 0.8 %}Vahva lähdetuki{% elif field.confidence >= 0.5 %}Tarkistettava lähdetuki{% else %}Epävarma lähdetuki{% endif %}</small>
         <details class="technical-details"><summary>Tekninen kenttätunnus</summary><code>{{ field.field_id }}</code></details>
       </div>
       {% endfor %}
@@ -50,7 +63,8 @@
     <p class="muted">Liitä teksti ja muodosta ehdotus.</p>
     {% endif %}
     <div id="acceptance-log">
-      <h2>Hyväksyntäloki</h2>
+      <h2>Demon hyväksyntäloki</h2>
+      <p class="muted">Loki osoittaa käyttäjän valinnan tässä demossa. Se ei vahvista siirtoa ulkoiseen järjestelmään.</p>
       {% for item in acceptance_log["items"] %}
       <div class="result-item">
         <p>Hyväksyttyjä kenttiä: {{ item.accepted_fields|length }}</p>

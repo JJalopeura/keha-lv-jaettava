@@ -1,4 +1,6 @@
 {% extends "light_base.html" %}
+{% from "_components.html" import page_header, status_summary, recommended_action %}
+{% block title %}{{ project.get("name") or "Lupahanke" }}{% endblock %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
 {% set labels = {
@@ -23,31 +25,41 @@
   "submitted": "Lähetetty",
   "application_draft": "Luonnos"
 } %}
-<section class="band lv-hero">
-  <p class="eyebrow">Lupahanke</p>
-  <h1>{{ project.get("name") or "Lupahanke" }}</h1>
-  <p class="muted">{{ project.get("scenario_label") or "Lupademo" }} · {{ project.get("location") or common.data.get("municipality") or "Kunta ei tiedossa" }}</p>
-</section>
-<section class="grid two">
-  <div>
-    <h2>Yhteiset tiedot</h2>
-    <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="form-grid">
-      {% for key, value in common.data.items() %}
-      <label>{{ labels.get(key, key) }}
-        <input name="{{ key }}" value="{{ value }}">
-      </label>
-      {% endfor %}
-      <button>Tallenna LV:ssä</button>
-    </form>
+{% set active_permits = project.get('permits', []) %}
+{% set next_permit = active_permits|first if active_permits else 'building_residential' %}
+{{ page_header(project.get("name") or "Lupahanke", (project.get("scenario_label") or "Lupahanke") ~ ' · ' ~ (project.get("location") or common.data.get("municipality") or "Kunta ei tiedossa"), 'Projektin tilanne') }}
+{{ status_summary('Projektin tilanne', (project.get('permits', [])|length|string) ~ ' lupahakemusta ja ' ~ (sync.changes|length|string) ~ ' yhteisten tietojen muutosta tarkistettavana.', 'attention' if sync.changes else 'ready') }}
+{% if sync.changes %}
+{{ recommended_action('Tarkista yhteisten tietojen muutokset', 'Ratkaise hankkeen ja hakemusten väliset muutokset ennen jatkamista.', '#common-data-changes', 'Tarkista muutokset', 'attention') }}
+{% else %}
+{{ recommended_action('Jatka hakemusta', 'Täydennä lupahakemus ja tarkista sen aineisto ennen lähettämistä.', '/cases/' ~ case_id ~ '/lupademo/application/' ~ next_permit ~ '/wizard/1', 'Jatka hakemusta') }}
+{% endif %}
+
+<section id="common-data-changes">
+  <h2>Lupahakemukset</h2>
+  <div class="cards">
+    {% for permit_type in ["building_residential", "environmental_industrial", "event_public"] %}
+    <article>
+      <h3>{{ permit_labels.get(permit_type, permit_type) }}</h3>
+      <p>Tila: <span class="status">{{ statuses.get(project.get("statuses", {}).get(permit_type), project.get("statuses", {}).get(permit_type)) }}</span></p>
+      {% if permit_type in project.get("permits", []) %}
+      <a class="button {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Jatka hakemusta</a>
+      {% else %}
+      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Aloita hakemus</a>
+      {% endif %}
+    </article>
+    {% endfor %}
   </div>
-  <div>
-    <h2>Kevytasioinnin muutosehdotukset</h2>
+</section>
+
+<section>
+  <h2>Yhteisten tietojen muutokset</h2>
     {% if sync.changes %}
       {% for change in sync.changes %}
       <div class="issue {{ change.direction }}">
         <strong>{{ labels.get(change.field_id, change.field_id) }}</strong>
-        <span>{{ change.direction }}</span>
-        <p>LV: {{ change.lv_value }} · Kevytasiointi: {{ change.app_values|join(", ") }}</p>
+        <span>{{ "Hanketieto on muuttunut" if change.direction == "lv_to_app" else ("Hakemuksessa on uusi arvo" if change.direction == "app_to_lv" else "Arvot ovat ristiriidassa") }}</span>
+        <p>Hankkeen tieto: {{ change.lv_value or "Ei arvoa" }} · Hakemuksen tieto: {{ change.app_values|join(", ") or "Ei arvoa" }}</p>
         {% if change.source_application_id %}
         <small>Lähdehakemus: {{ permit_labels.get(change.source_application_id, change.source_application_id) }}</small>
         {% endif %}
@@ -64,31 +76,27 @@
           </select>
           <input name="manual_value" value="{{ change.lv_value }}">
           {% endif %}
-          <button>Ratkaise muutos</button>
+          <button>{{ "Ratkaise ristiriita" if change.direction == "conflict" else "Hyväksy muutos" }}</button>
         </form>
       </div>
       {% endfor %}
     {% else %}
       <p class="muted">Ei avoimia yhteisten tietojen muutoksia.</p>
     {% endif %}
-  </div>
-</section>
+ </section>
 
-<section>
-  <h2>Asioinnit</h2>
-  <div class="cards">
-    {% for permit_type in ["building_residential", "environmental_industrial", "event_public"] %}
-    <article>
-      <h3>{{ permit_labels.get(permit_type, permit_type) }}</h3>
-      <p>Tila: <span class="status">{{ statuses.get(project.get("statuses", {}).get(permit_type), project.get("statuses", {}).get(permit_type)) }}</span></p>
-      {% if permit_type in project.get("permits", []) or permit_type == "building_residential" %}
-      <a class="button {% if present and permit_type in project.get("permits", []) %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Aloita / jatka</a>
-      {% else %}
-      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Avaa vertailuksi</a>
-      {% endif %}
-    </article>
-    {% endfor %}
+<details class="project-data-details">
+  <summary>Projektin tiedot</summary>
+  <div class="project-data-details__content">
+    <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="form-grid">
+      {% for key, value in common.data.items() %}
+      <label>{{ labels.get(key, key) }}
+        <input name="{{ key }}" value="{{ value }}">
+      </label>
+      {% endfor %}
+      <button>Tallenna yhteiset tiedot</button>
+    </form>
   </div>
-</section>
+</details>
 
 {% endblock %}

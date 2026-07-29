@@ -1,21 +1,32 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, status_summary, recommended_action, technical_details %}
 {% block title %}Käsittelijän työtila{% endblock %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
-<header class="casework-header">
-  <div><a class="back-link" href="/cases/{{ case_id }}/lupademo/authority/queue{% if request.url.query %}?{{ request.url.query }}{% endif %}">← Työjonoon</a><p class="section-kicker">{{ schema.title }}</p><h1>{{ project.name }}</h1><p>{{ application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija' }} · {{ common.data.get('municipality') or 'Kunta ei tiedossa' }}</p></div>
-  <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/status" class="case-status-form"><label>Tila<select name="status"><option>Käsittelyssä</option><option>Täydennyspyyntö luonnosteltu</option><option>Päätetty</option></select></label><button class="secondary compact">Päivitä</button></form>
-</header>
+{{ page_header(project.name, (application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija') ~ ' · ' ~ (common.data.get('municipality') or 'Kunta ei tiedossa'), schema.title, [{'label': 'Työjono', 'href': '/cases/' ~ case_id ~ '/lupademo/authority/queue' ~ ('?' ~ request.url.query if request.url.query else '')}, {'label': 'Hakemuksen käsittely', 'href': ''}]) }}
 
-<nav class="casework-tabs" aria-label="Hakemuksen osiot"><a class="active" href="#overview">Tilannekuva</a><a href="#application-material">Hakemus ja liitteet</a><a href="#drafts">Luonnokset</a></nav>
+<div class="status-action-layout" id="overview">
+  {{ status_summary('Hakemus on vastaanotettu', 'Varmista viranomaiselle toimitettu aineisto ennen AI-havaintojen tai luonnosten käyttöä.', 'attention', application.status|replace('_', ' ')|capitalize) }}
+  {{ recommended_action('Tarkista avoimet asiat', 'Käy käsittelijän tarkistuslista ja aktiiviset havainnot läpi ennen seuraavaa ratkaisua.', '#review', 'Siirry tarkistettaviin asioihin') }}
+</div>
 
-<section class="authority-brief" id="overview">
+<form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/status" class="case-status-form case-status-toolbar"><label>Päivitä käsittelyn tila<select name="status"><option>Käsittelyssä</option><option>Täydennyspyyntö luonnosteltu</option><option>Päätetty</option></select></label><button class="secondary compact">Tallenna tila</button></form>
+
+<section class="application-material" id="application-material">
+  <div class="section-heading-line"><div><p class="section-kicker">Virallinen aineisto</p><h2>Viranomaiselle toimitetut liitteet</h2></div><span>{{ attachments|selectattr('delivery_scope', 'equalto', 'official_submission')|list|length }} liitettä</span></div>
+  <div class="official-document-list">{% for att in attachments if att.delivery_scope == 'official_submission' %}<div class="document-row"><span class="file-icon">{{ att.filename.split('.')[-1][:3]|upper }}</span><div><strong>{{ att.filename }}</strong><small>{{ att.primary_type|replace('_',' ') }}</small></div></div>{% else %}<p class="empty-copy">Viranomaiselle toimitettuja liitteitä ei ole saatavilla.</p>{% endfor %}</div>
+  {% call technical_details('Näytä hakemuksen kaikki tiedot') %}
+  <dl class="data-list">{% for key, value in application.form_data.items() if value %}<div class="data-row"><dt>{{ field_labels.get(key, key|replace('_',' ')|capitalize) }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+  {% endcall %}
+</section>
+
+<section class="authority-brief">
   <div class="brief-heading">
     <span class="assistant-mark large" aria-hidden="true">✦</span>
-    <div><p class="section-kicker">Command center</p><h2>AI-brief</h2><p>AI-havainnot ovat valmistelun tukea, eivät päätöksiä. Tarkista kaikki havainnot ennen käyttöä.</p></div>
-    <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/ai/summary"><button class="{% if present %}next-action{% endif %}">{% if authority_summary %}Päivitä AI-brief{% else %}Muodosta AI-brief{% endif %}</button></form>
+    <div><p class="section-kicker">Valmistelun tuki</p><h2>AI-yhteenveto</h2><p>AI-havainnot eivät ole päätöksiä. Tarkista ne aina virallista aineistoa vasten.</p></div>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/ai/summary"><button class="{% if present %}next-action{% endif %}">{% if authority_summary %}Päivitä AI-yhteenveto{% else %}Muodosta AI-yhteenveto{% endif %}</button></form>
   </div>
   {% if authority_summary %}
   <div class="brief-content">
@@ -26,7 +37,7 @@
   {% endif %}
 </section>
 
-<div class="casework-grid">
+<div class="casework-grid" id="review">
   <section class="review-column">
     <div class="column-heading"><div><p class="section-kicker">Käsittelijän työlista</p><h2>Tarkista seuraavaksi</h2></div><span>{{ caseworker_observations.caseworker_checklist|length }}</span></div>
     {% for item in caseworker_observations.caseworker_checklist %}
@@ -46,11 +57,6 @@
     <div class="source-boundaries"><strong>Aineistorajaus</strong><p>Hakemus ja viranomaiselle toimitetut liitteet ovat käsittelyn varsinaista aineistoa.</p><p>Hakijan AI-tausta-aineisto ei kuulu viranomaispakettiin ilman erillistä hyväksyntää.</p></div>
   </aside>
 </div>
-
-<section class="application-material" id="application-material">
-  <div class="section-heading-line"><div><p class="section-kicker">Hakemusaineisto</p><h2>Hakemus ja viranomaiselle toimitetut liitteet</h2></div><span>{{ attachments|selectattr('delivery_scope', 'equalto', 'official_submission')|list|length }} liitettä</span></div>
-  <div class="material-split"><dl class="data-list">{% for key, value in application.form_data.items() if value %}<div class="data-row"><dt>{{ field_labels.get(key, key|replace('_',' ')|capitalize) }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl><div class="official-document-list">{% for att in attachments if att.delivery_scope == 'official_submission' %}<div class="document-row"><span class="file-icon">{{ att.filename.split('.')[-1][:3]|upper }}</span><div><strong>{{ att.filename }}</strong><small>{{ att.primary_type|replace('_',' ') }}</small></div></div>{% else %}<p class="empty-copy">Ei toimitettuja liitteitä.</p>{% endfor %}</div></div>
-</section>
 
 <section class="drafts-section" id="drafts">
   <div class="section-heading-line"><div><p class="section-kicker">Luonnokset</p><h2>Tarkista ja muokkaa ennen käyttöä</h2></div></div>

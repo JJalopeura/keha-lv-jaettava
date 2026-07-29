@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>{% block title %}Lupa-apuri{% endblock %} · Luvat ja valvonta</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260729-workspace-picker">
+  <link rel="stylesheet" href="/static/style.css?v=20260729-sprint-2">
 </head>
 <body class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}">
   {% set current_path = request.url.path %}
@@ -38,8 +38,9 @@
       <a href="{{ '/cases/' ~ case_id ~ '/lupademo/authority/queue' if case_id is defined else '/authority/queue' }}" aria-current="page">Työjono</a>
       {% elif demo_workspace %}
       <a href="/demo-lab"{% if current_path == '/demo-lab' %} aria-current="page"{% endif %}>Yleiskuva</a>
+      <a href="/demo/scenarios"{% if current_path.startswith('/demo/') or current_path == '/demo-lab/presenter' %} aria-current="page"{% endif %}>Demon ohjaus</a>
       {% if case_id is defined %}
-      <a href="/cases/{{ case_id }}/lupademo/metrics"{% if '/metrics' in current_path %} aria-current="page"{% endif %}>Mittarit</a>
+      <a href="/cases/{{ case_id }}/lupademo/metrics"{% if '/metrics' in current_path %} aria-current="page"{% endif %}>Vaikuttavuus</a>
       <a href="/cases/{{ case_id }}/lupademo/admin/criteria"{% if '/admin/criteria' in current_path %} aria-current="page"{% endif %}>Kriteeristöt</a>
       {% endif %}
       <a href="/integrations/api-playground"{% if current_path.startswith('/integrations/') or '/suggestion-service' in current_path %} aria-current="page"{% endif %}>Integraatiot</a>
@@ -53,7 +54,7 @@
     </nav>
   </header>
   {% if case_id is defined %}
-  <div class="project-context" aria-label="Avoin hanke">
+  <div class="project-context project-context--{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else 'application') }}" aria-label="Avoin hanke">
     <div>
       <span class="context-kicker">Avoin hanke</span>
       <strong>{{ project.name }}</strong>

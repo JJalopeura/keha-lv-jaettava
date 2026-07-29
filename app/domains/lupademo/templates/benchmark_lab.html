@@ -1,51 +1,75 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, status_summary, recommended_action, technical_details %}
+{% block title %}Arviointi{% endblock %}
 {% block content %}
-<section class="band service-shell metrics-shell">
-  <p class="eyebrow">Admin / eval</p>
-  <h1>Benchmark lab</h1>
-  <p class="muted">Viranomaisdokumenttien vertailuaineisto agenttien laadunarviointiin.</p>
-</section>
-<section class="grid two">
-  <div>
-    <h2>Käyttörajaus</h2>
-    <dl class="data-list">
-      <div class="data-row"><dt>Scope</dt><dd>{{ benchmark_lab.scope }}</dd></div>
-      <div class="data-row"><dt>Normaalipolussa</dt><dd>{{ "kyllä" if benchmark_lab.normal_path_available else "ei" }}</dd></div>
-      <div class="data-row"><dt>Viranomaisesimerkkejä</dt><dd>{{ benchmark_lab.authority_example_count }}</dd></div>
-      <div class="data-row"><dt>Agenttikohteita</dt><dd>{{ benchmark_lab.target_count }}</dd></div>
-      <div class="data-row"><dt>Eval-runner</dt><dd>{{ benchmark_lab.eval_runner }}</dd></div>
-    </dl>
-    <p class="muted">{{ benchmark_lab.usage_policy }}</p>
-    <p class="muted">{{ benchmark_lab.vector_store_policy }}</p>
-    <form method="post" action="/cases/{{ case_id }}/lupademo/admin/benchmark-lab/run">
-      <button>Päivitä benchmark-kooste</button>
-    </form>
-  </div>
-  <div>
-    <h2>Agenttikohteet</h2>
-    {% for target in benchmark_lab.agent_comparison_targets %}
-    <div class="result-item">
-      <strong>{{ target.agent }}</strong>
-      <p>Esimerkkejä {{ target.example_count }} · {{ target.cases|join(", ") }}</p>
-      <small>{{ target.rubric[0] if target.rubric else "" }}</small>
+{% set has_examples = benchmark_lab.authority_example_count > 0 %}
+{{ page_header(
+  "Arviointi",
+  "Viranomaisesimerkkien kattavuus ja AI-tuotosten vertailukriteerit.",
+  "Demo Lab ja alusta",
+  [{'label': 'Yleiskuva', 'href': '/demo-lab'}, {'label': 'Arviointi', 'href': ''}]
+) }}
+<div class="status-action-layout">
+  {{ status_summary(
+    "Vertailuaineisto käytettävissä" if has_examples else "Vertailuaineisto puuttuu",
+    benchmark_lab.authority_example_count|string ~ " viranomaisesimerkkiä on rajattu vain arviointikäyttöön." if has_examples else "Tuo lähdeaineisto Kriteeristöt-sivulla, jotta arvioinnin kattavuus voidaan tarkistaa.",
+    "success" if has_examples else "neutral",
+    benchmark_lab.target_count|string ~ " arviointikohdetta"
+  ) }}
+  {{ recommended_action(
+    "Tarkista kattavuus",
+    "Varmista, että jokaiselle arvioitavalle AI-kyvykkyydelle löytyy vertailuesimerkkejä.",
+    "#comparison-targets",
+    "Avaa arviointikohteet"
+  ) }}
+</div>
+
+<section aria-labelledby="evaluation-boundary-heading">
+  <h2 id="evaluation-boundary-heading">Arvioinnin rajaus</h2>
+  <div class="grid two">
+    <div>
+      <dl class="data-list">
+        <div class="data-row"><dt>Viranomaisesimerkkejä</dt><dd>{{ benchmark_lab.authority_example_count }}</dd></div>
+        <div class="data-row"><dt>Arviointikohteita</dt><dd>{{ benchmark_lab.target_count }}</dd></div>
+        <div class="data-row"><dt>Hakemuspolun käytössä</dt><dd>{{ "Kyllä" if benchmark_lab.normal_path_available else "Ei" }}</dd></div>
+      </dl>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/admin/benchmark-lab/run"><button class="secondary">Päivitä arviointikooste</button></form>
     </div>
+    <div class="issue minor">
+      <strong>Ei arviointiajoa</strong>
+      <p>Tämä näkymä kuvaa aineiston ja vertailukriteerien valmiutta. Koosteen päivitys ei aja malleja eikä muodosta laatupisteitä.</p>
+    </div>
+  </div>
+</section>
+
+<section id="comparison-targets" aria-labelledby="comparison-targets-heading">
+  <h2 id="comparison-targets-heading">Arviointikohteet</h2>
+  <div class="grid two">
+    {% for target in benchmark_lab.agent_comparison_targets %}
+    <article class="result-item">
+      <h3>{{ target.agent|replace('_', ' ')|title }}</h3>
+      <p><strong>{{ target.example_count }}</strong> vertailuesimerkkiä, {{ target.cases|length }} aineistokokonaisuutta.</p>
+      {% if target.rubric %}<p>{{ target.rubric[0] }}</p>{% endif %}
+      {% call technical_details("Tekninen kohde") %}<code>{{ target.agent }}</code><p>{{ target.cases|join(", ") }}</p>{% endcall %}
+    </article>
     {% else %}
-    <p class="muted">Ei benchmark-kohteita. Aja lähdeaineistojen ingest adminin kriteerinäkymästä.</p>
+    <p class="muted">Arviointikohteita ei ole vielä muodostettu. Lähdeaineisto tuodaan Kriteeristöt-sivulta.</p>
     {% endfor %}
   </div>
 </section>
-<section>
-  <h2>Esimerkit</h2>
-  <table>
-    <tr><th>Case</th><th>Tiedosto</th><th>Tyyppi</th><th>Ote</th></tr>
-    {% for item in benchmark_lab.sample_examples %}
-    <tr>
-      <td>{{ item.case }}</td>
-      <td>{{ item.filename }}</td>
-      <td>{{ item.primary_type }}</td>
-      <td>{{ item.excerpt or item.text_excerpt }}</td>
-    </tr>
-    {% endfor %}
-  </table>
+
+<section aria-labelledby="examples-heading">
+  <h2 id="examples-heading">Aineistonäytteet</h2>
+  {% if benchmark_lab.sample_examples %}
+  <div class="table-wrap"><table>
+    <caption>Arviointiin rajatut viranomaisdokumentit</caption>
+    <tr><th>Aineistokokonaisuus</th><th>Tiedosto</th><th>Dokumenttityyppi</th><th>Ote</th></tr>
+    {% for item in benchmark_lab.sample_examples %}<tr><td>{{ item.case }}</td><td>{{ item.filename }}</td><td>{{ item.primary_type }}</td><td>{{ item.excerpt or item.text_excerpt }}</td></tr>{% endfor %}
+  </table></div>
+  {% else %}<p class="muted">Ei näytettä arviointiaineistosta.</p>{% endif %}
 </section>
+
+{% call technical_details("Aineiston käyttöperiaatteet") %}
+<p>{{ benchmark_lab.usage_policy }}</p><p>{{ benchmark_lab.vector_store_policy }}</p><p>Mock-ympäristössä tuettu: {{ "kyllä" if benchmark_lab.mock_llm_supported else "ei" }}.</p><p>Mahdollinen erillinen arviointiajuri: <code>{{ benchmark_lab.eval_runner }}</code></p>
+{% endcall %}
 {% endblock %}

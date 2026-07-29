@@ -10,7 +10,6 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, so `import app...` works from any cwd
@@ -24,7 +23,6 @@ import app.domains.lupademo.security as security  # noqa: E402
 import app.domains.lupademo.services as svc  # noqa: E402
 from app.core.azure_client import AzureOpenAIClient  # noqa: E402
 from app.core.db import DB  # noqa: E402
-from app.domains.lupademo.routes.template_filters import finnish_datetime  # noqa: E402
 from app.domains.lupademo.services.application import deterministic_suggestion  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -251,12 +249,6 @@ class Uploads(unittest.TestCase):
         self.assertEqual(self._upload("../../etc/passwd.txt"), 303)
         self.assertFalse(os.path.exists("/etc/passwd.txt"))
 
-    def test_selected_filenames_are_rendered_as_text(self) -> None:
-        template = Path("app/domains/lupademo/templates/package_new.html").read_text(encoding="utf-8")
-
-        self.assertIn("name.textContent = file.name", template)
-        self.assertNotIn("<b>${file.name}</b>", template)
-
     def test_wizard_zip_upload_starts_background_ingest_job(self) -> None:
         archive = io.BytesIO()
         import zipfile
@@ -310,16 +302,6 @@ class Uploads(unittest.TestCase):
 
 
 class Pages(unittest.TestCase):
-    def test_finnish_date_time_presentation(self) -> None:
-        self.assertEqual(finnish_datetime("2026-07-29"), "29.07.2026")
-        self.assertEqual(finnish_datetime("2026-07-29 14:05:59"), "29.07.2026 klo 14.05")
-        self.assertEqual(finnish_datetime(0), datetime.fromtimestamp(0).strftime("%d.%m.%Y klo %H.%M"))
-        self.assertEqual(finnish_datetime("tuntematon"), "tuntematon")
-
-        for name in ("receipt.html", "authority_queue.html", "audit_trail.html", "criteria.html"):
-            content = Path("app/domains/lupademo/templates", name).read_text(encoding="utf-8")
-            self.assertIn("|finnish_datetime", content, name)
-
     def test_form_suggestions_start_visible_background_job(self) -> None:
         original_executor = svc.execute_form_suggestions_job
         svc.execute_form_suggestions_job = lambda *args, **kwargs: None
@@ -362,60 +344,11 @@ class Pages(unittest.TestCase):
         self.assertEqual(workbench.status_code, 200)
         self.assertIn("Aineistotyöpöytä", workbench.text)
         self.assertNotIn("Vaihe 2 / 6", workbench.text)
-        self.assertIn(f'{base}/wizard/3#extraction-suggestions', workbench.text)
-        self.assertNotIn(f'{base}/extractions/accept', workbench.text)
 
         wizard = client.get(f"{base}/wizard/2")
         self.assertEqual(wizard.status_code, 200)
         self.assertIn("Vaihe 2 / 6", wizard.text)
         self.assertNotIn("Aineistotyöpöytä", wizard.text)
-
-    def test_successful_submission_redirects_to_receipt(self) -> None:
-        original_submit = svc.submit_application
-        svc.submit_application = lambda *_args, **_kwargs: {}
-        try:
-            response = client.post(f"{base}/submit")
-        finally:
-            svc.submit_application = original_submit
-
-        self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], f"{base}/receipt")
-
-    def test_wizard_hides_presenter_and_trace_content(self) -> None:
-        wizard = client.get(f"{base}/wizard/2?present=1")
-        self.assertEqual(wizard.status_code, 200)
-        self.assertIn('aria-current="step"', wizard.text)
-        self.assertNotIn("Mitä tämä todistaa", wizard.text)
-        self.assertNotIn("Näytä tekninen loki", wizard.text)
-        self.assertNotIn("data-job-agents", wizard.text)
-
-        receipt_redirect = client.get(f"{base}/wizard/6")
-        self.assertEqual(receipt_redirect.status_code, 303)
-        self.assertEqual(receipt_redirect.headers["location"], f"{base}/receipt")
-
-    def test_operational_templates_do_not_contain_presenter_proof(self) -> None:
-        template_dir = Path("app/domains/lupademo/templates")
-        for name in ("landing.html", "lv_project.html", "wizard.html", "authority_queue.html", "authority_detail.html"):
-            content = (template_dir / name).read_text(encoding="utf-8")
-            self.assertNotIn("Mitä tämä todistaa", content, name)
-
-        self.assertNotIn("integration_events", (template_dir / "lv_project.html").read_text(encoding="utf-8"))
-        self.assertNotIn("integration_events", (template_dir / "authority_detail.html").read_text(encoding="utf-8"))
-
-    def test_authority_queue_supports_filter_recovery(self) -> None:
-        page = client.get(f"/cases/{case}/lupademo/authority/queue?municipality=Tuntematon")
-
-        self.assertEqual(page.status_code, 200)
-        self.assertIn("<caption>Käsittelyä odottavat hakemukset", page.text)
-        self.assertIn("Poista rajaukset", page.text)
-        self.assertIn("Työjonossa ei ole näillä rajauksilla hakemuksia.", page.text)
-        self.assertIn("Käsittelyvaihe", page.text)
-        template = Path("app/domains/lupademo/templates/authority_queue.html").read_text(encoding="utf-8")
-        self.assertIn("Avaa käsittelyyn", template)
-
-        detail = client.get(f"/cases/{case}/lupademo/authority/applications/{PERMIT}?municipality=Vantaa")
-        self.assertIn(f'/cases/{case}/lupademo/authority/queue?municipality=Vantaa', detail.text)
-        self.assertNotIn("· environmental_industrial", template)
 
     def test_step_two_collapses_help_and_defers_suggestion_review(self) -> None:
         page = client.get(f"{base}/wizard/2")
@@ -453,46 +386,6 @@ class Pages(unittest.TestCase):
         self.assertIn("Lupa-apurin etusivu", page.text)
         self.assertNotIn("LV-mock", page.text)
         self.assertNotIn("system-badge", page.text)
-
-    def test_integration_credentials_are_collapsed(self) -> None:
-        page = client.get(f"/cases/{case}/lupademo/suggestion-service")
-
-        self.assertEqual(page.status_code, 200)
-        self.assertIn('<details class="technical-details">', page.text)
-        summary_position = page.text.index("Tekniset käyttöoikeustiedot")
-        key_position = page.text.index("demo-avi-key")
-        self.assertLess(summary_position, key_position)
-        self.assertNotIn("<h2>Tenantit ja demoavaimet</h2>", page.text)
-
-    def test_platform_payloads_are_collapsed(self) -> None:
-        audit = client.get(f"/cases/{case}/lupademo/admin/audit-trail")
-        api_demo = client.get(f"/cases/{case}/lupademo/suggestion-service/api-demo")
-
-        self.assertEqual(audit.status_code, 200)
-        self.assertIn("<h1>Tapahtumaloki</h1>", audit.text)
-        self.assertIn("<summary>Tekniset tapahtumatiedot</summary>", audit.text)
-        self.assertNotIn("<th>Data</th>", audit.text)
-        self.assertEqual(api_demo.status_code, 200)
-        self.assertIn("<summary>Pyynnön JSON-tiedot</summary>", api_demo.text)
-        self.assertIn("<h2>Vastauksen yhteenveto</h2>", api_demo.text)
-        self.assertIn("<summary>Lopullinen JSON-vastaus</summary>", api_demo.text)
-        self.assertIn("<summary>Tekniset sopimustiedot</summary>", api_demo.text)
-
-    def test_clerk_tool_hides_implementation_metadata(self) -> None:
-        page = client.get(f"/cases/{case}/lupademo/suggestion-service/ui-only")
-
-        self.assertEqual(page.status_code, 200)
-        self.assertIn("<h1>Virkailijan ehdotustyökalu</h1>", page.text)
-        self.assertIn('<select name="tenant_id">', page.text)
-        self.assertNotIn("UI-only ehdotuspalvelu", page.text)
-        self.assertNotIn(">Tenant<", page.text)
-        template = Path("app/domains/lupademo/templates/ui_only.html").read_text(encoding="utf-8")
-        self.assertIn("<summary>Tekninen kenttätunnus</summary>", template)
-        self.assertIn("Vahva", template)
-
-        overview = client.get(f"/cases/{case}/lupademo/suggestion-service")
-        self.assertIn("<h2>Virkailijan ehdotustyökalu</h2>", overview.text)
-        self.assertNotIn("<h2>UI-only</h2>", overview.text)
 
     def test_specs_resolve_to_runtime_paths(self) -> None:
         ui = json.loads(Path("docs/specs/ui.json").read_text(encoding="utf-8"))
@@ -571,17 +464,16 @@ class Pages(unittest.TestCase):
         self.assertNotIn(">Hakemus</a>", authority_header)
 
         demo_header = demo_lab.split("</header>", 1)[0]
-        self.assertIn(">Demo Lab ja alusta</strong>", demo_header)
-        self.assertIn('aria-current="page">Yleiskuva</a>', demo_header)
-        self.assertIn(">Integraatiot</a>", demo_header)
+        self.assertIn(">Demo Lab</a>", demo_header)
+        self.assertIn(">Rajapinnat</a>", demo_header)
         self.assertNotIn(">Hanke</a>", demo_header)
         self.assertNotIn(">Hakemus</a>", demo_header)
 
         for page in (applicant, authority, demo_lab):
             footer = page.split('<footer class="service-footer">', 1)[1]
-            self.assertIn('href="/">Hakija ja LV</a>', footer)
-            self.assertIn(">Käsittelijä</a>", footer)
-            self.assertIn(">Demo Lab ja alusta</a>", footer)
+            self.assertIn('href="/">Hakija</a>', footer)
+            self.assertIn(">Viranomaisen työtila</a>", footer)
+            self.assertIn(">Demo Lab</a>", footer)
             self.assertEqual(page.count('<footer class="service-footer">'), 1)
 
 

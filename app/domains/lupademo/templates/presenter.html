@@ -1,50 +1,48 @@
-{% extends "lv_base.html" %}
+{% extends "base.html" %}
+{% from "_components.html" import page_header, status_summary, recommended_action %}
+{% block title %}Esittäjätila{% endblock %}
 {% block content %}
-<section class="band presenter-hero">
-  <p class="eyebrow">Demo Lab · Presenter</p>
-  <h1>Kolmen minuutin lupademo</h1>
-  <p>Esittäjänäkymä kokoaa v5-polun: hakija lataa aineiston, AI analysoi näkyvästi, käyttäjä hyväksyy ehdotukset, viranomainen näkee AI-briefin ja API-demo todistaa integraatiomallin.</p>
-  <div class="presenter-actions">
-    <a class="button next-action" href="/?present=1">Aloita etuovesta</a>
-    <a class="button secondary" href="/applicant/packages/new?present=1">Näytä aineistotyöpöytä</a>
-    <a class="button secondary" href="/demo/scenarios?present=1">Avaa Demo Lab</a>
-  </div>
-</section>
+{{ page_header('Esittäjätila', 'Etene hakijan tarpeesta ihmisen tarkistamaan lopputulokseen. Tekninen lisänäyttö on valinnainen.', 'Demo Lab ja alusta', [{'label': 'Yleiskuva', 'href': '/demo-lab'}, {'label': 'Esittäjätila', 'href': ''}]) }}
 
-<section class="presenter-grid" aria-label="Demo script">
+<div class="status-action-layout">
+  {{ status_summary('Demo valmis aloitettavaksi', 'Paikallinen mock-LLM tuottaa valmistellun tarinan ilman ulkoisia palveluja.', 'ready', 'noin 3 min') }}
+  {{ recommended_action('Aloita esitys', 'Avaa hakijan etusivu ja etene kohtaukset järjestyksessä.', '/?present=1', 'Aloita hakijan etusivulta', 'normal', '/demo/scenarios?present=1', 'Vaihda skenaario') }}
+</div>
+
+<section class="presenter-grid" aria-label="Esityksen kohtaukset">
   <article>
-    <span class="system-badge ai">0:00</span>
-    <h2>Hakijan tehtävä</h2>
-    <p>Avaa etuovi ja näytä, että primääripolku on valmis hakemuspaketti, ei tekninen case-lista.</p>
-    <a href="/?present=1">Etusivu</a>
+    <span class="scene-time">0:00</span>
+    <h2>Hakijan tarve</h2>
+    <p>Näytä, miten hakija aloittaa uuden hakemuksen tai tuo valmiin aineiston tarkistettavaksi.</p>
+    <a href="/?present=1">Avaa hakijan etusivu</a>
   </article>
   <article>
-    <span class="system-badge ai">0:45</span>
-    <h2>AI työskentelee</h2>
-    <p>Lataa valmis aineistopaketti erilliseen työpöytään. Korosta työn etenemistä, agenttivaiheita, poimintoja ja lähdeviitteitä.</p>
-    <a href="/applicant/packages/new?present=1">Aineistotyöpöytä</a>
+    <span class="scene-time">0:45</span>
+    <h2>Aineiston tarkistus</h2>
+    <p>Tuo valmis aineistopaketti ja näytä, miten palvelu tunnistaa täydennettävät kohdat.</p>
+    <a href="/applicant/packages/new?present=1">Avaa aineiston tuonti</a>
   </article>
   <article>
-    <span class="system-badge ai">1:30</span>
+    <span class="scene-time">1:30</span>
     <h2>Käyttäjä hallitsee</h2>
-    <p>Näytä Hakemusapuri, pending-ehdotukset ja hyväksyntälogiikka: AI ei muuta lomaketta ilman ihmisen hyväksyntää.</p>
-    <a href="/demo/scenarios?present=1">Käynnistä skenaario</a>
+    <p>Näytä lähteistetyt AI-ehdotukset ja se, ettei hakemus muutu ilman käyttäjän päätöstä.</p>
+    <a href="/demo/scenarios?present=1">Valitse valmisteltu skenaario</a>
   </article>
   <article>
-    <span class="system-badge ai">2:15</span>
-    <h2>Viranomainen ja API</h2>
-    <p>Näytä AI-brief, täydennyspyyntöluonnos sekä API-demon request, job, event stream ja final response JSON.</p>
-    <a href="/demo/scenarios?present=1">Viranomainen ja API</a>
+    <span class="scene-time">2:15</span>
+    <h2>Käsittelyn hyöty</h2>
+    <p>Näytä käsittelijän tilannekuva ja valinnaisena lisänä integraation tulkittu vastaus.</p>
+    <a href="/demo/scenarios?present=1">Avaa skenaariot</a>
   </article>
 </section>
 
-<section class="surface presenter-checklist">
-  <h2>Esityksen hyväksyntäpisteet</h2>
+<details class="presenter-notes">
+  <summary>Puhujan muistiinpanot</summary>
   <ul>
-    <li>Normaali käyttäjäpolku ei näytä P2X/Ren-Gas/SharpCell-benchmarkkeja.</li>
-    <li>AI-tuotoksissa näkyy lähde, kriteeri tai tarkistusvastuun huomio.</li>
-    <li>Mock-LLM riittää paikalliseen demoon ilman Azure-avaimia.</li>
-    <li>Viranomaisnäkymä erottaa valmistelun tuen viranomaispäätöksestä.</li>
+    <li>Pidä pääpolku hakijan ja käsittelijän hyödyssä.</li>
+    <li>Korosta AI-ehdotusten lähteitä ja ihmisen päätösvaltaa.</li>
+    <li>Avaa rajapinnan tekniset tiedot vain yleisön pyytäessä niitä.</li>
+    <li>Muistuta, ettei AI tee viranomaispäätöstä.</li>
   </ul>
-</section>
+</details>
 {% endblock %}

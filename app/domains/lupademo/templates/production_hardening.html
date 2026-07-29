@@ -1,25 +1,56 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, status_summary, recommended_action, technical_details %}
+{% block title %}Tuotantovalmius{% endblock %}
 {% block content %}
-<section class="band service-shell authority-shell">
-  <p class="eyebrow">Admin</p>
-  <h1>Tuotantokovennus</h1>
-  <p class="muted">Phase 6 -tarkistukset ennen tuotantomaista käyttöä.</p>
-</section>
-<section class="metric-grid">
-  <div><strong>{{ hardening.ready_count }}</strong><span>Valmiita</span></div>
-  <div><strong>{{ hardening.total_count }}</strong><span>Tarkistuksia</span></div>
-</section>
-<section>
-  <h2>Tarkistukset</h2>
-  <table>
-    <tr><th>ID</th><th>Tila</th><th>Näyttö</th></tr>
+{% set requirement_names = {
+  'mock_tests_without_azure': 'Perustestit ilman Azure-yhteyttä',
+  'voice_default_disabled': 'Puheominaisuus pois käytöstä oletuksena',
+  'benchmark_admin_eval_only': 'Vertailuaineisto rajattu arviointiin',
+  'file_upload_limits': 'Tiedostojen tyyppi- ja kokorajat',
+  'metrics_audit_trail': 'Vaikuttavuus- ja tapahtumanäyttö',
+  'error_pages': 'Hallittu virheenkäsittely',
+  'prompt_version_display': 'Promptiversioiden jäljitettävyys'
+} %}
+{% set incomplete = hardening.total_count - hardening.ready_count %}
+{{ page_header(
+  "Tuotantovalmius",
+  "Demon tekniset suojaukset ja jäljitettävyysvaatimukset ennen tuotantomaista käyttöä.",
+  "Demo Lab ja alusta",
+  [{'label': 'Yleiskuva', 'href': '/demo-lab'}, {'label': 'Tuotantovalmius', 'href': ''}]
+) }}
+<div class="status-action-layout">
+  {{ status_summary(
+    "Demon valmiusvaatimukset täyttyvät" if incomplete == 0 else "Valmiudessa on tarkistettavaa",
+    hardening.ready_count|string ~ "/" ~ hardening.total_count|string ~ " seurattua vaatimusta on valmiina.",
+    "success" if incomplete == 0 else "warning",
+    incomplete|string ~ " kesken"
+  ) }}
+  {{ recommended_action(
+    "Tarkista keskeneräinen näyttö" if incomplete else "Pidä näyttö ajan tasalla",
+    "Avaa vaatimusten perustelut ja varmista ne ennen tuotantomaista esittelyä.",
+    "#readiness-requirements",
+    "Avaa vaatimukset"
+  ) }}
+</div>
+
+<section id="readiness-requirements" aria-labelledby="readiness-heading">
+  <h2 id="readiness-heading">Seuratut vaatimukset</h2>
+  <div class="readiness-list">
     {% for item in hardening["items"] %}
-    <tr>
-      <td>{{ item.id }}</td>
-      <td><span class="status {% if item.status == 'ready' %}good{% else %}warn{% endif %}">{{ item.status }}</span></td>
-      <td>{{ item.evidence }}</td>
-    </tr>
+    <article class="result-item">
+      <div class="section-heading-row">
+        <h3>{{ requirement_names.get(item.id, item.id|replace('_', ' ')|title) }}</h3>
+        <span class="status {% if item.status == 'ready' %}good{% else %}warn{% endif %}">{{ "Valmis" if item.status == "ready" else "Osittainen" if item.status == "partial" else "Tarkistettava" }}</span>
+      </div>
+      <p>{{ item.evidence }}</p>
+      {% call technical_details("Tekninen vaatimus") %}<code>{{ item.id }}</code>{% endcall %}
+    </article>
     {% endfor %}
-  </table>
+  </div>
+</section>
+
+<section aria-labelledby="readiness-boundary-heading">
+  <h2 id="readiness-boundary-heading">Rajaus</h2>
+  <div class="issue minor"><strong>Demon valmius, ei tuotantohyväksyntä</strong><p>Näkymä varmistaa demon nykyiset tekniset suojaukset. Se ei kata tuotantoautentikointia, oikeaa henkilötietoa, käyttöönottoprosessia eikä viranomaisjärjestelmien integraatiohyväksyntää.</p></div>
 </section>
 {% endblock %}

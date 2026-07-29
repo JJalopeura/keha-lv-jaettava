@@ -213,6 +213,15 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
     @router.get("/demo-lab", response_class=HTMLResponse)
     def demo_lab_index(request: Request):
         case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
-        return templates.TemplateResponse(request, "demo_lab.html", context(case_id))
+        return templates.TemplateResponse(
+            request,
+            "demo_lab.html",
+            {
+                **context(case_id),
+                "metrics": svc.metrics_snapshot(db(), case_id),
+                "evaluation": svc.benchmark_lab_snapshot(db(), case_id),
+                "readiness": svc.production_hardening_snapshot(db(), case_id),
+            },
+        )
 
     return router

@@ -1,14 +1,19 @@
-{% extends "base.html" %}
+{% extends "light_base.html" %}
+{% block title %}Hakemus vastaanotettu{% endblock %}
 {% block content %}
-<section class="band">
-  <h1>Vastaanottokuitti</h1>
-  <p class="muted">{{ receipt.get('receipt_id', '') }}</p>
+<section class="band receipt-header">
+  <p class="section-kicker">Hakemus lähetetty</p>
+  <h1>Hakemus on vastaanotettu</h1>
+  <p>Kuittitunnus <strong>{{ receipt.get('receipt_id', '') }}</strong></p>
 </section>
-<section>
-  <p>Vastaanotettu: {{ receipt.get('received_at', '')|finnish_datetime }}</p>
-  <p>Vastaanottava viranomainen: {{ receipt.get('authority', '') }}</p>
-  <p>Lähetetyt liitteet: {{ receipt.get('official_attachment_count', 0) }}</p>
+<section class="receipt-summary">
+  <dl class="data-list">
+    <div class="data-row"><dt>Hanke</dt><dd>{{ project.name }}</dd></div>
+    <div class="data-row"><dt>Vastaanotettu</dt><dd>{{ receipt.get('received_at', '')|finnish_datetime }}</dd></div>
+    <div class="data-row"><dt>Vastaanottava viranomainen</dt><dd>{{ receipt.get('authority', '') }}</dd></div>
+    <div class="data-row"><dt>Lähetetyt liitteet</dt><dd>{{ receipt.get('official_attachment_count', 0) }}</dd></div>
+  </dl>
   <p>Hakemuksen käsittelyn etenemistä voi seurata LV-palvelussa.</p>
-  <a class="button" href="/lv">Palaa LV-palveluun</a>
+  <a class="button" href="/lv/projects/{{ case_id }}">Palaa hankkeeseen</a>
 </section>
 {% endblock %}

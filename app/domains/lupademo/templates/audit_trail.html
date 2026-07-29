@@ -1,24 +1,34 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, status_summary %}
+{% block title %}Tapahtumaloki{% endblock %}
 {% block content %}
-<section class="band service-shell authority-shell">
-  <p class="eyebrow">Demo Lab ja alusta</p>
-  <h1>Tapahtumaloki</h1>
-  <p class="muted">Viimeisimmät hakijan, AI-palvelun ja käsittelijän tapahtumat.</p>
-</section>
+{{ page_header('Tapahtumaloki', 'Viimeisimmät hakijan, AI-palvelun ja käsittelijän tapahtumat.', 'Demo Lab ja alusta', [{'label': 'Yleiskuva', 'href': '/demo-lab'}, {'label': 'Tapahtumaloki', 'href': ''}]) }}
+{{ status_summary(
+  'Tapahtumia kirjattu' if audit_events else 'Ei kirjattuja tapahtumia',
+  audit_events|length|string ~ ' viimeisintä tapahtumaa näkyy aikajärjestyksessä.' if audit_events else 'Tapahtumia syntyy hakemuksen ja ylläpitotoimintojen käytöstä.',
+  'neutral',
+  'Enintään 200 tapahtumaa'
+) }}
 <section>
   <h2>Viimeisimmät tapahtumat</h2>
+  <p class="muted">Loki kertoo tapahtuman ja siihen tallennetun kohteen. Toimijan henkilöllisyyttä ei tallenneta tässä demossa.</p>
+  <div class="table-wrap">
   <table>
     <caption>Viimeisimmät tapahtumat aikajärjestyksessä</caption>
-    <tr><th>Aika</th><th>Tapahtuma</th><th>Tekniset tiedot</th></tr>
+    <tr><th>Aika</th><th>Tapahtuma</th><th>Kohde</th><th>Kirjattu tulos</th><th>Tekniset tiedot</th></tr>
     {% for item in audit_events %}
+    {% set target = item.data.get('application_id') or item.data.get('permit_type') or item.data.get('attachment_id') or item.data.get('field_id') or item.data.get('rule_id') or item.data.get('job_id') %}
     <tr>
       <td>{{ item.ts|finnish_datetime if item.ts else '-' }}</td>
       <td>{{ item.detail }}</td>
+      <td>{{ target or 'Hanke' }}</td>
+      <td>{{ item.data.get('status') or ('Epäonnistui' if item.action.endswith('.failed') else ('Peruttu' if item.action.endswith('.cancelled') else 'Tapahtuma kirjattu')) }}</td>
       <td><details class="technical-details"><summary>Tekniset tapahtumatiedot</summary><p>Toimintokoodi: <code>{{ item.action }}</code></p><code>{{ item.data }}</code></details></td>
     </tr>
     {% else %}
-    <tr><td colspan="3" class="muted">Ei tapahtumia vielä.</td></tr>
+    <tr><td colspan="5" class="muted">Ei tapahtumia vielä.</td></tr>
     {% endfor %}
   </table>
+  </div>
 </section>
 {% endblock %}

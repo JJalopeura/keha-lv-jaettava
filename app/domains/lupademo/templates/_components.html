@@ -1,0 +1,41 @@
+{% macro page_header(title, description, eyebrow='', breadcrumbs=[]) -%}
+<header class="page-header">
+  {% if breadcrumbs %}
+  <nav class="breadcrumbs" aria-label="Murupolku">
+    {% for item in breadcrumbs %}
+    {% if item.href %}<a href="{{ item.href }}">{{ item.label }}</a>{% else %}<span aria-current="page">{{ item.label }}</span>{% endif %}
+    {% endfor %}
+  </nav>
+  {% endif %}
+  {% if eyebrow %}<p class="section-kicker">{{ eyebrow }}</p>{% endif %}
+  <h1>{{ title }}</h1>
+  <p>{{ description }}</p>
+</header>
+{%- endmacro %}
+
+{% macro status_summary(label, reason, state='neutral', meta='') -%}
+<section class="status-summary status-summary--{{ state }}" aria-label="Tilanne">
+  <div>
+    <span class="status-label">{{ label }}</span>
+    <p>{{ reason }}</p>
+  </div>
+  {% if meta %}<strong>{{ meta }}</strong>{% endif %}
+</section>
+{%- endmacro %}
+
+{% macro recommended_action(title, reason, href, label, state='normal', secondary_href='', secondary_label='') -%}
+<section class="recommended-action recommended-action--{{ state }}" aria-label="Suositeltu seuraava toimi">
+  <div><h2>{{ title }}</h2><p>{{ reason }}</p></div>
+  <div class="recommended-action__controls">
+    <a class="button" href="{{ href }}">{{ label }}</a>
+    {% if secondary_href and secondary_label %}<a class="button secondary" href="{{ secondary_href }}">{{ secondary_label }}</a>{% endif %}
+  </div>
+</section>
+{%- endmacro %}
+
+{% macro technical_details(label, class_name='') -%}
+<details class="technical-details{% if class_name %} {{ class_name }}{% endif %}">
+  <summary>{{ label }}</summary>
+  <div class="technical-details__content">{{ caller() }}</div>
+</details>
+{%- endmacro %}

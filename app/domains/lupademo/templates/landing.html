@@ -4,8 +4,9 @@
 {% set present = request.query_params.get('present') == '1' %}
 <section class="service-intro">
   <div class="intro-copy">
-    <h1>Tee lupahakemuksestasi käsittelyvalmis AI:n avulla</h1>
-    <p class="intro-lead">Lataa valmis hakemuspaketti tai aloita hakemus alusta. AI lukee asiakirjat, poimii lomaketiedot, tunnistaa puutteet ja ristiriidat sekä auttaa parantamaan hakemusta ennen lähettämistä.</p>
+    <p class="section-kicker">Hakijan asiointi</p>
+    <h1>Hakemukset ja lupahankkeet</h1>
+    <p class="intro-lead">Jatka keskeneräistä asiointia tai aloita uusi hakemus ohjatusti tai valmiista aineistosta.</p>
   </div>
   <div class="trust-panel" aria-label="Palvelun toimintaperiaate">
     <span class="trust-icon" aria-hidden="true">✓</span>
@@ -15,29 +16,28 @@
 
 <section class="start-workspace" aria-labelledby="start-heading">
   <div class="workspace-heading">
-    <p class="section-kicker">Aloita tästä</p>
-    <h2 id="start-heading">Miten haluat edetä?</h2>
+    <p class="section-kicker">Uusi hakemus</p>
+    <h2 id="start-heading">Valitse aloitustapa</h2>
   </div>
   <div class="primary-path">
-    <div class="path-number" aria-hidden="true">01</div>
     <div class="path-copy">
       <span class="status-label">Suositeltu, jos aineisto on jo koottu</span>
       <h2>Tarkista valmis hakemuspaketti</h2>
       <p>Lataa hakemus ja liitteet. AI poimii tiedot, löytää puutteet ja ehdottaa korjauksia.</p>
     </div>
-    <a class="primary-cta {% if present %}next-action{% endif %}" href="/applicant/packages/new{% if present %}?present=1{% endif %}">Lataa aineisto <span aria-hidden="true">→</span></a>
+    <a class="primary-cta {% if present %}next-action{% endif %}" href="/applicant/packages/new{% if present %}?present=1{% endif %}">Valitse aineisto <span aria-hidden="true">→</span></a>
   </div>
   <div class="secondary-paths">
-    <a href="/applicant" class="secondary-path">
-      <span class="path-number" aria-hidden="true">02</span>
+    <a href="/projects/new" class="secondary-path">
       <span><strong>Laadi hakemus AI:n kanssa</strong><small>Aloita ohjatusti</small></span>
       <span aria-hidden="true">→</span>
     </a>
+    {% if workspace_options %}
     <a href="/lv" class="secondary-path">
-      <span class="path-number" aria-hidden="true">03</span>
-      <span><strong>Jatka LV:ssä</strong><small>Näytä asiointikokonaisuus</small></span>
+      <span><strong>Jatka nykyistä hanketta</strong><small>Näytä asiointikokonaisuus</small></span>
       <span aria-hidden="true">→</span>
     </a>
+    {% endif %}
   </div>
 </section>
 

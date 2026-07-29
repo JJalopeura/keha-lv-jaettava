@@ -1,9 +1,23 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, status_summary, recommended_action %}
+{% block title %}API-työkalu{% endblock %}
 {% block content %}
-<section class="band service-product"><p class="eyebrow">AI-palvelu · API</p><h1>API-demo</h1><p>Muokkaa pyyntöä, valitse tenantin demoavain ja lähetä sama sopimus, jota ulkoinen asiointipalvelu käyttäisi.</p></section>
+{% set response = result.get('response') if result.get('response') else result %}
+{% set has_response = result.get('response') or response.get('suggestions') or response.get('extracted_fields') %}
+{{ page_header(
+  "API-työkalu",
+  "Lähetä ulkoisen asiointipalvelun sopimusta vastaava pyyntö ja tarkista tulkittu vastaus.",
+  "Integraatiot",
+  [{'label': 'Integraatiot', 'href': '/cases/' ~ case_id ~ '/lupademo/suggestion-service'}, {'label': 'API-työkalu', 'href': ''}]
+) }}
+<div class="status-action-layout">
+  {{ status_summary("Vastaus muodostettu" if has_response else "Valmis testipyyntöön", "Ehdotukset ja perustelut näkyvät tulkittuina ennen raakadataa." if has_response else "Valitse demoasiakas ja lähetä valmis esimerkkipyyntö.", "success" if has_response else "neutral") }}
+  {{ recommended_action("Tarkista ehdotukset" if has_response else "Lähetä esimerkkipyyntö", "Vertaa ehdotuksia lähdeaineistoon ja avaa raakavastaus vain tarvittaessa.", "#response-summary" if has_response else "#api-request", "Avaa vastaus" if has_response else "Avaa pyyntö") }}
+</div>
 <section class="grid two">
-  <form method="post">
-    <label>Tenant / API key
+  <form method="post" id="api-request">
+    <h2>Pyyntö</h2>
+    <label>Demoasiakas
       <select name="api_key">
         {% for client in api_clients %}
         {% set selected_key = result.get('api_key') or default_api_key %}
@@ -17,9 +31,8 @@
     </details>
     <button>Lähetä pyyntö</button>
   </form>
-  <div>
+  <div id="response-summary">
     <h2>Vastauksen yhteenveto</h2>
-    {% set response = result.get('response') if result.get('response') else result %}
     {% if result.get('job') %}
     <details class="technical-details result-item">
       <summary>Ajotiedot</summary>
@@ -78,15 +91,6 @@
     {% else %}
     <p class="muted">Ei vielä API-vastausta.</p>
     {% endif %}
-    <div class="result-item embedded-widget-preview">
-      <h3>Embedded widget preview</h3>
-      <p class="muted">Sama ehdotuspalvelu voidaan upottaa asiointipalveluun iframe- tai widget-mallilla. Widget näyttää jobin, events-virran ja hyväksyntää odottavat kenttäehdotukset.</p>
-      <div class="widget-shell">
-        <span class="system-badge ai">AI-ehdotuspalvelu</span>
-        <strong>{{ response.get('status') or result.get('job', {}).get('status', '') or "odottaa requestia" }}</strong>
-        <small>Tenant: {{ response.get('tenant_id') or "valitse tenant" }} · Evidence: {{ response.get('evidence_refs', [])|length }}</small>
-      </div>
-    </div>
     <details class="technical-details"><summary>Tekniset sopimustiedot</summary><p class="muted">Endpointit: <code>POST /api/v1/application-packages:analyze</code>, <code>GET /api/v1/jobs/{job_id}/events</code>, <code>GET /api/v1/jobs/{job_id}/result</code> tai <code>POST /api/v1/suggestions/field</code> · Header: <code>X-Lupademo-Api-Key</code></p></details>
   </div>
 </section>

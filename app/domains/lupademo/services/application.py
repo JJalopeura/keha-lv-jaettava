@@ -1379,12 +1379,12 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     issues = check_report.get("issues") or []
     blocking_count = sum(1 for issue in issues if issue.get("severity") == "blocking" and not issue.get("resolved"))
     steps = [
-        {"step": 1, "label": "Valmistelu ja perustiedot", "status": "done" if not missing_required[:3] else "attention"},
-        {"step": 2, "label": "Lomake ja liitteet", "status": "done" if not missing_required and not missing_attachments else "attention"},
-        {"step": 3, "label": "AI-ehdotusten tarkastelu", "status": "attention" if pending_suggestion_count else "done"},
-        {"step": 4, "label": "AI- ja sääntötarkistus", "status": "done" if gate["is_fresh"] and blocking_count == 0 else "attention"},
-        {"step": 5, "label": "Asiakirjaesitys", "status": "done" if gate["can_submit"] else "blocked"},
-        {"step": 6, "label": "Lähetys ja kuitti", "status": "done" if app.get("status") == "submitted" else "pending"},
+        {"step": 1, "label": "Perustiedot", "status": "done" if not missing_required[:3] else "attention"},
+        {"step": 2, "label": "Aineistot", "status": "done" if not missing_attachments else "attention"},
+        {"step": 3, "label": "Hakemus", "status": "done" if not missing_required else "attention"},
+        {"step": 4, "label": "AI-ehdotukset", "status": "attention" if pending_suggestion_count else "done"},
+        {"step": 5, "label": "Tarkistus", "status": "done" if gate["is_fresh"] and blocking_count == 0 else "attention"},
+        {"step": 6, "label": "Lähetys", "status": "done" if app.get("status") == "submitted" else ("pending" if gate["can_submit"] else "blocked")},
     ]
     return {
         "steps": steps,

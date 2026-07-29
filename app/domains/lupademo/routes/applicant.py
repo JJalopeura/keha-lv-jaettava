@@ -36,6 +36,16 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     def settings() -> Any:
         return settings_getter()
 
+    def material_return_url(case_id: str, application_id: str, package_id: str = "", fragment: str = "") -> str:
+        if package_id:
+            try:
+                found = svc.find_material_package(db(), package_id)
+                if found["case_id"] == case_id and found["permit_type"] == svc.application_id_for(application_id):
+                    return f"/applicant/packages/{package_id}{fragment}"
+            except KeyError:
+                pass
+        return f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2{fragment}"
+
     def workspace_options() -> list[dict[str, str]]:
         options = []
         active_case_id = scenarios.active_case_id(db())
@@ -76,6 +86,12 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     def _context_app(app: dict, case_id: str, permit_type: str, db_obj: Any, settings_obj: Any) -> dict:
         def aj(type_: str, default: Any) -> Any:
             return svc.artifact_json(db_obj, case_id, type_, permit_type, default)
+        ai_jobs = svc.list_ai_jobs(db_obj, case_id, app["permit_type"])
+        material_jobs = [job for job in ai_jobs if job.get("kind") in {"material_ingest", "intake_analysis"}]
+        material_job = next(
+            (job for job in material_jobs if job.get("status") in {"pending", "running"}),
+            material_jobs[0] if material_jobs else None,
+        )
         return {
             "application": app,
             "schema": svc.load_form_schema(app["permit_type"]),
@@ -92,7 +108,8 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             "material_package": svc.current_material_package(db_obj, case_id, app["permit_type"]),
             "package_analysis": aj("package_analysis_result", {}),
             "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
-            "ai_jobs": svc.list_ai_jobs(db_obj, case_id, app["permit_type"]),
+            "ai_jobs": ai_jobs,
+            "material_job": material_job,
             "contextual_chat": aj("contextual_chat", {"messages": []}),
             "voice_state": svc.voice_feature_state(settings_obj),
             "voice_chat": aj("voice_chat", {"turns": []}),
@@ -261,7 +278,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
 
     @router.get("/projects/new", response_class=HTMLResponse)
     def project_new(request: Request):
-        return templates.TemplateResponse(request, "landing.html", {"scenarios": scenarios.list_scenarios()})
+        return templates.TemplateResponse(request, "applicant_start.html")
 
     @router.post("/demo/scenarios/start")
     def scenario_start(scenario_id: str = Form(...)):
@@ -394,12 +411,19 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     @router.get("/cases/{case_id}/lupademo/application/{application_id}/wizard/{step}", response_class=HTMLResponse)
     def application_wizard(request: Request, case_id: str, application_id: str, step: int):
         step = min(max(int(step), 1), 6)
-        if step == 6:
-            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/receipt", status_code=303)
         ctx = context(case_id, application_id)
-        if step == 5:
+        if step == 6:
             ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
         return templates.TemplateResponse(request, "wizard.html", {**ctx, "step": step})
+
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/package")
+    def create_application_material_package(case_id: str, application_id: str):
+        permit_type = svc.application_id_for(application_id)
+        svc.ensure_application(db(), case_id, permit_type)
+        package = svc.current_material_package(db(), case_id, permit_type)
+        if not package.get("package_id"):
+            package = svc.create_pending_material_package(db(), case_id, permit_type, "Hakemusaineisto")
+        return RedirectResponse(url=f"/applicant/packages/{package['package_id']}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/save")
     async def save_application(case_id: str, application_id: str, request: Request):
@@ -413,6 +437,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         case_id: str,
         application_id: str,
         delivery_scope: str = Form("official_submission"),
+        return_package_id: str = Form(""),
         file: UploadFile = File(...),
     ):
         content = await file.read()
@@ -424,7 +449,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         local_path = svc.save_upload_file(settings(), case_id, filename, content)
         excerpt = svc.extract_text_from_path(local_path, filename)
         svc.add_attachment(db(), case_id, application_id, filename, len(content), delivery_scope, excerpt, local_path=local_path, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2", status_code=303)
+        return RedirectResponse(url=material_return_url(case_id, application_id, return_package_id), status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/upload-zip")
     async def upload_material_zip(
@@ -468,6 +493,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         application_id: str,
         files: list[UploadFile] = File(...),
         package_name: str = Form(""),
+        return_package_id: str = Form(""),
     ):
         payload: list[tuple[str, bytes]] = []
         for item in files:
@@ -476,7 +502,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             svc.ingest_application_files(db(), settings(), case_id, application_id, payload, display_name=package_name)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#materials", status_code=303)
+        return RedirectResponse(url=material_return_url(case_id, application_id, return_package_id, "#documents"), status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/add-text")
     def add_material_text(
@@ -485,12 +511,13 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         text_title: str = Form(""),
         text_body: str = Form(...),
         delivery_scope: str = Form("ai_context_only"),
+        return_package_id: str = Form(""),
     ):
         try:
             svc.ingest_application_text(db(), settings(), case_id, application_id, text_title, text_body, delivery_scope=delivery_scope)
         except ValueError:
             raise HTTPException(status_code=422, detail="Text material is empty")
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#materials", status_code=303)
+        return RedirectResponse(url=material_return_url(case_id, application_id, return_package_id, "#documents"), status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/attachments/{attachment_id}/scope")
     def change_attachment_scope(case_id: str, application_id: str, attachment_id: str, delivery_scope: str = Form(...)):
@@ -498,17 +525,17 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/attachments/{attachment_id}/metadata")
-    def update_attachment_metadata(case_id: str, application_id: str, attachment_id: str, primary_type: str = Form(""), delivery_scope: str = Form("")):
+    def update_attachment_metadata(case_id: str, application_id: str, attachment_id: str, primary_type: str = Form(""), delivery_scope: str = Form(""), return_package_id: str = Form("")):
         try:
             svc.update_attachment_metadata(db(), case_id, application_id, attachment_id, primary_type=primary_type, delivery_scope=delivery_scope)
         except KeyError:
             raise HTTPException(status_code=404, detail="Attachment not found")
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2", status_code=303)
+        return RedirectResponse(url=material_return_url(case_id, application_id, return_package_id, "#documents"), status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/attachments/{attachment_id}/delete")
-    def delete_attachment(case_id: str, application_id: str, attachment_id: str):
+    def delete_attachment(case_id: str, application_id: str, attachment_id: str, return_package_id: str = Form("")):
         svc.delete_attachment(db(), case_id, application_id, attachment_id)
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2", status_code=303)
+        return RedirectResponse(url=material_return_url(case_id, application_id, return_package_id, "#documents"), status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/structure-from-attachments")
     def structure_from_attachments(case_id: str, application_id: str):
@@ -547,13 +574,13 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field")
     def suggest_field(case_id: str, application_id: str, field_id: str = Form(...)):
         suggestion = svc.create_field_suggestion(db(), case_id, application_id, field_id, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestion-{suggestion.id}", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#suggestion-{suggestion.id}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-form")
     def suggest_form(background_tasks: BackgroundTasks, case_id: str, application_id: str):
         job = svc.start_form_suggestions_job(db(), case_id, application_id, settings=settings())
         background_tasks.add_task(svc.execute_form_suggestions_job, db(), case_id, application_id, job["id"], settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#ai-jobs", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#ai-jobs", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/accept")
     def accept_suggestion(case_id: str, application_id: str, suggestion_id: str, edited_value: str = Form("")):
@@ -561,44 +588,43 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             svc.accept_suggestion(db(), case_id, application_id, suggestion_id, edited_value)
         except KeyError:
             raise HTTPException(status_code=404, detail="Suggestion not found")
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/accept-selected")
     def accept_selected_suggestions(case_id: str, application_id: str, suggestion_ids: list[str] = Form([])):
         svc.accept_selected_suggestions(db(), case_id, application_id, suggestion_ids)
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/reject")
     def reject_suggestion(case_id: str, application_id: str, suggestion_id: str):
         svc.reject_suggestion(db(), case_id, application_id, suggestion_id)
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/chat")
     def contextual_chat(case_id: str, application_id: str, message: str = Form(...)):
         svc.contextual_chat_answer(db(), case_id, application_id, message, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#contextual-chat", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#contextual-chat", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/voice/mock")
     def voice_mock(case_id: str, application_id: str, transcript: str = Form("")):
         svc.voice_mock_turn(db(), case_id, application_id, transcript, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#voice-assistant", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#voice-assistant", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/check")
     def run_check(case_id: str, application_id: str):
         svc.run_application_check(db(), case_id, application_id, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#check", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/5#check", status_code=303)
 
     @router.get("/cases/{case_id}/lupademo/application/{application_id}/package", response_class=HTMLResponse)
-    def package(request: Request, case_id: str, application_id: str):
-        package_data = svc.compose_submission_package(db(), case_id, application_id)
-        return templates.TemplateResponse(request, "package.html", {**context(case_id, application_id), "package": package_data})
+    def package(case_id: str, application_id: str):
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/6", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/submit")
     def submit(case_id: str, application_id: str):
         try:
             svc.submit_application(db(), case_id, application_id, settings=settings())
         except RuntimeError:
-            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#check-blocking", status_code=303)
+            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/5#check-blocking", status_code=303)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/receipt", status_code=303)
 
     @router.get("/cases/{case_id}/lupademo/application/{application_id}/receipt", response_class=HTMLResponse)

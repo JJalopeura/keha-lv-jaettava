@@ -14,7 +14,29 @@
 </header>
 
 <div class="workbench-layout">
-  <main class="workbench-main">
+  <div class="workbench-main">
+    <section id="documents">
+      <div class="section-heading-line"><div><p class="section-kicker">Aineiston hallinta</p><h2>Lisää dokumentteja</h2></div></div>
+      <div class="grid two">
+        <form method="post" enctype="multipart/form-data" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/materials/upload-files" class="upload-drop">
+          <input type="hidden" name="return_package_id" value="{{ package_id }}">
+          <input type="hidden" name="package_name" value="{{ material_package.display_name }}">
+          <label>Dokumentit<input type="file" name="files" multiple required></label>
+          <button>Lisää dokumentit</button>
+        </form>
+        <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/materials/add-text" class="upload-drop">
+          <input type="hidden" name="return_package_id" value="{{ package_id }}">
+          <label>Otsikko<input name="text_title" value="Hakijan kuvaus"></label>
+          <label>Kuvaus<textarea name="text_body" rows="4" required></textarea></label>
+          <select name="delivery_scope" aria-label="Kuvauksen käyttötarkoitus">
+            <option value="ai_context_only">Vain AI:n tausta-aineistoksi</option>
+            <option value="official_submission">Toimitetaan viranomaiselle</option>
+          </select>
+          <button>Lisää kuvaus</button>
+        </form>
+      </div>
+    </section>
+
     <section class="analysis-panel {% if active_job %}is-running{% elif package_analysis %}is-complete{% endif %}" id="analysis" data-analysis-ready="{{ 'true' if package_analysis else 'false' }}">
       {% if material_package.status == 'processing' %}
       <p class="section-kicker">Aineistoa valmistellaan</p>
@@ -65,17 +87,35 @@
       <div class="section-heading-line"><div><p class="section-kicker">AI-ehdotukset</p><h2>AI:n löytämiä tietoja odottaa tarkistusta</h2></div><span>{{ pending_extractions|length }}</span></div>
       {% if pending_extractions %}
       <p>Tarkista, muokkaa tai hylkää löydetyt tiedot hakemuksen AI-ehdotuksissa.</p>
-      <a class="button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#extraction-suggestions">Tarkista AI-ehdotukset</a>
+      <a class="button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/4#extraction-suggestions">Tarkista AI-ehdotukset</a>
       {% else %}
       <p>Ei tarkistettavia AI-ehdotuksia.</p>
       {% endif %}
     </section>
-  </main>
+  </div>
 
   <aside class="document-inspector">
     <div class="inspector-heading"><p class="section-kicker">Aineisto</p><h2>Dokumentit</h2></div>
     {% for attachment in attachments %}
-    <div class="document-row"><span class="file-icon">{{ attachment.filename.split('.')[-1][:3]|upper }}</span><div><strong>{{ attachment.filename }}</strong><small>{% if attachment.delivery_scope == 'official_submission' %}Viranomaiselle{% else %}Vain AI:n taustaksi{% endif %}</small></div></div>
+    <div class="document-row">
+      <span class="file-icon">{{ attachment.filename.split('.')[-1][:3]|upper }}</span>
+      <div>
+        <strong>{{ attachment.filename }}</strong>
+        <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ attachment.id }}/metadata">
+          <input type="hidden" name="return_package_id" value="{{ package_id }}">
+          <input name="primary_type" value="{{ attachment.primary_type }}" aria-label="Dokumentin tyyppi">
+          <select name="delivery_scope" aria-label="Dokumentin käyttötarkoitus">
+            <option value="official_submission" {% if attachment.delivery_scope == 'official_submission' %}selected{% endif %}>Viranomaiselle</option>
+            <option value="ai_context_only" {% if attachment.delivery_scope == 'ai_context_only' %}selected{% endif %}>Vain AI:n taustaksi</option>
+          </select>
+          <button class="secondary compact">Tallenna</button>
+        </form>
+        <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ attachment.id }}/delete">
+          <input type="hidden" name="return_package_id" value="{{ package_id }}">
+          <button class="secondary compact">Poista</button>
+        </form>
+      </div>
+    </div>
     {% else %}<p>Dokumentteja valmistellaan.</p>{% endfor %}
   </aside>
 </div>

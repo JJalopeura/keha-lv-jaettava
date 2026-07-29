@@ -1,26 +1,32 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, status_summary, recommended_action, technical_details %}
+{% block title %}Vaikuttavuus{% endblock %}
 {% block content %}
-{% set present = request.query_params.get('present') == '1' %}
-<section class="band service-shell metrics-shell">
-  <h1>Vaikuttavuus ja tilannekuva</h1>
-  <p class="muted">Mittarit perustuvat tapahtumalokiin, hyväksyttyihin ehdotuksiin, tarkistusraportteihin ja viranomaisjonoon.</p>
-  <p class="button-row">
-    <a class="button secondary" href="/cases/{{ case_id }}/lupademo/metrics/report.json">Lataa JSON-raportti</a>
-    <a class="button secondary" href="/cases/{{ case_id }}/lupademo/metrics/report.html">Avaa HTML-raportti</a>
-  </p>
-</section>
-{% if present %}
-<section class="present-card">
-  <strong>Mitä tämä todistaa</strong>
-  <p>Mittaristo kokoaa laadun ennen ja jälkeen AI-avustuksen, tehdyn AI-työn vaikutuksen, lähteistyksen sekä auditointijäljen samaan näkymään.</p>
-</section>
-{% endif %}
-{% if metrics.fallback_count %}
-<section>
-  <div class="issue major"><strong>Fallback käytössä</strong><p>Agenttiketjussa on {{ metrics.fallback_count }} fallback-vastausta. Demo toimii, mutta live-Azure-polku tai lähdehaku tulee tarkistaa ennen tulosten esittämistä tuotantotason näyttönä.</p></div>
-</section>
-{% endif %}
-<section class="proof-dashboard">
+{% set has_measurements = metrics.ai_checks_run or metrics.accepted_suggestions or metrics.submitted_count %}
+{{ page_header(
+  "Vaikuttavuus",
+  "Hakemusten laatu, AI-avustuksen vaikutus ja arvioitu käsittelijäajan säästö.",
+  "Demo Lab ja alusta",
+  [{'label': 'Yleiskuva', 'href': '/demo-lab'}, {'label': 'Vaikuttavuus', 'href': ''}]
+) }}
+<div class="status-action-layout">
+  {{ status_summary(
+    "Vaikutusnäyttöä kertynyt" if has_measurements else "Odottaa käyttötapahtumia",
+    "Mittarit perustuvat tämän hankkeen tarkistuksiin, ehdotuspäätöksiin ja lähetyksiin." if has_measurements else "Aja hakemuspolku, jotta havaittuja vaikutusmittareita kertyy.",
+    "success" if has_measurements else "neutral",
+    metrics.quality_score_delta|string ~ " laatupisteen muutos"
+  ) }}
+  {{ recommended_action(
+    "Tarkista tulosten perusteet",
+    "Varmista ennen esitystä, mitkä luvut ovat havaintoja ja mitkä demoarvioita.",
+    "#methodology",
+    "Avaa menetelmä"
+  ) }}
+</div>
+
+<section aria-labelledby="impact-summary-heading">
+  <h2 id="impact-summary-heading">Keskeiset tulokset</h2>
+  <div class="proof-dashboard">
   {% for card in metrics.proof_cards %}
   <div class="proof-card {{ card.status }}">
     <span>{{ card.title }}</span>
@@ -28,238 +34,65 @@
     <p>{{ card.detail }}</p>
   </div>
   {% endfor %}
-</section>
-<section class="metric-grid">
-  <div><strong>{{ metrics.application_count }}</strong><span>Hakemuksia</span></div>
-  <div><strong>{{ metrics.submitted_count }}</strong><span>Lähetetty</span></div>
-  <div><strong>{{ metrics.ai_checks_run }}</strong><span>AI-tarkistuksia</span></div>
-  <div><strong>{{ metrics.accepted_suggestions }}</strong><span>Hyväksyttyjä ehdotuksia</span></div>
-  <div><strong>{{ metrics.blocking_issues_detected }}</strong><span>Blocking-puutteita</span></div>
-  <div><strong>{{ metrics.simulated_avoided_info_requests }}</strong><span>Vältettyjä täydennyksiä</span></div>
-  <div><strong>{{ metrics.estimated_caseworker_hours_saved }}</strong><span>Arvioidut tunnit</span></div>
-  <div><strong>{{ metrics.average_quality_score }}</strong><span>Keskilaatu</span></div>
-</section>
-<section class="grid two">
-  <div>
-    <h2>AI-työn vaikutus</h2>
-    <dl class="data-list">
-      <div class="data-row"><dt>AI-työt yhteensä</dt><dd>{{ metrics.ai_work_impact.jobs_total }}</dd></div>
-      <div class="data-row"><dt>Valmiit AI-työt</dt><dd>{{ metrics.ai_work_impact.jobs_completed }}</dd></div>
-      <div class="data-row"><dt>Chatista syntyneet ehdotukset</dt><dd>{{ metrics.ai_work_impact.contextual_chat_suggestions }}</dd></div>
-      <div class="data-row"><dt>API trace -tapahtumat</dt><dd>{{ metrics.ai_work_impact.api_trace_events }}</dd></div>
-    </dl>
   </div>
-  <div>
-    <h2>Presenter mode</h2>
-    <dl class="data-list">
-      <div class="data-row"><dt>Käyttö</dt><dd>?{{ metrics.presenter_mode.query_param }}</dd></div>
-      <div class="data-row"><dt>Näytettävät pinnat</dt><dd>{{ metrics.presenter_mode.surfaces|join(", ") }}</dd></div>
-      <div class="data-row"><dt>Laatudelta</dt><dd>{{ metrics.ai_work_impact.quality_score_delta }}</dd></div>
-      <div class="data-row"><dt>Aikasäästö</dt><dd>{{ metrics.ai_work_impact.estimated_caseworker_hours_saved }} h</dd></div>
-    </dl>
+  <div class="metric-grid">
+    <div><strong>{{ metrics.application_count }}</strong><span>Hakemuksia</span></div>
+    <div><strong>{{ metrics.submitted_count }}</strong><span>Lähetetty</span></div>
+    <div><strong>{{ metrics.ai_checks_run }}</strong><span>AI-tarkistuksia</span></div>
+    <div><strong>{{ metrics.accepted_suggestions }}</strong><span>Hyväksyttyjä ehdotuksia</span></div>
   </div>
 </section>
-<section class="grid three">
+
+<section class="grid three" aria-label="Vaikutusten erittely">
   <div>
-    <h2>Ennen AI:tä</h2>
+    <h2>Laatu</h2>
     <dl class="data-list">
-      <div class="data-row"><dt>Laatupisteet</dt><dd>{{ metrics.quality_score_before_ai }}</dd></div>
-      <div class="data-row"><dt>Puutteita</dt><dd>{{ metrics.issue_count_before_ai }}</dd></div>
-      <div class="data-row"><dt>Blocking</dt><dd>{{ metrics.issue_severity_before.blocking }}</dd></div>
-      <div class="data-row"><dt>Major</dt><dd>{{ metrics.issue_severity_before.major }}</dd></div>
-    </dl>
-  </div>
-  <div>
-    <h2>Nyt</h2>
-    <dl class="data-list">
-      <div class="data-row"><dt>Laatupisteet</dt><dd>{{ metrics.quality_score_after_ai }}</dd></div>
-      <div class="data-row"><dt>Puutteita</dt><dd>{{ metrics.issue_count_after_ai }}</dd></div>
+      <div class="data-row"><dt>Ennen AI-avustusta</dt><dd>{{ metrics.quality_score_before_ai }}</dd></div>
+      <div class="data-row"><dt>Nykyinen</dt><dd>{{ metrics.quality_score_after_ai }}</dd></div>
+      <div class="data-row"><dt>Muutos</dt><dd>{{ metrics.quality_score_delta }}</dd></div>
       <div class="data-row"><dt>Korjattuja puutteita</dt><dd>{{ metrics.corrected_deficiencies }}</dd></div>
-      <div class="data-row"><dt>Puutedelta</dt><dd>{{ metrics.issue_count_delta }}</dd></div>
     </dl>
   </div>
   <div>
-    <h2>AI-ehdotusten näyttö</h2>
+    <h2>Ehdotuspäätökset</h2>
     <dl class="data-list">
       <div class="data-row"><dt>Hyväksytty</dt><dd>{{ metrics.accepted_suggestions }}</dd></div>
       <div class="data-row"><dt>Muokattu hyväksyttäessä</dt><dd>{{ metrics.edited_accepted_suggestions }}</dd></div>
       <div class="data-row"><dt>Hylätty</dt><dd>{{ metrics.rejected_suggestions }}</dd></div>
-      <div class="data-row"><dt>Lähteistettyjen osuus</dt><dd>{{ metrics.source_backed_suggestion_ratio }}</dd></div>
+      <div class="data-row"><dt>Lähteistettyjen osuus</dt><dd>{{ (metrics.source_backed_suggestion_ratio * 100)|round|int }} %</dd></div>
     </dl>
   </div>
-</section>
-<section class="grid two">
   <div>
-    <h2>Baseline</h2>
+    <h2>Arvioitu työvaikutus</h2>
     <dl class="data-list">
-      <div class="data-row"><dt>Täydennyspyynnön todennäköisyys ennen</dt><dd>{{ metrics.baseline_info_request_probability }}</dd></div>
-      <div class="data-row"><dt>AI-avusteisesti</dt><dd>{{ metrics.ai_assisted_info_request_probability }}</dd></div>
-      <div class="data-row"><dt>Muutos</dt><dd>{{ metrics.info_request_probability_delta }}</dd></div>
       <div class="data-row"><dt>Käsittelijäaikaa säästyy</dt><dd>{{ metrics.estimated_caseworker_minutes_saved }} min</dd></div>
-    </dl>
-  </div>
-  <div>
-    <h2>Agentti- ja API-auditointi</h2>
-    <dl class="data-list">
-      <div class="data-row"><dt>LLM-kutsut</dt><dd>{{ metrics.agent_call_count }}</dd></div>
-      <div class="data-row"><dt>File search -kutsut</dt><dd>{{ metrics.file_search_call_count }}</dd></div>
-      <div class="data-row"><dt>Fallbackit</dt><dd>{{ metrics.fallback_count }}</dd></div>
-      <div class="data-row"><dt>Tenant-kohtaiset API-kutsut</dt><dd>{{ metrics.api_calls_by_tenant }}</dd></div>
+      <div class="data-row"><dt>Täydennyspyynnön todennäköisyys ennen</dt><dd>{{ (metrics.baseline_info_request_probability * 100)|round|int }} %</dd></div>
+      <div class="data-row"><dt>AI-avusteisesti</dt><dd>{{ (metrics.ai_assisted_info_request_probability * 100)|round|int }} %</dd></div>
+      <div class="data-row"><dt>Vältettyjä täydennyksiä</dt><dd>{{ metrics.simulated_avoided_info_requests }}</dd></div>
     </dl>
   </div>
 </section>
-<section>
-  <h2>Toteutusvalmiuden auditointi</h2>
-  <div class="metric-grid">
-    <div><strong>{{ metrics.readiness.ready_count }}</strong><span>Valmiita vaatimuksia</span></div>
-    <div><strong>{{ metrics.readiness.blocked_count }}</strong><span>Estyneitä vaatimuksia</span></div>
-    <div><strong>{{ metrics.readiness.total_count }}</strong><span>Seurattuja vaatimuksia</span></div>
-  </div>
-  <table>
-    <tr><th>Vaatimus</th><th>Tila</th><th>Näyttö</th><th>Seuraava toimi</th></tr>
-    {% for item in metrics.readiness["items"] %}
-    <tr>
-      <td>{{ item.title }}</td>
-      <td>
-        <span class="status {% if item.status == 'ready' %}good{% elif item.status in ['blocked', 'missing'] %}bad{% else %}warn{% endif %}">
-          {{ item.status }}
-        </span>
-      </td>
-      <td>
-        {% for evidence in item.evidence %}
-        <div>{{ evidence }}</div>
-        {% endfor %}
-      </td>
-      <td>{{ item.next_action or "ei avoimia toimia tässä mittarissa" }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-</section>
-<section class="grid three">
-  <div>
-    <h2>Laatupiste ennen/jälkeen</h2>
-    <dl class="data-list">
-      <div class="data-row"><dt>Ennen AI-korjauksia</dt><dd>{{ metrics.quality_score_before_ai }}</dd></div>
-      <div class="data-row"><dt>Nykyinen</dt><dd>{{ metrics.quality_score_after_ai }}</dd></div>
-      <div class="data-row"><dt>Muutos</dt><dd>{{ metrics.quality_score_delta }}</dd></div>
-    </dl>
-  </div>
-  <div>
-    <h2>Tapahtumalokin kooste</h2>
-    <dl class="data-list">
-      <div class="data-row"><dt>Havaitut puutteet</dt><dd>{{ metrics.detected_issue_count }}</dd></div>
-      <div class="data-row"><dt>Täydennyspyyntöluonnokset</dt><dd>{{ metrics.additional_info_drafts }}</dd></div>
-      <div class="data-row"><dt>Hyväksytyt AI-ehdotukset</dt><dd>{{ metrics.accepted_suggestions }}</dd></div>
-    </dl>
-  </div>
-  <div>
-    <h2>Viranomaisjono</h2>
-    {% if metrics.authority_queue_by_status %}
-    <dl class="data-list">
-      {% for status, count in metrics.authority_queue_by_status.items() %}
-      <div class="data-row"><dt>{{ status }}</dt><dd>{{ count }}</dd></div>
-      {% endfor %}
-    </dl>
-    {% else %}
-    <p class="muted">Työjonossa ei ole hakemuksia.</p>
-    {% endif %}
-  </div>
-</section>
-<section>
-  <h2>Liitteiden tekstipoiminta</h2>
-  <div class="metric-grid">
-    <div><strong>{{ metrics.attachment_extraction.attachment_count }}</strong><span>Ladattuja liitteitä</span></div>
-    <div><strong>{{ metrics.attachment_extraction.extracted_text_attachment_count }}</strong><span>Teksti poimittu</span></div>
-    <div><strong>{{ metrics.attachment_extraction.failed_extraction_attachment_count }}</strong><span>Poimintavirheitä</span></div>
-    <div><strong>{{ metrics.attachment_extraction.total_text_chars }}</strong><span>Tekstimerkkejä</span></div>
-  </div>
-  {% if metrics.attachment_extraction.sample_attachments %}
-  <table>
-    <tr><th>Lupa</th><th>Tiedosto</th><th>Tyyppi</th><th>Käyttö</th><th>Tekstipoiminta</th><th>Vector store</th></tr>
-    {% for item in metrics.attachment_extraction.sample_attachments %}
-    <tr>
-      <td>{{ item.permit_type }}</td>
-      <td>{{ item.filename }}</td>
-      <td>{{ item.primary_type }}</td>
-      <td>{{ item.delivery_scope }}</td>
-      <td>{{ item.extraction_status }} · {{ item.text_chars }} merkkiä</td>
-      <td>{{ item.vector_store_status or "metadata" }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% endif %}
-</section>
-<section>
-  <h2>Agenttiketjun auditointi</h2>
-  <form method="post" action="/cases/{{ case_id }}/lupademo/admin/agent-chain/audit-run" class="actions">
-    <button type="submit">Aja agenttiketjun auditointiajo</button>
-  </form>
-  {% if metrics.agent_chain_audit_run %}
-  <p class="muted">
-    Viimeisin auditointiajo: {{ metrics.agent_chain_audit_run.duration_ms }} ms,
-    {{ metrics.agent_chain_audit_run.agent_chain_audit.call_count }} LLM-kutsua,
-    {{ metrics.agent_chain_audit_run.agent_chain_audit.missing_expected_agents|length }} puuttuvaa agenttia.
+
+<section id="methodology" aria-labelledby="methodology-heading">
+  <h2 id="methodology-heading">Menetelmä ja rajaukset</h2>
+  <p>Hakemus-, tarkistus- ja ehdotusmäärät muodostetaan tämän hankkeen tapahtumista ja tallennetuista päätöksistä. Laadun muutos lasketaan ensimmäisen ja viimeisimmän tarkistuksen välillä.</p>
+  <div class="issue minor"><strong>Demoarvio</strong><p>Käsittelijäajan säästö ja täydennyspyynnön todennäköisyys perustuvat simuloituun vertailutasoon. Ne eivät ole tuotantokäytöstä mitattuja vaikutuksia.</p></div>
+  <p class="button-row">
+    <a class="button secondary" href="/cases/{{ case_id }}/lupademo/metrics/report.html">Avaa tulosraportti</a>
+    <a class="button secondary" href="/cases/{{ case_id }}/lupademo/metrics/report.json">Lataa raakadata</a>
   </p>
-  {% endif %}
-  <div class="metric-grid">
-    <div><strong>{{ metrics.agent_chain_audit.call_count }}</strong><span>LLM-kutsuja</span></div>
-    <div><strong>{{ metrics.agent_chain_audit.agent_count }}</strong><span>Agentteja</span></div>
-    <div><strong>{{ metrics.agent_chain_audit.file_search_call_count }}</strong><span>file_search-kutsuja</span></div>
-    <div><strong>{{ metrics.agent_chain_audit.json_response_call_count }}</strong><span>JSON Responses</span></div>
-    <div><strong>{{ metrics.agent_chain_audit.fallback_count }}</strong><span>Fallbackeja</span></div>
+</section>
+
+<section aria-labelledby="related-evidence-heading">
+  <h2 id="related-evidence-heading">Muu alustan näyttö</h2>
+  <div class="grid three">
+    <article><h3>Arviointi</h3><p>Vertailuaineisto ja arviointikohteiden kattavuus.</p><a href="/cases/{{ case_id }}/lupademo/admin/benchmark-lab">Avaa arviointi</a></article>
+    <article><h3>Tuotantovalmius</h3><p>Valmiusvaatimukset ja niiden näyttö.</p><a href="/cases/{{ case_id }}/lupademo/admin/production-hardening">Avaa tuotantovalmius</a></article>
+    <article><h3>Tapahtumaloki</h3><p>Toimien ja AI-ajojen jäljitettävyys.</p><a href="/cases/{{ case_id }}/lupademo/admin/audit-trail">Avaa tapahtumaloki</a></article>
   </div>
-  <dl class="data-list" style="margin-top:12px;">
-    <div class="data-row"><dt>Vector storet</dt><dd>{{ metrics.agent_chain_audit.vector_store_ids_seen|join(", ") if metrics.agent_chain_audit.vector_store_ids_seen else "ei käytössä" }}</dd></div>
-    <div class="data-row"><dt>Ajetut agentit</dt><dd>{{ metrics.agent_chain_audit.called_agents|join(", ") if metrics.agent_chain_audit.called_agents else "ei kutsuja" }}</dd></div>
-    <div class="data-row"><dt>Ei vielä ajettu</dt><dd>{{ metrics.agent_chain_audit.missing_expected_agents|join(", ") if metrics.agent_chain_audit.missing_expected_agents else "kaikki odotetut agentit ajettu" }}</dd></div>
-  </dl>
-  {% if metrics.agent_chain_audit.recent_calls %}
-  <table>
-    <tr><th>Agentti</th><th>Malli</th><th>Formaatti</th><th>file_search</th><th>Fallback</th><th>Kesto</th><th>Virhe</th></tr>
-    {% for call in metrics.agent_chain_audit.recent_calls %}
-    <tr>
-      <td>{{ call.agent }}</td>
-      <td>{{ call.model }}</td>
-      <td>{{ call.response_format }}</td>
-      <td>{{ "kyllä" if call.file_search else "ei" }}</td>
-      <td>{{ "kyllä" if call.fallback_used else "ei" }}</td>
-      <td>{{ call.duration_ms or "-" }} ms</td>
-      <td>{{ call.error or call.vector_store_retry_reason or call.fallback_reason or "-" }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% endif %}
 </section>
-{% if metrics.authority_benchmark %}
-<section>
-  <h2>Viranomaisesimerkkien benchmark</h2>
-  <p class="muted">{{ metrics.authority_benchmark.usage_policy }}</p>
-  <div class="metric-grid">
-    <div><strong>{{ metrics.authority_benchmark.authority_example_count }}</strong><span>Vertailudokumentteja</span></div>
-    <div><strong>{{ metrics.authority_benchmark.agent_comparison_targets|length }}</strong><span>Agenttikohteita</span></div>
-  </div>
-  {% if metrics.authority_benchmark.agent_comparison_targets %}
-  <table>
-    <tr><th>Agentti</th><th>Esimerkkejä</th><th>Caset</th><th>Ensisijainen arviointikriteeri</th></tr>
-    {% for target in metrics.authority_benchmark.agent_comparison_targets %}
-    <tr>
-      <td>{{ target.agent }}</td>
-      <td>{{ target.example_count }}</td>
-      <td>{{ target.cases|join(", ") }}</td>
-      <td>{{ target.rubric[0] if target.rubric else "" }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% endif %}
-</section>
-{% endif %}
-<section>
-  <h2>Viimeisimmät tapahtumat</h2>
-  <table>
-    <tr><th>Aika</th><th>Tapahtuma</th><th>Kuvaus</th></tr>
-    {% for event in metrics.recent_events %}
-    <tr><td>{{ event.ts }}</td><td>{{ event.action }}</td><td>{{ event.detail }}</td></tr>
-    {% endfor %}
-  </table>
-</section>
+
+{% call technical_details("Raportin tekninen rajaus") %}
+<p>JSON-raportti sisältää myös alustan teknisiä mittareita yhteensopivuuden vuoksi. Tämä näkymä esittää vain vaikuttavuuden tulokset.</p>
+{% endcall %}
 {% endblock %}
