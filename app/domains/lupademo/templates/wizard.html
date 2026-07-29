@@ -22,29 +22,10 @@
     <div><strong>{% if wizard.blocking_count %}Lähetys estetty{% elif wizard.missing_required_fields %}Täydennettävää{% else %}Valmis tarkistukseen{% endif %}</strong><small>{{ wizard.missing_required_fields|length }} puuttuvaa kenttää · {{ wizard.pending_suggestion_count }} AI-ehdotusta</small></div>
   </div>
 </header>
-{% if present %}
-<section class="present-card">
-  <strong>Mitä tämä todistaa</strong>
-  {% if step == 1 %}
-  <p>LV:n yhteiset tiedot siirtyvät hakemuksen pohjaksi.</p>
-  {% elif step == 2 %}
-  <p>Hakijan liitteet ja AI-tausta-aineisto erotellaan. Viranomaisen omat asiakirjat ohitetaan tuonnissa.</p>
-  {% elif step == 3 %}
-  <p>AI ei kirjoita lomaketta suoraan, vaan ehdottaa lähteistettyjä muutoksia käyttäjän hyväksyttäväksi.</p>
-  {% elif step == 4 %}
-  <p>Sääntö- ja AI-tarkistus muodostavat lähetysportin. Blocking-puutteet pysäyttävät lähetyksen.</p>
-  {% elif step == 5 %}
-  <p>Viranomaiselle lähtevä paketti on tarkistettavissa ja AI-only-aineisto jää pois.</p>
-  {% else %}
-  <p>Lähetetty hakemus näkyy LV:ssä ja viranomaisen työjonossa.</p>
-  {% endif %}
-  <div class="integration-pills"><span class="pill">R4 hakemus</span><span class="pill">R5 AI-evidence</span><span class="pill">R6 tarkistusportti</span><span class="pill">R7 lähetys</span></div>
-</section>
-{% endif %}
 
 <nav class="stepper studio-stepper" aria-label="Hakemuksen vaiheet">
   {% for item in wizard.steps %}
-  <a class="step-link {{ 'active' if item.step == step else '' }} {{ item.status }}" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ item.step }}{% if present %}?present=1{% endif %}">
+  <a class="step-link {{ 'active' if item.step == step else '' }} {{ item.status }}" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ item.step }}{% if present %}?present=1{% endif %}"{% if item.step == step %} aria-current="step"{% endif %}>
     <span>{{ item.step }}</span>
     <strong>{{ item.label }}</strong>
   </a>
@@ -126,35 +107,41 @@
 {% endif %}
 
 {% if step == 2 %}
-<section class="grid two-wide">
-  <div>
-    <h2>Lomake</h2>
+<section class="application-form-workspace">
+  <div class="application-fields-panel">
+    <div class="section-heading-line">
+      <div><p class="section-kicker">Hakemuksen tiedot</p><h2>Lomake</h2></div>
+      <span>{{ wizard.missing_required_fields|length }} täydennettävää kenttää</span>
+    </div>
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/save">
       <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2">
       {% for tab in schema.tabs %}
-      <h3>{{ tab.label }}</h3>
-      <div class="form-grid">
+      <details class="field-section" {% if loop.first %}open{% endif %}>
+      <summary id="tab-{{ tab.id }}"><span>{{ tab.label }}</span><small>Avaa ja täytä</small></summary>
+      <div class="application-field-grid" aria-labelledby="tab-{{ tab.id }}">
         {% for field in schema.fields if field.tab == tab.id %}
-        <label id="field-{{ field.id }}">{{ field.label }}{% if field.required %} *{% endif %}
+        <label class="application-field {% if field.type == 'textarea' %}wide-field{% endif %}" id="field-{{ field.id }}">{{ field.label }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}
           {% if field.type == "textarea" %}
           <textarea name="{{ field.id }}">{{ application.form_data.get(field.id, "") }}</textarea>
           {% else %}
           <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}">
           {% endif %}
           {% set source_key = application.field_sources.get(field.id, "käyttäjän syöttämä") %}
-          <span class="source">{{ source_labels.get(source_key, source_key) }}</span>
+          <span class="field-note"><i aria-hidden="true"></i>{{ source_labels.get(source_key, source_key) }}</span>
           {% for change in sync.changes if change.field_id == field.id %}
-          <span class="pill">{{ "Muuttunut LV:ssä" if change.direction == "lv_to_app" else ("Ehdotettu LV:hen" if change.direction == "app_to_lv" else "Konflikti") }}</span>
+          <span class="field-note attention"><i aria-hidden="true"></i>{{ "Muuttunut LV:ssä" if change.direction == "lv_to_app" else ("Ehdotettu LV:hen" if change.direction == "app_to_lv" else "Konflikti") }}</span>
           {% endfor %}
         </label>
         {% endfor %}
       </div>
+      </details>
       {% endfor %}
-      <button class="{% if present %}next-action{% endif %}">Tallenna lomake</button>
+      <div class="application-form-actions"><button class="{% if present %}next-action{% endif %}">Tallenna lomake</button></div>
     </form>
   </div>
-  <aside>
-    <h2>Dokumenttikeskus</h2>
+  <details class="document-center">
+    <summary><span><small>Aineisto</small><strong>Liitteet ja tausta-aineistot</strong></span><span>{{ attachments|length }} dokumenttia</span></summary>
+    <div class="document-center-body">
     <div class="result-item" id="materials">
       <h3>Tarkista valmis hakemuspaketti</h3>
       <p class="muted">Lataa hakemus, liitteet ja tausta-aineistot yhdellä kertaa. AI luokittelee dokumentit, poimii kenttäehdotukset ja kertoo, onko paketti valmis, täydennettävä vai ristiriitainen.</p>
@@ -369,7 +356,8 @@
     {% if hidden_authority_count %}
     <p class="muted">{{ hidden_authority_count }} viranomais- tai eval-aineiston dokumenttia on rajattu pois hakijan normaalista aineistonäkymästä.</p>
     {% endif %}
-  </aside>
+    </div>
+  </details>
 </section>
 {% endif %}
 
@@ -567,28 +555,6 @@
 </section>
 {% endif %}
 
-{% if step == 6 %}
-<section class="grid two">
-  <div>
-    <h2>Lähetys ja kuitti</h2>
-    {% if receipt %}
-    <dl class="data-list">
-      <div class="data-row"><dt>Kuitti</dt><dd>{{ receipt.receipt_id }}</dd></div>
-      <div class="data-row"><dt>Vastaanotettu</dt><dd>{{ receipt.received_at }}</dd></div>
-      <div class="data-row"><dt>Viranomainen</dt><dd>{{ receipt.authority }}</dd></div>
-    </dl>
-    {% else %}
-    <p class="muted">Hakemusta ei ole vielä lähetetty.</p>
-    {% endif %}
-  </div>
-  <div>
-    <h2>Seuraavat näkymät</h2>
-    <a class="button" href="/lv/projects/{{ case_id }}{% if present %}?present=1{% endif %}">Takaisin LV:hen</a>
-    <a class="button secondary" href="/cases/{{ case_id }}/lupademo/authority/queue{% if present %}?present=1{% endif %}">Viranomaisnäkymä</a>
-  </div>
-</section>
-{% endif %}
-
 <nav class="wizard-actions" aria-label="Siirtyminen hakemuksen vaiheissa">
   {% if step > 1 %}
   <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ step - 1 }}{% if present %}?present=1{% endif %}">← Edellinen vaihe</a>
@@ -600,12 +566,14 @@
 </div>
 
 <aside class="assistant-rail" id="hakemusapuri" aria-label="Hakemusapuri" data-ai-jobs-panel>
-  <header class="assistant-header">
-    <span class="assistant-mark" aria-hidden="true">✦</span>
-    <div><p class="section-kicker">Apua tähän vaiheeseen</p><h2>Hakemusapuri</h2></div>
-    <span class="assistant-status"><i></i> Käytössä</span>
-  </header>
-  <p class="assistant-context">Apuri tuntee tämän hakemuksen lomaketiedot, sallitut liitteet ja arvioinnissa käytettävät ohjeet.</p>
+  <details class="assistant-disclosure">
+    <summary>
+      <span class="assistant-mark" aria-hidden="true">✦</span>
+      <span class="assistant-summary-copy"><small>Apua tähän vaiheeseen</small><strong>Hakemusapuri</strong></span>
+      <span class="assistant-toggle-label" aria-hidden="true">Avaa</span>
+    </summary>
+    <div class="assistant-body">
+      <p class="assistant-context">Kysy hakemuksen täyttämisestä tai siitä, mitä tietoja vielä puuttuu.</p>
 
   {% if ai_jobs and ai_jobs[0].status != 'completed' %}
   <section class="assistant-job" id="ai-jobs">
@@ -614,9 +582,7 @@
       <div class="assistant-job-title"><span class="ai-orbit small"><i></i></span><div><strong data-job-summary>{{ job.summary or job.title }}</strong><small><span data-job-progress>{{ job.progress_pct }}</span>% · noin <span data-job-eta>{{ job.eta_seconds }}</span> s</small></div></div>
       <div class="progress-track"><span data-job-progress-bar style="width: {{ job.progress_pct }}%"></span></div>
       <div class="visually-hidden" data-job-status>{{ job.status }}</div>
-      <div class="visually-hidden" data-job-agents>{% for agent in job.agents %}<span>{{ agent.label }} · {{ agent.status }}</span>{% endfor %}</div>
       <div class="assistant-job-actions"><button type="button" class="text-button" data-job-cancel>Peruuta</button><button type="button" class="text-button" data-job-retry>Yritä uudelleen</button><button type="button" class="text-button" data-job-background>Jatka taustalla</button></div>
-      <details class="assistant-technical"><summary>Näytä tekninen loki</summary><pre data-job-log>{{ job.agents|tojson }}</pre></details>
     </article>
     {% endfor %}
   </section>
@@ -642,9 +608,17 @@
   </form>
   <div class="assistant-prompts" aria-label="Valmiit kysymykset">
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat"><button name="message" value="Mitä hakemuksesta puuttuu juuri nyt?">Mitä puuttuu?</button></form>
+    {% if step == 3 %}
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat"><button name="message" value="Mitkä AI-poiminnat minun kannattaa tarkistaa ensin?">Tarkista poiminnat</button></form>
+    {% endif %}
   </div>
-  <div class="assistant-boundary"><span aria-hidden="true">ⓘ</span><p>Ehdotukset eivät muuta lomaketta ennen hyväksyntää. Sinä päätät jokaisesta muutoksesta.</p></div>
+  {% if step == 2 %}
+  <div class="assistant-boundary"><span aria-hidden="true">i</span><p>AI-ehdotukset tarkistetaan seuraavassa vaiheessa ennen kuin ne muuttavat hakemusta.</p></div>
+  {% else %}
+  <div class="assistant-boundary"><span aria-hidden="true">i</span><p>Ehdotukset eivät muuta lomaketta ennen hyväksyntää. Sinä päätät jokaisesta muutoksesta.</p></div>
+  {% endif %}
+    </div>
+  </details>
 </aside>
 </div>
 <script>
@@ -659,22 +633,6 @@
     if (target && value !== undefined && value !== null) target.textContent = String(value);
   }
 
-  function renderEvents(row, payload) {
-    const container = row.querySelector("[data-job-agents]");
-    if (!container || !Array.isArray(payload.events) || payload.events.length === 0) return;
-    container.replaceChildren();
-    payload.events.slice(0, 4).forEach((event) => {
-      const pill = document.createElement("span");
-      pill.className = "pill";
-      const label = event.step || event.agent || payload.current_step_label || "AI-vaihe";
-      const progress = event.progress_percent ?? payload.progress_percent ?? 0;
-      pill.textContent = `${label} · ${progress}%`;
-      container.appendChild(pill);
-    });
-    const log = row.querySelector("[data-job-log]");
-    if (log) log.textContent = JSON.stringify(payload.events, null, 2);
-  }
-
   function applyStatus(row, payload) {
     if (!payload || typeof payload !== "object") return false;
     const progress = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
@@ -685,7 +643,6 @@
     if (bar) bar.style.width = `${progress}%`;
     const summary = payload.events && payload.events.length ? payload.events[payload.events.length - 1].message : payload.title;
     setText(row, "[data-job-summary]", summary);
-    renderEvents(row, payload);
     const done = terminalStatuses.has(payload.status);
     const cancel = row.querySelector("[data-job-cancel]");
     if (cancel) cancel.disabled = done;

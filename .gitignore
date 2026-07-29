@@ -15,6 +15,7 @@ env/
 # Environment variables
 .env
 data/
+graphify-out/
 
 # IDE
 .vscode/settings.json

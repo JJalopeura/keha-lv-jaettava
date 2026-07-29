@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="band service-shell authority-shell">
-  <p class="eyebrow">Admin</p>
-  <h1>Audit trail</h1>
-  <p class="muted">Lupademon tapahtumaloki hakijan, AI-agenttien ja käsittelijän toimista.</p>
+  <p class="eyebrow">Demo Lab ja alusta</p>
+  <h1>Tapahtumaloki</h1>
+  <p class="muted">Viimeisimmät hakijan, AI-palvelun ja käsittelijän tapahtumat.</p>
 </section>
 <section>
-  <h2>Tapahtumat</h2>
+  <h2>Viimeisimmät tapahtumat</h2>
   <table>
-    <tr><th>Aika</th><th>Toimi</th><th>Kuvaus</th><th>Data</th></tr>
+    <caption>Viimeisimmät tapahtumat aikajärjestyksessä</caption>
+    <tr><th>Aika</th><th>Tapahtuma</th><th>Tekniset tiedot</th></tr>
     {% for item in audit_events %}
     <tr>
-      <td>{{ "%.0f"|format(item.ts or 0) }}</td>
-      <td><span class="status">{{ item.action }}</span></td>
+      <td>{{ item.ts|finnish_datetime if item.ts else '-' }}</td>
       <td>{{ item.detail }}</td>
-      <td><code>{{ item.data }}</code></td>
+      <td><details class="technical-details"><summary>Tekniset tapahtumatiedot</summary><p>Toimintokoodi: <code>{{ item.action }}</code></p><code>{{ item.data }}</code></details></td>
     </tr>
     {% else %}
-    <tr><td colspan="4" class="muted">Ei tapahtumia vielä.</td></tr>
+    <tr><td colspan="3" class="muted">Ei tapahtumia vielä.</td></tr>
     {% endfor %}
   </table>
 </section>

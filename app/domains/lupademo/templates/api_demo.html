@@ -11,41 +11,45 @@
         {% endfor %}
       </select>
     </label>
-    <label>HTTP request JSON<textarea name="request_json" rows="18">{{ result.get('request') | tojson(indent=2) if result.get('request') else request_json }}</textarea></label>
-    <button>Lähetä request</button>
+    <details class="technical-details">
+      <summary>Pyynnön JSON-tiedot</summary>
+      <label>Pyyntö<textarea name="request_json" rows="18">{{ result.get('request') | tojson(indent=2) if result.get('request') else request_json }}</textarea></label>
+    </details>
+    <button>Lähetä pyyntö</button>
   </form>
   <div>
-    <h2>HTTP response</h2>
+    <h2>Vastauksen yhteenveto</h2>
     {% set response = result.get('response') if result.get('response') else result %}
     {% if result.get('job') %}
-    <div class="result-item">
-      <h3>Job</h3>
+    <details class="technical-details result-item">
+      <summary>Ajotiedot</summary>
       <p>{{ result.job.id }} · {{ result.job.status }} · {{ result.job.progress_pct }}%</p>
       <div class="progress-line"><span style="width: {{ result.job.progress_pct }}%"></span></div>
       <small>{{ result.job.summary }}</small>
-    </div>
+    </details>
     {% endif %}
     {% if result.get('trace_stream') %}
-    <div class="result-item">
-      <h3>Event stream</h3>
+    <details class="technical-details result-item">
+      <summary>Ajotapahtumat</summary>
       <pre class="trace-preview">{{ result.trace_stream | tojson(indent=2) }}</pre>
-    </div>
+    </details>
     {% endif %}
-    <div class="result-item">
-      <h3>Final response JSON</h3>
+    <details class="technical-details result-item">
+      <summary>Lopullinen JSON-vastaus</summary>
       {% if result.get('response') %}
       <pre class="json-preview">{{ response | tojson(indent=2) }}</pre>
       {% else %}
       <p class="muted">Lopullinen JSON-vastaus näkyy tässä, kun request on ajettu.</p>
       {% endif %}
-    </div>
+    </details>
     {% if response.get('suggestions') %}
     <div class="result-list">
       {% for suggestion in response.suggestions %}
       <div class="result-item">
-        <span class="status good">{{ suggestion.field_id }}</span>
+        <span class="status good">AI-ehdotus</span>
         <p>{{ suggestion.suggested_value }}</p>
         <small>Luottamus {{ suggestion.confidence }} · {{ suggestion.rationale }}</small>
+        <details class="technical-details"><summary>Tekninen kenttätunnus</summary><code>{{ suggestion.field_id }}</code></details>
       </div>
       {% endfor %}
     </div>
@@ -53,20 +57,23 @@
     <div class="result-list">
       {% for field in response.extracted_fields %}
       <div class="result-item">
-        <span class="status good">{{ field.field_id }}</span>
+        <span class="status good">AI:n löytämä tieto</span>
         <p>{{ field.get('value', field.get('suggested_value', '')) }}</p>
         <small>Luottamus {{ field.get('confidence', '') }} · evidence {{ field.get('evidence_refs', [])|length }}</small>
+        <details class="technical-details"><summary>Tekninen kenttätunnus</summary><code>{{ field.field_id }}</code></details>
       </div>
       {% endfor %}
     </div>
     {% if response.get('document_inventory') %}
-    <h3>Document inventory</h3>
+      <details class="technical-details">
+      <summary>Dokumenttien tekniset tiedot</summary>
     <table>
       <tr><th>Tiedosto</th><th>Rooli</th><th>Scope</th><th>Merkit</th></tr>
       {% for doc in response.document_inventory %}
       <tr><td>{{ doc.filename }}</td><td>{{ doc.document_role }}</td><td>{{ doc.delivery_scope }}</td><td>{{ doc.text_chars }}</td></tr>
       {% endfor %}
     </table>
+    </details>
     {% endif %}
     {% else %}
     <p class="muted">Ei vielä API-vastausta.</p>
@@ -80,7 +87,7 @@
         <small>Tenant: {{ response.get('tenant_id') or "valitse tenant" }} · Evidence: {{ response.get('evidence_refs', [])|length }}</small>
       </div>
     </div>
-    <p class="muted">Endpointit: <code>POST /api/v1/application-packages:analyze</code>, <code>GET /api/v1/jobs/{job_id}/events</code>, <code>GET /api/v1/jobs/{job_id}/result</code> tai <code>POST /api/v1/suggestions/field</code> · Header: <code>X-Lupademo-Api-Key</code></p>
+    <details class="technical-details"><summary>Tekniset sopimustiedot</summary><p class="muted">Endpointit: <code>POST /api/v1/application-packages:analyze</code>, <code>GET /api/v1/jobs/{job_id}/events</code>, <code>GET /api/v1/jobs/{job_id}/result</code> tai <code>POST /api/v1/suggestions/field</code> · Header: <code>X-Lupademo-Api-Key</code></p></details>
   </div>
 </section>
 {% endblock %}

@@ -1,31 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="band service-product"><p class="eyebrow">AI-palvelu · UI-only</p><h1>UI-only ehdotuspalvelu</h1><p>Kevyt käyttö ilman integraatiota: liitä teksti tai lataa aineisto, valitse tenantti ja kopioi kenttäehdotukset.</p></section>
+<section class="band service-product"><p class="eyebrow">AI-ehdotuspalvelu</p><h1>Virkailijan ehdotustyökalu</h1><p>Liitä lähdeaineisto, muodosta ehdotukset ja kopioi tarkistetut tiedot omaan järjestelmääsi.</p></section>
 <section class="grid two">
   <form method="post" enctype="multipart/form-data">
-    <label>Tenant
+    <label>Asiakas
       <select name="tenant_id">
         {% for client in api_clients %}
-        <option value="{{ client.tenant_id }}">{{ client.tenant_id }} · {{ client.criteria_version_suffix }}</option>
+        <option value="{{ client.tenant_id }}">Asiakas {{ loop.index }}</option>
         {% endfor %}
       </select>
     </label>
     <label>Lupatyyppi
       <select name="permit_type"><option value="environmental_industrial">Ympäristölupa</option><option value="building_residential">Rakennuslupa</option></select>
     </label>
-    <label>Vapaateksti<textarea name="source_text">Toiminta sisältää kemikaalien varastointia, tuotantoprosesseja ja tarkkailutarpeita.</textarea></label>
+    <label>Lähdeaineisto<textarea name="source_text">Toiminta sisältää kemikaalien varastointia, tuotantoprosesseja ja tarkkailutarpeita.</textarea></label>
     <label>Aineistotiedosto<input type="file" name="uploaded_file"></label>
-    <button>Muodosta ehdotus</button>
+    <button>Muodosta ehdotukset</button>
   </form>
   <div>
     <h2>Kopioitava ehdotus</h2>
-    {% if result.get('tenant_id') %}<p class="muted">Tenant {{ result.get('tenant_id') }} · {{ result.get('criteria_version') }}</p>{% endif %}
+    {% if result.get('tenant_id') %}<details class="technical-details"><summary>Tekniset käsittelytiedot</summary><p>Asiakas: <code>{{ result.get('tenant_id') }}</code> · Kriteeriversio: <code>{{ result.get('criteria_version') }}</code></p></details>{% endif %}
     {% if result.get('source_documents') %}
+    <details class="technical-details">
+      <summary>Lähdeaineiston tekniset tiedot</summary>
     <dl class="data-list">
       {% for doc in result.source_documents %}
       <div class="data-row"><dt>{{ doc.filename }}</dt><dd>{{ doc.text_chars }} merkkiä · {{ doc.delivery_scope }}</dd></div>
       {% endfor %}
     </dl>
+    </details>
     {% endif %}
     {% if result.get('extracted_fields') %}
     <button type="button" class="secondary" data-copy-ui-only>Kopioi ehdotus</button>
@@ -34,9 +37,10 @@
       {% for field in result.extracted_fields %}
       <div class="result-item">
         <label><input type="checkbox" name="accepted_fields" value="{{ field.field_id }}"> Hyväksy</label>
-        <span class="status good">{{ field.field_id }}</span>
+        <span class="status good">AI:n löytämä tieto</span>
         <p>{{ field.value }}</p>
-        <small>Luottamus {{ field.confidence }}</small>
+        <small>{% if field.confidence >= 0.8 %}Vahva{% elif field.confidence >= 0.5 %}Tarkistettava{% else %}Epävarma{% endif %}</small>
+        <details class="technical-details"><summary>Tekninen kenttätunnus</summary><code>{{ field.field_id }}</code></details>
       </div>
       {% endfor %}
     </div>
@@ -49,8 +53,8 @@
       <h2>Hyväksyntäloki</h2>
       {% for item in acceptance_log["items"] %}
       <div class="result-item">
-        <strong>{{ item.tenant_id }} · {{ item.criteria_version }}</strong>
         <p>Hyväksyttyjä kenttiä: {{ item.accepted_fields|length }}</p>
+        <details class="technical-details"><summary>Tekniset hyväksyntätiedot</summary><code>{{ item.tenant_id }} · {{ item.criteria_version }}</code></details>
       </div>
       {% else %}
       <p class="muted">Ei hyväksyntöjä vielä.</p>

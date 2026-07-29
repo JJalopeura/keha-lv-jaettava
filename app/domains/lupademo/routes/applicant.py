@@ -14,9 +14,11 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
+from .template_filters import finnish_datetime
 
 DOMAIN_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
+templates.env.filters["finnish_datetime"] = finnish_datetime
 templates.env.globals["FINDING_CATEGORY_LABELS"] = {
     "missing_required_info": "Puuttuva tieto",
     "contradiction": "Ristiriita",
@@ -33,6 +35,31 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
 
     def settings() -> Any:
         return settings_getter()
+
+    def workspace_options() -> list[dict[str, str]]:
+        options = []
+        active_case_id = scenarios.active_case_id(db())
+        active_package_id = str(db().get_app_setting("lupademo_active_package_id") or "")
+        for case in db().list_cases():
+            case_id = str(case.get("id") or "")
+            project = svc.artifact_json(db(), case_id, "lv_project", "main", {})
+            common = svc.artifact_json(db(), case_id, "lv_common_data", "main", {"data": {}})
+            packages = [
+                item.get("data_json")
+                for item in db().list_artifacts(case_id)
+                if item.get("type") == "material_package" and isinstance(item.get("data_json"), dict)
+            ]
+            for package in packages or [{}]:
+                options.append(
+                    {
+                        "case_id": case_id,
+                        "package_id": str(package.get("package_id") or ""),
+                        "customer": str(common.get("data", {}).get("applicant_name") or "Hakija"),
+                        "package": str(package.get("display_name") or project.get("name") or case.get("title") or "Lupahanke"),
+                        "selected": case_id == active_case_id and (not active_package_id or package.get("package_id") == active_package_id),
+                    }
+                )
+        return options
 
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
         svc.ensure_seed_state(db(), case_id)
@@ -74,7 +101,22 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
 
     @router.get("/", response_class=HTMLResponse)
     def landing(request: Request):
-        return templates.TemplateResponse(request, "landing.html", {"scenarios": scenarios.list_scenarios()})
+        return templates.TemplateResponse(
+            request,
+            "landing.html",
+            {"scenarios": scenarios.list_scenarios(), "workspace_options": workspace_options()},
+        )
+
+    @router.post("/workspace/select")
+    def workspace_select(workspace: str = Form(...)):
+        option = next((item for item in workspace_options() if f"{item['case_id']}:{item['package_id']}" == workspace), None)
+        if not option:
+            raise HTTPException(status_code=404, detail="Case not found")
+        case_id = option["case_id"]
+        scenario = svc.artifact_json(db(), case_id, "demo_scenario", "main", {}).get("scenario", {})
+        scenarios.set_active_scenario(db(), case_id, str(scenario.get("id") or "generic_project"))
+        db().set_app_setting("lupademo_active_package_id", option["package_id"])
+        return RedirectResponse(url="/", status_code=303)
 
     @router.get("/demo/scenarios", response_class=HTMLResponse)
     def scenario_list(request: Request):
@@ -352,6 +394,8 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     @router.get("/cases/{case_id}/lupademo/application/{application_id}/wizard/{step}", response_class=HTMLResponse)
     def application_wizard(request: Request, case_id: str, application_id: str, step: int):
         step = min(max(int(step), 1), 6)
+        if step == 6:
+            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/receipt", status_code=303)
         ctx = context(case_id, application_id)
         if step == 5:
             ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
@@ -555,7 +599,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             svc.submit_application(db(), case_id, application_id, settings=settings())
         except RuntimeError:
             return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#check-blocking", status_code=303)
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/6", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/receipt", status_code=303)
 
     @router.get("/cases/{case_id}/lupademo/application/{application_id}/receipt", response_class=HTMLResponse)
     def receipt(request: Request, case_id: str, application_id: str):

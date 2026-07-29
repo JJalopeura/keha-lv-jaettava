@@ -5,12 +5,11 @@
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
 <header class="casework-header">
-  <div><a class="back-link" href="/cases/{{ case_id }}/lupademo/authority/queue">← Työjonoon</a><p class="section-kicker">{{ schema.title }}</p><h1>{{ project.name }}</h1><p>{{ application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija' }} · {{ common.data.get('municipality') or 'Kunta ei tiedossa' }}</p></div>
+  <div><a class="back-link" href="/cases/{{ case_id }}/lupademo/authority/queue{% if request.url.query %}?{{ request.url.query }}{% endif %}">← Työjonoon</a><p class="section-kicker">{{ schema.title }}</p><h1>{{ project.name }}</h1><p>{{ application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija' }} · {{ common.data.get('municipality') or 'Kunta ei tiedossa' }}</p></div>
   <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/status" class="case-status-form"><label>Tila<select name="status"><option>Käsittelyssä</option><option>Täydennyspyyntö luonnosteltu</option><option>Päätetty</option></select></label><button class="secondary compact">Päivitä</button></form>
 </header>
-{% if present %}<section class="present-card"><strong>Mitä tämä todistaa</strong><p>Käsittelijä saa lähteistetyn AI-briefin, tarkistaa havainnot ja tuottaa muokattavat luonnokset. AI ei tee viranomaispäätöstä.</p></section>{% endif %}
 
-<nav class="casework-tabs" aria-label="Hakemuksen osiot"><a class="active" href="#overview">Tilannekuva</a><a href="#application-material">Hakemus ja liitteet</a><a href="#drafts">Luonnokset</a><a href="#event-log">Tapahtumat</a></nav>
+<nav class="casework-tabs" aria-label="Hakemuksen osiot"><a class="active" href="#overview">Tilannekuva</a><a href="#application-material">Hakemus ja liitteet</a><a href="#drafts">Luonnokset</a></nav>
 
 <section class="authority-brief" id="overview">
   <div class="brief-heading">
@@ -61,5 +60,4 @@
   </div>
 </section>
 
-<section class="event-log" id="event-log"><div class="section-heading-line"><div><p class="section-kicker">Audit trail</p><h2>Tapahtumat</h2></div></div>{% for event in project.get('integration_events', []) %}<div class="event-row"><span>{{ event.id }}</span><strong>{{ event.label }}</strong><small>{{ event.status }}</small></div>{% endfor %}</section>
 {% endblock %}

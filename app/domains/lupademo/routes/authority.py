@@ -14,9 +14,11 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
+from .template_filters import finnish_datetime
 
 DOMAIN_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
+templates.env.filters["finnish_datetime"] = finnish_datetime
 templates.env.globals["FINDING_CATEGORY_LABELS"] = {
     "missing_required_info": "Puuttuva tieto",
     "contradiction": "Ristiriita",

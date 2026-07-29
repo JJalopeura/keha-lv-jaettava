@@ -45,6 +45,10 @@ app/
                                 packaging, authority views, chat/voice, metrics/benchmark,
                                 external suggestion-service API. Depends on core+jobs+intake.
       __init__.py               re-exports everything so `import services as svc; svc.xxx()` is unchanged.
+
+                                Dependency order (graphify-verified):
+                                application → intake → jobs → core
+                                Core imports nothing intra-package. No cycles exist.
     scenarios.py             Demo scenario definitions + case creation (4 built-in scenarios, fallback in code)
     security.py              API key / tenant auth for suggestion-service endpoints
     static/style.css          Single CSS file
@@ -191,6 +195,11 @@ Jinja2 templates in `app/domains/lupademo/templates/`. Base templates:
 - `light_base.html` — Lightweight pages (API demo, suggestion service)
 - `lv_base.html` — LV project wrapper
 
+Template inheritance: 22 of 23 templates extend either `base.html` or `light_base.html`.
+`lv_base.html` extends `base.html` and wraps LV-project-specific pages.
+`light_base.html` is standalone (lightweight pages with minimal chrome).
+When adding a new template, extend the appropriate base — don't create a fourth.
+
 ## Files to never read in full unless essential
 
 - `app/domains/lupademo/services/application.py` — ~3000 lines; use `read_symbol` or `read_enclosing` to target specific functions
@@ -207,3 +216,15 @@ Jinja2 templates in `app/domains/lupademo/templates/`. Base templates:
 - New scenario → add to `specs/scenarios/demo_scenarios.json` (runtime) or `scenarios.py` (fallback)
 - Access DB → use the `db()` getter injected into router closures
 - Access settings → use the `settings()` getter injected into router closures
+
+### Coupling hotspots (change carefully)
+
+These three functions are the most-connected nodes in the codebase (graphify-verified).
+Changes to their signatures or behavior ripple everywhere:
+
+- `save_artifact()` — every write path flows through it (56 callers)
+- `artifact_json()` — every read path flows through it (48 callers)
+- `event()` — all audit-trail entries flow through it (45 callers)
+
+Before changing any of these, check `svc.__init__.py` for their re-exports — that's the
+single public API surface they expose.

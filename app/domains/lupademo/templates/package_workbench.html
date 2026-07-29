@@ -44,9 +44,6 @@
           <span><b data-job-progress>{{ active_job.progress_pct }}</b>% · <span data-job-eta>{{ active_job.eta_seconds }}</span> s</span>
         </div>
         <div class="progress-track"><span data-job-progress-bar style="width: {{ active_job.progress_pct }}%"></span></div>
-        <div class="pill-row" data-job-agents>
-          {% for agent in active_job.agents %}<span class="pill">{{ agent.label }} · {{ agent.status }}</span>{% endfor %}
-        </div>
       </article>
       {% endif %}
     </section>
@@ -61,25 +58,18 @@
       </div>
     </section>
 
-    <section class="extraction-section" id="extractions">
-      <div class="section-heading-line"><div><p class="section-kicker">Poiminnat</p><h2>AI:n ehdottamat tiedot</h2></div></div>
-      <div class="extraction-list">
-        {% for item in field_extraction_queue.get('items', []) %}
-        <article class="extraction-row">
-          <div class="extraction-label"><strong>{{ field_labels.get(item.field_id, item.field_id) }}</strong><small>{{ item.source_document }} · {{ ((item.confidence * 100) if item.confidence <= 1 else item.confidence)|round|int }} %</small></div>
-          {% if item.status == 'pending' %}
-          <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept" class="inline">
-            <input type="hidden" name="field_id" value="{{ item.field_id }}">
-            <input type="hidden" name="redirect_to" value="/applicant/packages/{{ package_id }}#extractions">
-            <textarea name="edited_value" rows="2">{{ item.suggested_value }}</textarea>
-            <button>Hyväksy</button>
-          </form>
-          {% else %}<span class="status good">Hyväksytty</span>{% endif %}
-        </article>
-        {% else %}<p>Ei tarkistettavia poimintoja.</p>{% endfor %}
-      </div>
-    </section>
     {% endif %}
+
+    {% set pending_extractions = field_extraction_queue.get('items', [])|selectattr('status', 'equalto', 'pending')|list %}
+    <section class="extraction-section" id="extractions">
+      <div class="section-heading-line"><div><p class="section-kicker">AI-ehdotukset</p><h2>AI:n löytämiä tietoja odottaa tarkistusta</h2></div><span>{{ pending_extractions|length }}</span></div>
+      {% if pending_extractions %}
+      <p>Tarkista, muokkaa tai hylkää löydetyt tiedot hakemuksen AI-ehdotuksissa.</p>
+      <a class="button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#extraction-suggestions">Tarkista AI-ehdotukset</a>
+      {% else %}
+      <p>Ei tarkistettavia AI-ehdotuksia.</p>
+      {% endif %}
+    </section>
   </main>
 
   <aside class="document-inspector">

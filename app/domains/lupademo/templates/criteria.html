@@ -145,7 +145,7 @@
       <dl class="data-list">
         <div class="data-row"><dt>Tila</dt><dd><span class="status good">{{ criteria.status or "active" }}</span></dd></div>
         <div class="data-row"><dt>Lupatyyppi</dt><dd>{{ criteria.permit_type }}</dd></div>
-        <div class="data-row"><dt>Päivitetty</dt><dd>{{ criteria.get('updated_at') or "alkuperäinen" }}</dd></div>
+        <div class="data-row"><dt>Päivitetty</dt><dd>{{ criteria.get('updated_at')|finnish_datetime if criteria.get('updated_at') else "alkuperäinen" }}</dd></div>
         <div class="data-row"><dt>Päivittäjä</dt><dd>{{ criteria.get('updated_by') or "seed" }}</dd></div>
         <div class="data-row"><dt>Lähteet</dt><dd>{{ (criteria.get('source_files') or criteria.get('sources') or [])|join(", ") }}</dd></div>
         <div class="data-row"><dt>Sääntöjä</dt><dd>{{ criteria.rules|length if criteria.rules else 0 }}</dd></div>

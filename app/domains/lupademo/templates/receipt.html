@@ -5,7 +5,7 @@
   <p class="muted">{{ receipt.get('receipt_id', '') }}</p>
 </section>
 <section>
-  <p>Saapumisaika: {{ receipt.get('received_at', '') }}</p>
+  <p>Vastaanotettu: {{ receipt.get('received_at', '')|finnish_datetime }}</p>
   <p>Vastaanottava viranomainen: {{ receipt.get('authority', '') }}</p>
   <p>Lähetetyt liitteet: {{ receipt.get('official_attachment_count', 0) }}</p>
   <p>Hakemuksen käsittelyn etenemistä voi seurata LV-palvelussa.</p>

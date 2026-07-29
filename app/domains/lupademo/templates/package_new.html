@@ -77,7 +77,15 @@
   const dropzone = document.querySelector("[data-dropzone]");
   function render() {
     const chosen = Array.from(files.files || []);
-    list.innerHTML = chosen.map((file) => `<span><b>${file.name}</b><small>${Math.max(1, Math.round(file.size / 1024))} kt</small></span>`).join("");
+    list.replaceChildren(...chosen.map((file) => {
+      const item = document.createElement("span");
+      const name = document.createElement("b");
+      const size = document.createElement("small");
+      name.textContent = file.name;
+      size.textContent = `${Math.max(1, Math.round(file.size / 1024))} kt`;
+      item.append(name, size);
+      return item;
+    }));
     zipName.textContent = zip.files && zip.files[0] ? zip.files[0].name : "Ei valittua tiedostoa";
     const ready = chosen.length > 0 || (zip.files && zip.files.length > 0) || textarea.value.trim().length > 0;
     submit.disabled = !ready;

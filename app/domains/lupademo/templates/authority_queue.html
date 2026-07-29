@@ -1,34 +1,36 @@
 {% extends "base.html" %}
-{% block title %}Viranomaisen työjono{% endblock %}
+{% block title %}Käsittelijän työjono{% endblock %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
+{% set permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
 <header class="queue-header">
-  <div><p class="section-kicker">Viranomaisen työtila</p><h1>Saapuneet hakemukset</h1><p>Priorisoi käsittely puutteiden, riskin ja määräajan perusteella.</p></div>
+  <div><p class="section-kicker">Käsittelijän työjono</p><h1>Käsittelyä odottavat hakemukset</h1><p>Priorisoi käsittely puutteiden, riskin ja määräajan perusteella.</p></div>
   <div class="queue-summary"><span><b>{{ queue['items']|length }}</b> hakemusta</span><span><b>{{ queue['items']|selectattr('urgency', 'equalto', 'kiireellinen')|list|length }}</b> kiireellistä</span></div>
 </header>
-{% if present %}<section class="present-card"><strong>Mitä tämä todistaa</strong><p>Virkailija näkee työjonon prioriteetit ja avaa AI-avusteisen, lähteistetyn käsittelytyötilan. AI ei tee päätöstä.</p></section>{% endif %}
 
 <form method="get" action="/cases/{{ case_id }}/lupademo/authority/queue" class="queue-toolbar">
   <label><span>Lupatyyppi</span><select name="permit_type"><option value="">Kaikki lupatyypit</option><option value="building_residential" {% if filters.permit_type == 'building_residential' %}selected{% endif %}>Rakennusluvat</option><option value="environmental_industrial" {% if filters.permit_type == 'environmental_industrial' %}selected{% endif %}>Ympäristöluvat</option><option value="event_public" {% if filters.permit_type == 'event_public' %}selected{% endif %}>Tapahtumat</option></select></label>
   <label><span>Kunta</span><input name="municipality" value="{{ filters.municipality }}" placeholder="Kaikki kunnat"></label>
   <button class="secondary">Suodata</button>
+  {% if filters.permit_type or filters.municipality %}<a href="/cases/{{ case_id }}/lupademo/authority/queue">Poista rajaukset</a>{% endif %}
 </form>
 
 <div class="queue-table-wrap">
   <table class="queue-table">
-    <thead><tr><th>Hakemus</th><th>Hakija ja kunta</th><th>Tila</th><th>Laatu</th><th>Avoimet asiat</th><th>Määräaika</th><th></th></tr></thead>
+    <caption>Käsittelyä odottavat hakemukset puutteiden, riskin ja määräajan mukaan</caption>
+    <thead><tr><th>Hakemus</th><th>Hakija ja kunta</th><th>Käsittelyvaihe</th><th>Hakemuksen valmius</th><th>Täydennettävää</th><th>Määräaika</th><th></th></tr></thead>
     <tbody>
     {% for item in queue['items'] %}
     <tr>
-      <td><strong>{{ item.application_title or item.application_id }}</strong><small>{{ item.receipt_id }} · {{ item.permit_type or item.application_id }}</small></td>
+      <td><strong>{{ item.application_title or permit_labels.get(item.permit_type, 'Lupahakemus') }}</strong><small>{{ item.receipt_id }} · {{ permit_labels.get(item.permit_type, 'Lupahakemus') }}</small></td>
       <td>{{ item.applicant_name or '-' }}<small>{{ item.municipality or '-' }}</small></td>
       <td><span class="status {% if item.urgency == 'kiireellinen' %}bad{% elif item.status == 'Vastaanotettu' %}warn{% else %}good{% endif %}">{{ item.processing_stage or item.status }}</span></td>
       <td><strong class="quality-number">{{ item.quality_score if item.quality_score is not none else '-' }}</strong><small>/ 100</small></td>
       <td>{{ item.open_issue_count if item.open_issue_count is defined else '-' }}<small>Täydennysriski {{ item.info_request_risk or '-' }}</small></td>
-      <td>{{ item.sla_due_at or 'Ei asetettu' }}<small>{{ item.urgency or 'normaali' }}</small></td>
-      <td><a class="row-action {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/authority/applications/{{ item.application_id }}{% if present %}?present=1{% endif %}" aria-label="Avaa hakemus {{ item.application_title or item.application_id }}">Avaa →</a></td>
+      <td>{{ item.sla_due_at|finnish_datetime if item.sla_due_at else 'Ei asetettu' }}<small>{{ item.urgency or 'normaali' }}</small></td>
+      <td><a class="row-action {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/authority/applications/{{ item.application_id }}{% if request.url.query %}?{{ request.url.query }}{% endif %}" aria-label="Avaa hakemus {{ item.application_title or permit_labels.get(item.permit_type, 'Lupahakemus') }}">Avaa käsittelyyn</a></td>
     </tr>
-    {% else %}<tr><td colspan="7" class="empty-table">Työjonossa ei ole näillä rajauksilla hakemuksia.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="7" class="empty-table">Työjonossa ei ole näillä rajauksilla hakemuksia. <a href="/cases/{{ case_id }}/lupademo/authority/queue">Poista rajaukset</a></td></tr>{% endfor %}
     </tbody>
   </table>
 </div>

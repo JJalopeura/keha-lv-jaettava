@@ -1,4 +1,4 @@
-{% extends "lv_base.html" %}
+{% extends "light_base.html" %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
 {% set labels = {
@@ -24,29 +24,10 @@
   "application_draft": "Luonnos"
 } %}
 <section class="band lv-hero">
-  <p class="eyebrow">LV-mock</p>
-  <h1>{{ project.name }}</h1>
-  <p class="muted">{{ project.scenario_label or "Lupademo" }} · {{ project.location or common.data.municipality }}</p>
-  <div class="tag-row">
-    <span class="system-badge">LV</span>
-    <span class="pill">{{ project.tenant_id or "vantaa_demo" }}</span>
-    <span class="pill">{{ project.applicant_role or "company" }}</span>
-    <span class="pill">{{ project.created_from or "lv" }}</span>
-    <span class="pill">{{ project.project_id }}</span>
-  </div>
+  <p class="eyebrow">Lupahanke</p>
+  <h1>{{ project.get("name") or "Lupahanke" }}</h1>
+  <p class="muted">{{ project.get("scenario_label") or "Lupademo" }} · {{ project.get("location") or common.data.get("municipality") or "Kunta ei tiedossa" }}</p>
 </section>
-{% if present %}
-<section class="present-card">
-  <strong>Mitä tämä todistaa</strong>
-  <p>LV kokoaa yhteiset tiedot ja monilupaisen hankkeen tilan. Kevytasiointi on erillinen palvelu, joka palauttaa muutosehdotukset LV:hen.</p>
-  <div class="integration-pills">
-    {% for event in project.integration_events or [] %}
-    <span class="pill">{{ event.id }} {{ event.label }}</span>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
 <section class="grid two">
   <div>
     <h2>Yhteiset tiedot</h2>
@@ -99,9 +80,9 @@
     {% for permit_type in ["building_residential", "environmental_industrial", "event_public"] %}
     <article>
       <h3>{{ permit_labels.get(permit_type, permit_type) }}</h3>
-      <p>Tila: <span class="status">{{ statuses.get(project.statuses.get(permit_type), project.statuses.get(permit_type)) }}</span></p>
-      {% if permit_type in (project.permits or []) or permit_type == "building_residential" %}
-      <a class="button {% if present and permit_type in (project.permits or []) %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Aloita / jatka</a>
+      <p>Tila: <span class="status">{{ statuses.get(project.get("statuses", {}).get(permit_type), project.get("statuses", {}).get(permit_type)) }}</span></p>
+      {% if permit_type in project.get("permits", []) or permit_type == "building_residential" %}
+      <a class="button {% if present and permit_type in project.get("permits", []) %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Aloita / jatka</a>
       {% else %}
       <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Avaa vertailuksi</a>
       {% endif %}
@@ -110,16 +91,4 @@
   </div>
 </section>
 
-<section>
-  <h2>Integraatiotapahtumat</h2>
-  <div class="timeline">
-    {% for event in project.integration_events or [] %}
-    <div class="timeline-row">
-      <span class="pill">{{ event.id }}</span>
-      <strong>{{ event.label }}</strong>
-      <span class="status">{{ event.status }}</span>
-    </div>
-    {% endfor %}
-  </div>
-</section>
 {% endblock %}

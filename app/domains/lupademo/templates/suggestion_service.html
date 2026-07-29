@@ -10,13 +10,15 @@
 {% endif %}
 <section class="grid two">
   <article><h2>API-integraatio</h2><p>Asiointipalvelu lähettää lomakerakenteen, lomakedatan ja tenantin. Vastaus sisältää kenttäehdotukset, evidence-viitteet, tenantin ja kriteeriversion.</p><a class="button {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/suggestion-service/api-demo{% if present %}?present=1{% endif %}">Avaa API-demo</a></article>
-  <article><h2>UI-only</h2><p>Ei integraatiota. Käyttäjä liittää tekstin, valitsee lupatyypin ja kopioi tulokset omaan järjestelmäänsä.</p><a class="button" href="/cases/{{ case_id }}/lupademo/suggestion-service/ui-only{% if present %}?present=1{% endif %}">Avaa UI-only</a></article>
+  <article><h2>Virkailijan ehdotustyökalu</h2><p>Käyttäjä liittää aineiston, tarkistaa ehdotukset ja kopioi valitut tiedot omaan järjestelmäänsä.</p><a class="button" href="/cases/{{ case_id }}/lupademo/suggestion-service/ui-only{% if present %}?present=1{% endif %}">Avaa ehdotustyökalu</a></article>
 </section>
 <section class="grid two">
-  <div>
-    <h2>Tenantit ja demoavaimet</h2>
+  <details class="technical-details">
+    <summary>Tekniset käyttöoikeustiedot</summary>
+    <div>
+    <h2>Asiakkaat ja demoavaimet</h2>
     <table>
-      <tr><th>Tenant</th><th>Luvat</th><th>Kriteeristöt</th><th>Demoavain</th></tr>
+      <tr><th>Asiakas</th><th>Luvat</th><th>Kriteeristöt</th><th>Demoavain</th></tr>
       {% for client in api_clients %}
       <tr>
         <td>{{ client.tenant_id }}</td>
@@ -26,12 +28,13 @@
       </tr>
       {% endfor %}
     </table>
-  </div>
+    </div>
+  </details>
   <div>
-    <h2>Request-loki</h2>
+    <h2>Viimeisimmät palvelupyynnöt</h2>
     {% if request_log["items"] %}
     <table>
-      <tr><th>Aika</th><th>Tila</th><th>Tenant</th><th>Lupatyyppi</th><th>Kriteeriversio</th></tr>
+      <tr><th>Aika</th><th>Tila</th><th>Asiakas</th><th>Lupatyyppi</th><th>Kriteeriversio</th></tr>
       {% for item in request_log["items"]|reverse %}
       <tr><td>{{ item.ts }}</td><td>{{ item.mode }}</td><td>{{ item.tenant_id }}</td><td>{{ item.permit_type }}</td><td>{{ item.criteria_version }}</td></tr>
       {% endfor %}
