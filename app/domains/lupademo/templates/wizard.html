@@ -79,18 +79,6 @@
 <div class="studio-layout">
 <div class="studio-main">
 
-{% if ai_jobs and ai_jobs[0].status != 'completed' %}
-{% set banner_job = ai_jobs[0] %}
-<section class="wizard-job-banner" aria-live="polite">
-  <div class="assistant-job-title">
-    <span class="ai-orbit small"><i></i></span>
-    <div><strong>{{ banner_job.summary or banner_job.title }}</strong><small>{{ banner_job.progress_pct }} % · noin {{ banner_job.eta_seconds }} s</small></div>
-  </div>
-  <div class="progress-track"><span style="width: {{ banner_job.progress_pct }}%"></span></div>
-  <a href="#ai-jobs">Näytä eteneminen</a>
-</section>
-{% endif %}
-
 {% if step == 1 %}
 <section class="grid two">
   <div>
@@ -262,9 +250,13 @@
     <div class="result-item" id="intake-analysis">
       <h3>Aineiston analyysi</h3>
       <p class="muted">Muodostaa rakenteistetut kentät, puutteet ja hakijalta kysyttävät tarkennukset nykyisestä aineistosta.</p>
+      {% if material_job is not defined or not material_job or material_job.status not in ['pending', 'running'] %}
       <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/intake-analysis">
-        <button class="{% if present %}next-action{% endif %}">Analysoi aineisto</button>
+        <button class="{% if present %}next-action{% endif %}">{{ 'Analysoi uudelleen' if intake_analysis else 'Analysoi aineisto' }}</button>
       </form>
+      {% else %}
+      <p class="muted">Aineiston käsittely on käynnissä. Uusi analyysi voidaan käynnistää sen valmistuttua.</p>
+      {% endif %}
       {% if intake_analysis %}
       <dl class="data-list">
         <div class="data-row"><dt>Valmius</dt><dd>{{ intake_analysis.readiness }} · {{ intake_analysis.readiness_score }}/100</dd></div>
@@ -541,6 +533,7 @@
 <section class="grid two">
   <div>
     <h2>Asiakirjaesitys</h2>
+    {% if package %}
     <p>Vastaanottaja: {{ package.authority }}</p>
     <div class="package-official">
     <h3>Viranomaiselle lähtevät liitteet</h3>
@@ -558,6 +551,9 @@
     <p class="muted">Ei erillisiä AI-tausta-aineistoja.</p>
     {% endfor %}
     </div>
+    {% else %}
+    <p class="muted">Lähetyspakettia ei ole vielä muodostettu. Suorita ensin hakemuksen tarkistus.</p>
+    {% endif %}
   </div>
   <div>
     <h2>Lähetys</h2>
@@ -568,7 +564,7 @@
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/submit">
       <label><input type="checkbox" required> Vahvistan tiedot oikeiksi.</label>
       <label><input type="checkbox" required> Ymmärrän viranomaiskäsittelyn perustuvan näihin tietoihin.</label>
-      <button class="{% if present %}next-action{% endif %}">Lähetä hakemus</button>
+      <button class="{% if present %}next-action{% endif %}" {% if not package or not precheck_gate.can_submit %}disabled{% endif %}>Lähetä hakemus</button>
     </form>
   </div>
 </section>
@@ -606,7 +602,7 @@
 </nav>
 </div>
 
-<aside class="assistant-rail" id="hakemusapuri" aria-label="Hakemusapuri" data-ai-jobs-panel>
+<aside class="assistant-rail" id="hakemusapuri" aria-label="Hakemusapuri">
   <details class="assistant-disclosure">
     <summary>
       <span class="assistant-mark" aria-hidden="true">✦</span>
@@ -616,18 +612,17 @@
     <div class="assistant-body">
       <p class="assistant-context">Kysy hakemuksen täyttämisestä tai siitä, mitä tietoja vielä puuttuu.</p>
 
-  {% if ai_jobs and ai_jobs[0].status != 'completed' %}
-  <section class="assistant-job" id="ai-jobs">
-    {% for job in ai_jobs[:1] %}
-    <article data-ai-job data-job-id="{{ job.id }}" data-job-initial-status="{{ job.status }}" data-status-url="/api/v1/jobs/{{ job.id }}" data-stream-url="/api/v1/jobs/{{ job.id }}/stream" data-cancel-url="/api/v1/jobs/{{ job.id }}/cancel" data-retry-url="/api/v1/jobs/{{ job.id }}/retry">
-      <div class="assistant-job-title"><span class="ai-orbit small"><i></i></span><div><strong data-job-summary>{{ job.summary or job.title }}</strong><small><span data-job-progress>{{ job.progress_pct }}</span>% · noin <span data-job-eta>{{ job.eta_seconds }}</span> s</small></div></div>
-      <div class="progress-track"><span data-job-progress-bar style="width: {{ job.progress_pct }}%"></span></div>
-      <div class="visually-hidden" data-job-status>{{ job.status }}</div>
-      <div class="visually-hidden" data-job-agents>{% for agent in job.agents %}<span>{{ agent.label }} · {{ agent.status }}</span>{% endfor %}</div>
+  {% if step == 2 and material_job_view %}
+  {% set assistant_job = material_job_view %}
+  <section class="assistant-job" id="ai-jobs" aria-live="polite" data-ai-jobs-panel>
+    <article data-ai-job data-job-id="{{ assistant_job.id }}" data-job-initial-status="{{ assistant_job.status }}" data-status-url="/api/v1/jobs/{{ assistant_job.id }}" data-stream-url="/api/v1/jobs/{{ assistant_job.id }}/stream" data-cancel-url="/api/v1/jobs/{{ assistant_job.id }}/cancel" data-retry-url="/api/v1/jobs/{{ assistant_job.id }}/retry">
+      <div class="assistant-job-title"><span class="ai-orbit small"><i></i></span><div><strong data-job-summary>{{ assistant_job.summary or assistant_job.title }}</strong><small><span data-job-progress>{{ assistant_job.progress_percent }}</span>% · noin <span data-job-eta>{{ assistant_job.estimated_seconds_remaining }}</span> s</small></div></div>
+      <div class="progress-track"><span data-job-progress-bar style="width: {{ assistant_job.progress_percent }}%"></span></div>
+      <div class="visually-hidden" data-job-status>{{ assistant_job.status }}</div>
+      <div class="visually-hidden" data-job-agents>{% for agent in assistant_job.agents %}<span>{{ agent.label }} · {{ agent.status }}</span>{% endfor %}</div>
       <div class="assistant-job-actions"><button type="button" class="text-button" data-job-cancel>Peruuta</button><button type="button" class="text-button" data-job-retry>Yritä uudelleen</button><button type="button" class="text-button" data-job-background>Jatka taustalla</button></div>
-      <details class="assistant-technical"><summary>Näytä tekninen loki</summary><pre data-job-log>{{ job.agents|tojson }}</pre></details>
+      <details class="assistant-technical"><summary>Näytä tekninen loki</summary><pre data-job-log>{{ assistant_job.agents|tojson }}</pre></details>
     </article>
-    {% endfor %}
   </section>
   {% endif %}
 
@@ -707,7 +702,7 @@
     const cancel = row.querySelector("[data-job-cancel]");
     if (cancel) cancel.disabled = done;
     if (payload.status === "succeeded" && row.dataset.jobInitialStatus === "running") {
-      row.dataset.jobInitialStatus = "succeeded";
+      row.dataset.jobInitialStatus = payload.status;
       window.location.reload();
     }
     return done;
@@ -758,7 +753,7 @@
   panel.querySelectorAll("[data-ai-job]").forEach((row) => {
     row.querySelector("[data-job-cancel]")?.addEventListener("click", () => cancelJob(row));
     row.querySelector("[data-job-retry]")?.addEventListener("click", () => retryJob(row));
-    row.querySelector("[data-job-background]")?.addEventListener("click", () => { row.hidden = true; });
+    row.querySelector("[data-job-background]")?.addEventListener("click", () => { panel.hidden = true; });
     const streamUrl = row.getAttribute("data-stream-url");
     let pollingId = null;
     const stopPolling = () => {

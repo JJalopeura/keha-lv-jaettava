@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import io
+import os
 import time
 import uuid
 import zipfile
@@ -35,6 +36,18 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
 
     def settings() -> Any:
         return settings_getter()
+
+    def ai_execution_label() -> str:
+        configured = settings()
+        force_mock = os.getenv("KEHA_LV_FORCE_MOCK_LLM", "").strip().lower() in {"1", "true", "yes", "on"}
+        has_key = bool(configured.azure_openai_api_key_core)
+        uses_azure = (
+            str(configured.llm_provider or "mock").strip().lower() == "azure"
+            and not force_mock
+            and (not configured.demo_mode or has_key)
+            and has_key
+        )
+        return "Azure OpenAI ja sääntöpohjaiset tarkistukset" if uses_azure else "Mock-AI ja sääntöpohjaiset tarkistukset"
 
     def material_return_url(case_id: str, application_id: str, package_id: str = "", fragment: str = "") -> str:
         if package_id:
@@ -87,6 +100,10 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         def aj(type_: str, default: Any) -> Any:
             return svc.artifact_json(db_obj, case_id, type_, permit_type, default)
         ai_jobs = svc.list_ai_jobs(db_obj, case_id, app["permit_type"])
+        ai_job_views = [
+            {**job, **svc.ai_job_status_payload(job, case_id=case_id, application_id=app["permit_type"])}
+            for job in ai_jobs
+        ]
         material_jobs = [job for job in ai_jobs if job.get("kind") in {"material_ingest", "intake_analysis"}]
         material_job = next(
             (job for job in material_jobs if job.get("status") in {"pending", "running"}),
@@ -108,8 +125,12 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             "material_package": svc.current_material_package(db_obj, case_id, app["permit_type"]),
             "package_analysis": aj("package_analysis_result", {}),
             "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
-            "ai_jobs": ai_jobs,
+            "ai_jobs": ai_job_views,
             "material_job": material_job,
+            "material_job_view": next(
+                (job for job in ai_job_views if material_job and job.get("id") == material_job.get("id")),
+                None,
+            ),
             "contextual_chat": aj("contextual_chat", {"messages": []}),
             "voice_state": svc.voice_feature_state(settings_obj),
             "voice_chat": aj("voice_chat", {"turns": []}),
@@ -208,9 +229,11 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         case_id = started["case_id"]
         package = svc.create_pending_material_package(db(), case_id, application_id, package_name or "Hakemusaineisto", document_count)
         azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
-        job = svc.start_material_ingest_job(db(), case_id, application_id, document_count, azure_enabled=azure_enabled)
+        job = svc.start_material_ingest_job(
+            db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
+        )
         background_tasks.add_task(
-            svc.execute_material_ingest_and_analysis_job,
+            svc.execute_material_ingest_job,
             db(),
             settings(),
             case_id,
@@ -231,7 +254,21 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         out = context(case_id, permit_type)
         attachments = svc.list_attachments(db(), case_id, permit_type)
         ai_jobs = svc.list_ai_jobs(db(), case_id, permit_type)
-        active_job = next((job for job in ai_jobs if job.get("status") == "running"), None)
+        active_job = next(
+            (
+                job
+                for job in ai_jobs
+                if job.get("kind") in {"material_ingest", "intake_analysis"}
+                and job.get("status") in {"pending", "running"}
+                and (job.get("kind") != "material_ingest" or job.get("package_id") == package_id)
+            ),
+            None,
+        )
+        active_job_view = (
+            {**active_job, **svc.ai_job_status_payload(active_job, case_id=case_id, application_id=permit_type)}
+            if active_job
+            else None
+        )
         material_package = svc.find_material_package(db(), package_id)["package"]
         out.update(
             {
@@ -242,10 +279,11 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
                 "context_attachments": [item for item in attachments if item.get("delivery_scope") == "ai_context_only"],
                 "material_intake": svc.artifact_json(db(), case_id, "material_intake", permit_type, {}),
                 "ai_jobs": ai_jobs,
-                "active_job": active_job,
+                "active_job": active_job_view,
                 "package_analysis": svc.artifact_json(db(), case_id, "package_analysis_result", permit_type, {}),
                 "field_extraction_queue": svc.artifact_json(db(), case_id, "field_extraction_queue", permit_type, {"items": []}),
                 "can_start_analysis": material_package.get("status") == "ready" and active_job is None,
+                "ai_execution_label": ai_execution_label(),
             }
         )
         return out
@@ -265,6 +303,11 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             raise HTTPException(status_code=404, detail="Package not found")
         if found["package"].get("status") != "ready":
             raise HTTPException(status_code=409, detail="material_package_not_ready")
+        if any(
+            job.get("kind") == "intake_analysis" and job.get("status") in {"pending", "running"}
+            for job in svc.list_ai_jobs(db(), found["case_id"], found["permit_type"])
+        ):
+            raise HTTPException(status_code=409, detail="analysis_already_running")
         job = svc.start_intake_analysis_job(db(), found["case_id"], found["permit_type"], settings=settings(), managed_background=True)
         background_tasks.add_task(
             svc.execute_intake_analysis_job,
@@ -473,9 +516,11 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             raise HTTPException(status_code=422, detail=str(exc))
         package = svc.create_pending_material_package(db(), case_id, application_id, filename, document_count)
         azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
-        job = svc.start_material_ingest_job(db(), case_id, application_id, document_count, azure_enabled=azure_enabled)
+        job = svc.start_material_ingest_job(
+            db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
+        )
         background_tasks.add_task(
-            svc.execute_material_ingest_and_analysis_job,
+            svc.execute_material_ingest_job,
             db(),
             settings(),
             case_id,
@@ -545,8 +590,21 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#structure-extraction", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/intake-analysis")
-    def intake_analysis(case_id: str, application_id: str):
-        svc.start_intake_analysis_job(db(), case_id, application_id, settings=settings())
+    def intake_analysis(case_id: str, application_id: str, background_tasks: BackgroundTasks):
+        if any(
+            job.get("kind") == "intake_analysis" and job.get("status") in {"pending", "running"}
+            for job in svc.list_ai_jobs(db(), case_id, application_id)
+        ):
+            raise HTTPException(status_code=409, detail="analysis_already_running")
+        job = svc.start_intake_analysis_job(db(), case_id, application_id, settings=settings(), managed_background=True)
+        background_tasks.add_task(
+            svc.execute_intake_analysis_job,
+            db(),
+            case_id,
+            application_id,
+            job["id"],
+            settings(),
+        )
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/extractions/accept")
@@ -574,13 +632,13 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field")
     def suggest_field(case_id: str, application_id: str, field_id: str = Form(...)):
         suggestion = svc.create_field_suggestion(db(), case_id, application_id, field_id, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#suggestion-{suggestion.id}", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestion-{suggestion.id}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-form")
     def suggest_form(background_tasks: BackgroundTasks, case_id: str, application_id: str):
         job = svc.start_form_suggestions_job(db(), case_id, application_id, settings=settings())
         background_tasks.add_task(svc.execute_form_suggestions_job, db(), case_id, application_id, job["id"], settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#ai-jobs", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#ai-jobs", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/accept")
     def accept_suggestion(case_id: str, application_id: str, suggestion_id: str, edited_value: str = Form("")):
@@ -588,27 +646,27 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             svc.accept_suggestion(db(), case_id, application_id, suggestion_id, edited_value)
         except KeyError:
             raise HTTPException(status_code=404, detail="Suggestion not found")
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/accept-selected")
     def accept_selected_suggestions(case_id: str, application_id: str, suggestion_ids: list[str] = Form([])):
         svc.accept_selected_suggestions(db(), case_id, application_id, suggestion_ids)
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/reject")
     def reject_suggestion(case_id: str, application_id: str, suggestion_id: str):
         svc.reject_suggestion(db(), case_id, application_id, suggestion_id)
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/chat")
     def contextual_chat(case_id: str, application_id: str, message: str = Form(...)):
         svc.contextual_chat_answer(db(), case_id, application_id, message, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#contextual-chat", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#contextual-chat", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/voice/mock")
     def voice_mock(case_id: str, application_id: str, transcript: str = Form("")):
         svc.voice_mock_turn(db(), case_id, application_id, transcript, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#voice-assistant", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#voice-assistant", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/check")
     def run_check(case_id: str, application_id: str):

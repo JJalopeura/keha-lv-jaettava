@@ -1381,10 +1381,10 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     steps = [
         {"step": 1, "label": "Perustiedot", "status": "done" if not missing_required[:3] else "attention"},
         {"step": 2, "label": "Aineistot", "status": "done" if not missing_attachments else "attention"},
-        {"step": 3, "label": "Hakemus", "status": "done" if not missing_required else "attention"},
-        {"step": 4, "label": "AI-ehdotukset", "status": "attention" if pending_suggestion_count else "done"},
-        {"step": 5, "label": "Tarkistus", "status": "done" if gate["is_fresh"] and blocking_count == 0 else "attention"},
-        {"step": 6, "label": "Lähetys", "status": "done" if app.get("status") == "submitted" else ("pending" if gate["can_submit"] else "blocked")},
+        {"step": 3, "label": "AI-ehdotukset", "status": "attention" if pending_suggestion_count or missing_required else "done"},
+        {"step": 4, "label": "Tarkistus", "status": "done" if gate["is_fresh"] and blocking_count == 0 else "attention"},
+        {"step": 5, "label": "Paketointi", "status": "done" if gate["can_submit"] else "blocked"},
+        {"step": 6, "label": "Vastaanotto", "status": "done" if app.get("status") == "submitted" else "pending"},
     ]
     return {
         "steps": steps,

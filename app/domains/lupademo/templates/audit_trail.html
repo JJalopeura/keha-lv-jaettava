@@ -4,11 +4,32 @@
 {% block content %}
 {{ page_header('Tapahtumaloki', 'Viimeisimmät hakijan, AI-palvelun ja käsittelijän tapahtumat.', 'Demo Lab ja alusta', [{'label': 'Yleiskuva', 'href': '/demo-lab'}, {'label': 'Tapahtumaloki', 'href': ''}]) }}
 {{ status_summary(
-  'Tapahtumia kirjattu' if audit_events else 'Ei kirjattuja tapahtumia',
-  audit_events|length|string ~ ' viimeisintä tapahtumaa näkyy aikajärjestyksessä.' if audit_events else 'Tapahtumia syntyy hakemuksen ja ylläpitotoimintojen käytöstä.',
+  'Auditointitietoja kirjattu' if audit_events or ai_calls else 'Ei auditointitietoja',
+  audit_events|length|string ~ ' tapahtumaa ja ' ~ ai_calls|length|string ~ ' AI-kutsua.' if audit_events or ai_calls else 'Tietoja syntyy hakemuksen ja AI-toimintojen käytöstä.',
   'neutral',
-  'Enintään 200 tapahtumaa'
+  'Enintään 200 tietuetta kummastakin lokista'
 ) }}
+<section>
+  <h2>Toteutuneet AI-kutsut</h2>
+  <p class="muted">Tässä näkyvät vain kutsun tekniset metatiedot. Pyyntöjen ja vastausten sisältöä ei näytetä.</p>
+  <div class="table-wrap">
+  <table>
+    <caption>Viimeisimmät mallikutsut</caption>
+    <tr><th>Aika</th><th>Toiminto</th><th>Malli</th><th>Kesto</th><th>Tulos</th></tr>
+    {% for call in ai_calls %}
+    <tr>
+      <td>{{ call.created_at|finnish_datetime if call.created_at else '-' }}</td>
+      <td><code>{{ call.agent }}</code></td>
+      <td>{{ call.model }}</td>
+      <td>{{ call.duration_ms|string ~ ' ms' if call.duration_ms is not none else '-' }}</td>
+      <td>{{ 'Epäonnistui' if call.status == 'failed' else 'Valmis' }}{% if call.error %}<details class="technical-details"><summary>Virhe</summary><code>{{ call.error }}</code></details>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">Ei AI-kutsuja vielä.</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</section>
 <section>
   <h2>Viimeisimmät tapahtumat</h2>
   <p class="muted">Loki kertoo tapahtuman ja siihen tallennetun kohteen. Toimijan henkilöllisyyttä ei tallenneta tässä demossa.</p>
@@ -18,11 +39,13 @@
     <tr><th>Aika</th><th>Tapahtuma</th><th>Kohde</th><th>Kirjattu tulos</th><th>Tekniset tiedot</th></tr>
     {% for item in audit_events %}
     {% set target = item.data.get('application_id') or item.data.get('permit_type') or item.data.get('attachment_id') or item.data.get('field_id') or item.data.get('rule_id') or item.data.get('job_id') %}
+    {% set recorded_status = item.data.get('status') %}
+    {% set status_labels = {'pending': 'Odottaa', 'running': 'Käynnissä', 'completed': 'Valmis', 'failed': 'Epäonnistui', 'cancelled': 'Peruttu'} %}
     <tr>
       <td>{{ item.ts|finnish_datetime if item.ts else '-' }}</td>
       <td>{{ item.detail }}</td>
       <td>{{ target or 'Hanke' }}</td>
-      <td>{{ item.data.get('status') or ('Epäonnistui' if item.action.endswith('.failed') else ('Peruttu' if item.action.endswith('.cancelled') else 'Tapahtuma kirjattu')) }}</td>
+      <td>{{ status_labels.get(recorded_status, recorded_status) if recorded_status else ('Epäonnistui' if item.action.endswith('.failed') else ('Peruttu' if item.action.endswith('.cancelled') else 'Tapahtuma kirjattu')) }}</td>
       <td><details class="technical-details"><summary>Tekniset tapahtumatiedot</summary><p>Toimintokoodi: <code>{{ item.action }}</code></p><code>{{ item.data }}</code></details></td>
     </tr>
     {% else %}

@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -72,6 +73,17 @@ class AgentPipeline(unittest.TestCase):
         self.assertIn('"suggestions"', prompt)
         self.assertIn('"field_id": "activity_description"', prompt)
 
+    def test_authority_agents_load_their_authored_prompts(self) -> None:
+        cases = {
+            "caseworker_summary_agent": ("neutraali yhteenveto", {"form_data": "{}", "context": "{}"}),
+            "additional_info_request_agent": ("täydennyspyyntöluonnos", {"check_report": "{}", "form_data": "{}"}),
+            "authority_memo_draft_agent": ("valmistelumuistion luonnostelija", {"context": "{}"}),
+        }
+
+        for agent, (expected, values) in cases.items():
+            with self.subTest(agent=agent):
+                self.assertIn(expected, svc.render_agent_prompt(agent, values))
+
     def test_field_suggestion_agent_normalizes_suggestions(self) -> None:
         payload = svc.normalize_agent_payload(
             svc.FieldSuggestionResponse,
@@ -113,6 +125,29 @@ class AgentPipeline(unittest.TestCase):
         self.assertTrue(suggestion.fallback_used)
         self.assertEqual(suggestion.suggested_value, "")
         self.assertTrue(suggestion.warnings)
+
+    def test_managed_job_completion_is_owned_by_its_executor(self) -> None:
+        job = svc.start_ai_job(
+            db,
+            case,
+            PERMIT,
+            "test_background",
+            "Test background job",
+            ["text_extractor"],
+            eta_seconds=1,
+            managed_background=True,
+        )
+        store = svc.artifact_json(db, case, "ai_jobs", PERMIT, {"jobs": []})
+        stored_job = next(item for item in store["jobs"] if item["id"] == job["id"])
+        stored_job["created_at"] = time.time() - 10
+        svc.save_artifact(db, case, "ai_jobs", PERMIT, store)
+
+        overdue = next(item for item in svc.list_ai_jobs(db, case, PERMIT) if item["id"] == job["id"])
+        self.assertEqual(overdue["status"], "running")
+        self.assertEqual(overdue["progress_pct"], 95)
+
+        completed = svc.complete_ai_job(db, case, PERMIT, job["id"], summary="Valmis.")
+        self.assertEqual(completed["status"], "completed")
 
 
 class AzureFileUpload(unittest.TestCase):
@@ -264,41 +299,55 @@ class Uploads(unittest.TestCase):
         self.assertEqual(response.headers["location"], f"{base}/wizard/2#ai-jobs")
         job = next(job for job in svc.list_ai_jobs(db, case, PERMIT) if job["kind"] == "material_ingest")
         self.assertEqual(job["kind"], "material_ingest")
+        self.assertTrue(job["package_id"].startswith("pkg_"))
 
-    def test_successful_zip_ingest_starts_visible_analysis_job(self) -> None:
-        import app.domains.lupademo.services.application as application
-
+    def test_zip_upload_stops_after_ingest_until_analysis_is_requested(self) -> None:
+        original_analysis = svc.execute_intake_analysis_job
         calls = []
-        originals = (
-            application.execute_material_ingest_job,
-            application.find_ai_job,
-            application.start_intake_analysis_job,
-            application.execute_intake_analysis_job,
-        )
-        application.execute_material_ingest_job = lambda *args, **kwargs: calls.append("ingest")
-        application.find_ai_job = lambda *_args: {"job": {"status": "completed"}}
-        application.start_intake_analysis_job = lambda *_args, **_kwargs: {"id": "analysis_test"}
-        application.execute_intake_analysis_job = lambda *_args, **_kwargs: calls.append("analysis")
+        svc.execute_intake_analysis_job = lambda *_args, **_kwargs: calls.append("analysis")
         try:
-            svc.execute_material_ingest_and_analysis_job(
-                db,
-                object(),
-                case,
-                PERMIT,
-                "package_test",
-                "ingest_test",
-                "aineisto.zip",
-                zip_payload=("aineisto.zip", b"zip"),
-            )
-        finally:
-            (
-                application.execute_material_ingest_job,
-                application.find_ai_job,
-                application.start_intake_analysis_job,
-                application.execute_intake_analysis_job,
-            ) = originals
+            archive = io.BytesIO()
+            import zipfile
 
-        self.assertEqual(calls, ["ingest", "analysis"])
+            with zipfile.ZipFile(archive, "w") as package:
+                package.writestr("hakemus.txt", SAMPLE)
+            client.post(
+                f"{base}/materials/upload-zip",
+                files={"zip_file": ("aineisto.zip", archive.getvalue(), "application/zip")},
+            )
+            self.assertEqual(calls, [])
+
+            response = client.post(f"{base}/ai/intake-analysis")
+        finally:
+            svc.execute_intake_analysis_job = original_analysis
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(calls, ["analysis"])
+
+    def test_package_workbench_ignores_another_packages_ingest_job(self) -> None:
+        old_package = svc.save_material_package(db, case, PERMIT, "Vanha paketti", [])
+        job = svc.start_material_ingest_job(
+            db, case, PERMIT, 1, azure_enabled=False, package_id=old_package["package_id"]
+        )
+        current_package = svc.save_material_package(db, case, PERMIT, "Nykyinen paketti", [])
+        try:
+            response = client.get(f"/applicant/packages/{current_package['package_id']}")
+        finally:
+            svc.cancel_ai_job(db, job["id"])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Analysoi hakemuspaketti", response.text)
+        self.assertNotIn("Hakukontekstin valmistelu käynnissä", response.text)
+
+    def test_intake_analysis_rejects_duplicate_active_job(self) -> None:
+        job = svc.start_intake_analysis_job(db, case, PERMIT, managed_background=True)
+        try:
+            response = client.post(f"{base}/ai/intake-analysis")
+        finally:
+            svc.cancel_ai_job(db, job["id"])
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "analysis_already_running")
 
 
 class Pages(unittest.TestCase):
@@ -332,7 +381,7 @@ class Pages(unittest.TestCase):
         self.assertEqual(suggestions_page.status_code, 200)
         self.assertIn("Tarkista AI-ehdotukset", suggestions_page.text)
         self.assertIn(f"{pending_count} odottaa käsittelyä", suggestions_page.text)
-        self.assertIn("Seuraava: AI- ja sääntötarkistus", suggestions_page.text)
+        self.assertIn("Seuraava: Tarkistus", suggestions_page.text)
 
         check_page = client.get(f"{base}/wizard/4")
         self.assertEqual(check_page.status_code, 200)
@@ -401,15 +450,41 @@ class Pages(unittest.TestCase):
 
     def test_wizard_job_script_is_well_formed(self) -> None:
         wizard = Path("app/domains/lupademo/templates/wizard.html").read_text(encoding="utf-8")
-        self.assertIn('data-job-initial-status="{{ job.status }}"', wizard)
+        assistant_start = wizard.index('<aside class="assistant-rail"')
+        assistant_end = wizard.index("</aside>", assistant_start)
+        assistant = wizard[assistant_start:assistant_end]
+        self.assertNotIn("data-ai-jobs-panel", wizard[:assistant_start])
+        self.assertIn('data-job-initial-status="{{ assistant_job.status }}"', assistant)
+        self.assertIn("data-ai-job", assistant)
+        self.assertIn("data-ai-jobs-panel", assistant)
         self.assertIn("window.location.reload();", wizard)
         self.assertIn("}, 5000);", wizard)
-        self.assertIn("ai_jobs[0].status != 'completed'", wizard)
+        self.assertIn("step == 2 and material_job_view", assistant)
+        self.assertNotIn("ai_jobs[0].status in", wizard)
+        self.assertIn('new Set(["succeeded", "failed", "cancelled"])', wizard)
 
         workbench = Path("app/domains/lupademo/templates/package_workbench.html").read_text(encoding="utf-8")
         self.assertIn("new EventSource(row.dataset.streamUrl)", workbench)
         self.assertIn("window.setInterval(poll, 5000)", workbench)
         self.assertIn("window.location.reload();", workbench)
+
+    def test_wizard_progress_renders_in_assistant_on_material_step_for_terminal_jobs(self) -> None:
+        job = svc.start_material_ingest_job(db, case, PERMIT, 1, azure_enabled=False)
+        try:
+            step_two = client.get(f"{base}/wizard/2")
+            step_three = client.get(f"{base}/wizard/3")
+            svc.cancel_ai_job(db, job["id"])
+            terminal_step_two = client.get(f"{base}/wizard/2")
+        finally:
+            if svc.find_ai_job(db, job["id"])["job"].get("status") in {"pending", "running"}:
+                svc.cancel_ai_job(db, job["id"])
+
+        self.assertEqual(step_two.status_code, 200)
+        self.assertIn('class="assistant-job"', step_two.text)
+        self.assertNotIn('class="assistant-job"', step_three.text)
+        self.assertEqual(terminal_step_two.status_code, 200)
+        self.assertIn('class="assistant-job"', terminal_step_two.text)
+        self.assertIn('data-job-initial-status="cancelled"', terminal_step_two.text)
 
     def test_every_demo_page_renders(self) -> None:
         paths = [
@@ -429,6 +504,23 @@ class Pages(unittest.TestCase):
                 response = client.get(path)
                 self.assertIn(response.status_code, (200, 303))
                 self.assertNotIn("Traceback", response.text)
+
+    def test_audit_page_shows_ai_call_metadata_without_payloads(self) -> None:
+        response = client.get(f"/cases/{case}/lupademo/admin/audit-trail")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Toteutuneet AI-kutsut", response.text)
+        self.assertNotIn("request_json", response.text)
+        self.assertNotIn("response_json", response.text)
+
+    def test_package_step_renders_before_package_exists(self) -> None:
+        empty_case = db.create_case("Empty package test", language="fi")
+        svc.ensure_seed_state(db, empty_case)
+        response = client.get(f"/cases/{empty_case}/lupademo/application/{PERMIT}/wizard/5")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Lähetyspakettia ei ole vielä muodostettu", response.text)
+        self.assertIn("disabled", response.text)
 
     def test_demo_lab_links_to_standalone_tools(self) -> None:
         response = client.get("/demo-lab")
@@ -464,16 +556,16 @@ class Pages(unittest.TestCase):
         self.assertNotIn(">Hakemus</a>", authority_header)
 
         demo_header = demo_lab.split("</header>", 1)[0]
-        self.assertIn(">Demo Lab</a>", demo_header)
-        self.assertIn(">Rajapinnat</a>", demo_header)
+        self.assertIn(">Yleiskuva</a>", demo_header)
+        self.assertIn(">Integraatiot</a>", demo_header)
         self.assertNotIn(">Hanke</a>", demo_header)
         self.assertNotIn(">Hakemus</a>", demo_header)
 
         for page in (applicant, authority, demo_lab):
             footer = page.split('<footer class="service-footer">', 1)[1]
-            self.assertIn('href="/">Hakija</a>', footer)
-            self.assertIn(">Viranomaisen työtila</a>", footer)
-            self.assertIn(">Demo Lab</a>", footer)
+            self.assertIn('href="/">Hakija ja LV</a>', footer)
+            self.assertIn(">Käsittelijä</a>", footer)
+            self.assertIn(">Demo Lab ja alusta</a>", footer)
             self.assertEqual(page.count('<footer class="service-footer">'), 1)
 
 

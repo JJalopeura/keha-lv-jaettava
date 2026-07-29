@@ -361,7 +361,12 @@ def load_form_schema(permit_type: str) -> dict[str, Any]:
 
 
 def load_prompt(agent: str) -> str:
-    prompt_agent = {"field_suggestion_agent": "field_suggestion"}.get(agent, agent)
+    prompt_agent = {
+        "field_suggestion_agent": "field_suggestion",
+        "caseworker_summary_agent": "caseworker_summary",
+        "additional_info_request_agent": "additional_info_request",
+        "authority_memo_draft_agent": "authority_memo_draft",
+    }.get(agent, agent)
     filename = f"{prompt_agent}.prompt.md"
     if not filename:
         return ""

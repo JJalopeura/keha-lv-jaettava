@@ -1192,10 +1192,18 @@ def create_pending_material_package(db: Any, case_id: str, permit_type: str, dis
     )
 
 
-def start_material_ingest_job(db: Any, case_id: str, permit_type: str, document_count: int, *, azure_enabled: bool) -> dict[str, Any]:
+def start_material_ingest_job(
+    db: Any,
+    case_id: str,
+    permit_type: str,
+    document_count: int,
+    *,
+    azure_enabled: bool,
+    package_id: str = "",
+) -> dict[str, Any]:
     per_document = 12 if azure_enabled else 4
     eta_seconds = max(15, 8 + max(1, document_count) * per_document)
-    return start_ai_job(
+    job = start_ai_job(
         db,
         case_id,
         permit_type,
@@ -1205,6 +1213,15 @@ def start_material_ingest_job(db: Any, case_id: str, permit_type: str, document_
         eta_seconds=eta_seconds,
         managed_background=True,
     )
+    if package_id:
+        job["package_id"] = package_id
+        store = artifact_json(db, case_id, "ai_jobs", permit_type, {"jobs": []})
+        for stored_job in store.get("jobs", []):
+            if stored_job.get("id") == job["id"]:
+                stored_job["package_id"] = package_id
+                break
+        save_artifact(db, case_id, "ai_jobs", permit_type, store)
+    return job
 
 
 def execute_material_ingest_job(

@@ -170,9 +170,21 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
     def audit_trail(request: Request, case_id: str):
         events = svc.artifact_json(db(), case_id, "lupademo_events", "main", {"events": []}).get("events", [])
         events = list(reversed([item for item in events if isinstance(item, dict)][-200:]))
+        ai_calls = [
+            {
+                "id": item.get("id"),
+                "created_at": item.get("created_at"),
+                "agent": str(item.get("agent") or "").removeprefix("lupademo."),
+                "model": item.get("model") or "-",
+                "duration_ms": item.get("duration_ms"),
+                "status": "failed" if item.get("error") else "completed",
+                "error": item.get("error") or "",
+            }
+            for item in db().list_ai_logs(case_id=case_id, limit=200)
+        ]
         return templates.TemplateResponse(
             "audit_trail.html",
-            {"request": request, **context(case_id), "audit_events": events},
+            {"request": request, **context(case_id), "audit_events": events, "ai_calls": ai_calls},
         )
 
     @router.get("/admin/audit-trail", response_class=HTMLResponse)

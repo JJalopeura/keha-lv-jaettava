@@ -36,7 +36,7 @@ Keep these distinctions explicit in code, tests, logs, and UI copy:
 
 * Python environment: `.venv`
 * Test command: `.venv/bin/python -m unittest discover tests`
-* Current suite: 49 tests, all passing at the time of this handoff
+* Current suite: 40 tests after the authority prompt regression was added
 * Tests set `KEHA_LV_FORCE_MOCK_LLM=true`
 * Default provider: `mock`
 * Azure provider configuration is split between `core` and `chat`
@@ -207,6 +207,25 @@ test before changing behavior.
 16. Mock vector IDs are random even when model output is deterministic. Avoid
     asserting stable IDs unless the contract is intentionally changed.
 
+## Validation evidence from 2026-07-29
+
+The current focused baseline passes 19 tests covering the agent pipeline, public
+API response contracts, and request-level tenant validation. The full suite must
+still be run after each implementation phase.
+
+The local database was inspected through aggregate-only queries. No stored
+prompt, response, filename, or application content was read. It contains 998 AI
+log rows across seven agents, including 107 rows with an error. Attachment
+classification accounts for 87 errors, and all eight recorded completeness
+validator calls contain an error. Seven benchmark snapshots exist, but no saved
+full agent-chain audit runs exist. These counts prioritize failure-path tests;
+they do not measure semantic quality.
+
+Prompt resolution for `caseworker_summary_agent`,
+`additional_info_request_agent`, and `authority_memo_draft_agent` was repaired.
+Each ID now selects its authored prompt file, and a table-driven regression test
+guards the mapping.
+
 ## Recommended implementation order
 
 ### Phase 1: Lock down contracts with tests
@@ -228,6 +247,16 @@ Add focused tests before behavior changes:
 Do not require live Azure credentials for the normal suite. Test Azure protocol
 behavior through a fake transport. Keep an optional, explicitly credential-gated
 smoke test for the deployed Azure endpoint.
+
+Exit criteria:
+
+* Both `core` and `chat` provider-selection branches are covered
+* Azure fake-transport tests cover success, timeout, HTTP error, missing output,
+   and malformed JSON
+* Captured provider payloads prove retrieval priority and forbidden-scope
+   exclusion
+* Job tests expose the current result, cancellation, retry, and tenant ownership
+   defects before Phase 2 changes them
 
 ### Phase 2: Repair execution semantics
 
@@ -251,6 +280,13 @@ Recommended minimum repairs:
 6. Stop elapsed-time simulation from implying provider progress
 7. Pass settings explicitly through every provider-capable finalizer
 
+Exit criteria:
+
+* Every public job operation has one tenant owner and one stable result reference
+* Cancellation prevents a late worker from publishing success
+* Retry executes the stored operation rather than creating timer-only progress
+* HTTP status, stored status, stream status, and result availability agree
+
 ### Phase 3: Normalize provider behavior
 
 1. Route chat through a logged service helper with explicit text-output
@@ -264,6 +300,15 @@ Recommended minimum repairs:
    unsupported fallback in the schema
 6. Align edited criteria with deterministic gate logic or explicitly report
    which criteria source each check used
+
+Exit criteria:
+
+* Every AI-labeled result records `execution_mode`, `provider_used`, and
+   `fallback_used` truthfully
+* Chat uses the same observable logging and failure contract as structured calls
+* Agent output metadata is immutable per run
+* Applicant-facing output distinguishes sourced evidence from filename hints and
+   unsupported fallback
 
 ### Phase 4: Validate feature correctness
 
@@ -283,6 +328,14 @@ For each feature, cover this matrix:
 Use representative fixtures for all three permit types. Assertions should check
 semantic invariants rather than exact provider prose.
 
+Exit criteria:
+
+* Each permit type has one non-sensitive fixture with suggestion, check,
+  extraction, and authority-draft assertions
+* Each feature verifies one provider failure and one unsupported-output path
+* Accepted suggestions retain enough run and evidence metadata for audit
+* UI checks cover success, fallback, failure, stale results, and mobile layout
+
 ### Phase 5: Optional live Azure smoke test
 
 Run only after fake-transport tests pass and only with non-sensitive fixtures.
@@ -297,6 +350,13 @@ Verify:
 
 Record the deployment, model, API version, timestamp, and fixture ID. Do not
 record API keys or raw confidential prompts.
+
+Exit criteria:
+
+* Fake-transport and full mock suites pass before credentials are used
+* One synthetic fixture completes through the configured Azure deployment
+* Sanitized evidence records the deployment, model, API version, timestamp,
+  fixture ID, retrieval stores, and terminal status
 
 ## Feature acceptance criteria
 

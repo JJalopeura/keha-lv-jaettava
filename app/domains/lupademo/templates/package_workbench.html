@@ -40,7 +40,7 @@
     <section class="analysis-panel {% if active_job %}is-running{% elif package_analysis %}is-complete{% endif %}" id="analysis" data-analysis-ready="{{ 'true' if package_analysis else 'false' }}">
       {% if material_package.status == 'processing' %}
       <p class="section-kicker">Aineistoa valmistellaan</p>
-      <h2>Dokumentteja luetaan Azure-palveluissa</h2>
+      <h2>Dokumentteja luetaan ja valmistellaan</h2>
       <p>Voit seurata etenemistä tässä näkymässä. Työpöytä ei siirrä sinua hakemusvelhoon.</p>
       {% elif material_package.status == 'failed' %}
       <p class="section-kicker">Käsittely epäonnistui</p>
@@ -53,19 +53,20 @@
       <h2>Analysoi paketti lupakriteerejä vasten</h2>
       {% endif %}
 
-      {% if can_start_analysis and not package_analysis %}
+      {% if can_start_analysis %}
       <form method="post" action="/applicant/packages/{{ package_id }}/analyze">
-        <button>Analysoi hakemuspaketti AI:lla</button>
+        <button>{{ 'Analysoi uudelleen' if package_analysis else 'Analysoi hakemuspaketti' }}</button>
       </form>
+      <p class="muted">Suoritustapa: {{ ai_execution_label }}. Analyysi käynnistyy vain tästä painikkeesta.</p>
       {% endif %}
 
       {% if active_job %}
       <article class="job-card" data-ai-job data-status-url="/api/v1/jobs/{{ active_job.id }}" data-stream-url="/api/v1/jobs/{{ active_job.id }}/stream">
         <div class="job-progress-meta">
           <strong data-job-summary>{{ active_job.summary or active_job.title }}</strong>
-          <span><b data-job-progress>{{ active_job.progress_pct }}</b>% · <span data-job-eta>{{ active_job.eta_seconds }}</span> s</span>
+          <span><b data-job-progress>{{ active_job.progress_percent }}</b>% · <span data-job-eta>{{ active_job.estimated_seconds_remaining }}</span> s</span>
         </div>
-        <div class="progress-track"><span data-job-progress-bar style="width: {{ active_job.progress_pct }}%"></span></div>
+        <div class="progress-track"><span data-job-progress-bar style="width: {{ active_job.progress_percent }}%"></span></div>
       </article>
       {% endif %}
     </section>

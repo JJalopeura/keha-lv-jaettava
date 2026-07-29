@@ -2688,10 +2688,6 @@ button:disabled {
 }
 
 .wizard-job-banner {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.7fr) auto;
-  gap: 18px;
-  align-items: center;
   margin-top: 22px;
   padding: 14px 18px;
   color: #fff;
@@ -2699,10 +2695,11 @@ button:disabled {
   border-radius: 6px;
 }
 
-.wizard-job-banner a {
-  color: #fff;
-  font-size: 12px;
-  font-weight: 750;
+.wizard-job-banner > article {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.7fr);
+  gap: 8px 18px;
+  align-items: center;
 }
 
 .wizard-job-banner .assistant-job-title small {
@@ -2715,6 +2712,15 @@ button:disabled {
 
 .wizard-job-banner .progress-track > span {
   background: #72ccb6;
+}
+
+.wizard-job-banner .assistant-job-actions,
+.wizard-job-banner .assistant-technical {
+  grid-column: 1 / -1;
+}
+
+.wizard-job-banner .text-button {
+  color: #cae4de;
 }
 
 .suggestion-toolbar {
@@ -3980,7 +3986,7 @@ button:disabled {
   .extraction-row,
   .managed-document-row,
   .suggestion-values,
-  .wizard-job-banner,
+  .wizard-job-banner > article,
   .brief-heading,
   .observation-review {
     grid-template-columns: 1fr;
