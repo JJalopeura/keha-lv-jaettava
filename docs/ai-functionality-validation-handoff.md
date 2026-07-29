@@ -149,9 +149,9 @@ Main route owner: `app/domains/lupademo/routes/api_v1.py`.
   `/api/ai/jobs` and `/api/v1/jobs`
 
 Authentication validates API keys, tenant IDs, permit types, criteria sets, and
-forbidden corpus scopes. Execution still uses one active demo case, so response
-annotation is tenant-aware but persisted artifacts and jobs are not isolated by
-tenant.
+forbidden corpus scopes. Each API tenant uses a stable, separately seeded case.
+Jobs persist their tenant owner, and authenticated status, result, cancellation,
+and retry operations enforce that ownership.
 
 ### Demo and evaluation tools
 
@@ -166,36 +166,35 @@ tenant.
 * Criteria testing writes a criteria test result but does not prove production
   legal correctness
 
-## Verified correctness gaps
+## Remaining limitations
 
-These are observed implementation facts. Confirm each with a focused regression
-test before changing behavior.
+These are observed implementation facts that remain after the hardening work.
+Confirm each with a focused regression test before changing behavior.
 
-3. Job streaming emits one current server-sent event rather than maintaining a
+1. Job streaming emits one current server-sent event rather than maintaining a
    live stream.
-4. Cancellation prevents a late completion from overwriting the cancelled
+2. Cancellation prevents a late completion from overwriting the cancelled
    state, but it does not interrupt active provider or background work.
-6. Generic timer jobs can reach completed state through elapsed-time simulation
+3. Generic timer jobs can reach completed state through elapsed-time simulation
    without executing feature logic.
-7. API job results now use the canonical `api_job_result:<job_id>` reference.
-8. Direct wizard intake auto-finalization does not carry provider settings into
+4. Direct wizard intake auto-finalization does not carry provider settings into
    the finalizer, so Azure validators can be skipped on that path.
-9. Contextual chat calls `client.responses` directly and bypasses the structured
+5. Contextual chat calls `client.responses` directly and bypasses the structured
    AI logging, validation, and fallback path.
-10. Chat-proposed field changes are deterministic and can be semantically
+6. Chat-proposed field changes are deterministic and can be semantically
     disconnected from the generated answer.
-11. Agent output is keyed by agent name and overwritten. Historical audit rows
+7. Agent output is keyed by agent name and overwritten. Historical audit rows
     can therefore inherit fallback or retrieval metadata from a later run.
-12. Some generated evidence is synthetic or filename-level and can appear more
+8. Some generated evidence is synthetic or filename-level and can appear more
     specific than the source support warrants.
-13. UI-only extraction inserts a candidate when extraction returns nothing,
+9. UI-only extraction inserts a candidate when extraction returns nothing,
     potentially presenting arbitrary input as an extracted field.
-14. Deterministic issue checks use static criteria while prompts and reported
+10. Deterministic issue checks use static criteria while prompts and reported
     versions can use effective edited criteria.
-15. Applicant upload logic infers Azure enablement from `llm_provider != mock`,
+11. Applicant upload logic infers Azure enablement from `llm_provider != mock`,
     which can disagree with factory selection under forced mock, demo fallback,
     or a missing key.
-16. Mock vector IDs are random even when model output is deterministic. Avoid
+12. Mock vector IDs are random even when model output is deterministic. Avoid
     asserting stable IDs unless the contract is intentionally changed.
 
 ## Validation evidence from 2026-07-29
@@ -236,91 +235,116 @@ stores, fallback state, and normalized errors. Table-driven semantic checks cove
 supported, evidenced suggestions and honest unsupported fallbacks for building,
 environmental, and public-event permits.
 
-## Recommended implementation order
+The Demo Lab active case is now persisted explicitly. Creating tenant-specific
+API cases no longer changes Demo Lab links through database row ordering. The
+audit trail uses the shared Finnish date-time filter in its own Jinja environment,
+and its focused route regression passes without exposing prompt or response
+payloads.
 
-### Phase 1: Lock down contracts with tests
+## Completed implementation contracts
 
-Add focused tests before behavior changes:
+The 2026-07-29 hardening work established these contracts:
 
-1. Provider selection matrix for `core` and `chat`
-2. Azure payload, URL, API-version, header, timeout, error, empty-body, and
-   output-text parsing tests using `httpx.MockTransport` or an injected transport
-3. Malformed JSON, missing output, provider timeout, and log-recording tests for
-   `call_llm_json()`
-4. Retrieval priority, deduplication, maximum count, and forbidden-scope tests
-5. Job transition, result lookup, cancellation, retry, timeout, and idempotency
-   tests
-6. Tenant A cannot read or mutate Tenant B jobs, results, logs, or artifacts
-7. Applicant chat context excludes benchmark and authority-example material
-8. Authority attachment-scope policy tests
+* Structured core and chat calls select the intended provider configuration
+* Azure request construction and structured-output parsing have fake-transport
+   success and failure coverage
+* Retrieval is case-first, deduplicated, limited to two stores, and filtered by
+   requester scope before the provider boundary
+* API jobs and artifacts are isolated by persisted tenant ownership
+* Synchronous package analysis returns HTTP 200 and does not claim queued work
+* Job results use `api_job_result:<job_id>` consistently
+* Only pending or running jobs can be cancelled, and late completion cannot
+   resurrect a cancelled job
+* Retry reports `job_retry_not_supported` because the original operation is not
+   reconstructible
+* Agent output records provider, execution mode, selected stores, fallback state,
+   fallback reason, and normalized errors
+* Suggestion semantics are covered for building, environmental, and public-event
+   permit types
+* Audit views expose lifecycle metadata without rendering stored request or
+   response payloads
 
-Do not require live Azure credentials for the normal suite. Test Azure protocol
-behavior through a fake transport. Keep an optional, explicitly credential-gated
-smoke test for the deployed Azure endpoint.
+## Reproducible validation
 
-Exit criteria:
+Run the deterministic regression suite with forced mock mode:
 
-* Both `core` and `chat` provider-selection branches are covered
-* Azure fake-transport tests cover success, timeout, HTTP error, missing output,
-   and malformed JSON
-* Captured provider payloads prove retrieval priority and forbidden-scope
-   exclusion
-* Job tests expose the current result, cancellation, retry, and tenant ownership
-   defects before Phase 2 changes them
+```bash
+PYTHONWARNINGS=ignore KEHA_LV_FORCE_MOCK_LLM=true \
+   .venv/bin/python -m unittest discover tests
+```
 
-### Phase 2: Repair execution semantics
+The current baseline is 56 passing tests. `tests/test_smoke.py` sets
+`KEHA_LV_FORCE_MOCK_LLM=true` during module import, so unsetting or overriding the
+variable outside the test process does not turn this suite into a live Azure
+test. Keep the normal suite deterministic and use a separate credential-gated
+probe for live integration validation.
 
-Choose one honest job model and apply it consistently:
+### Live Azure validation
 
-* Truly synchronous endpoints should return the result directly with a completed
-  status and must not advertise cancellation or live streaming
-* Truly asynchronous endpoints should queue work, return before execution,
-  persist a stable operation descriptor, support real result lookup, and make
-  cancellation cooperative
+Live integration checks use the ignored repository `.env`, explicitly set
+`KEHA_LV_LLM_PROVIDER=azure` and `KEHA_LV_FORCE_MOCK_LLM=false`, and point
+`KEHA_LV_DB_PATH` and `KEHA_LV_UPLOADS_DIR` at a temporary directory. Remove the
+temporary directory after the run. Never run these checks against the project
+database or real applicant material.
 
-Recommended minimum repairs:
+The probe must exercise production boundaries instead of calling Azure directly:
 
-1. Persist tenant, case, operation name, normalized input, and result reference
-   on every API job
-2. Scope every lookup, result, cancel, and retry operation to the authenticated
-   tenant
-3. Make retry dispatch the original operation with the stored normalized input
-4. Standardize one result artifact convention
-5. Prevent late workers from completing a cancelled job
-6. Stop elapsed-time simulation from implying provider progress
-7. Pass settings explicitly through every provider-capable finalizer
+1. Call `create_llm_client()` and `call_llm_json()` for both `core` and `chat`
+2. Call `create_field_suggestion()` once for each supported permit type
+3. Assert valid structured output and a nonempty suggestion
+4. Assert persisted `provider == "azure"`
+5. Assert persisted `fallback_used is False`
+6. Report only sanitized status, duration, and contract assertions
 
-Exit criteria:
+The provenance assertions are mandatory. Plausible output alone is insufficient
+because deterministic fallback can hide a failed provider call.
 
-* Every public job operation has one tenant owner and one stable result reference
-* Cancellation prevents a late worker from publishing success
-* Retry executes the stored operation rather than creating timer-only progress
-* HTTP status, stored status, stream status, and result availability agree
+On 2026-07-29, the configured Azure endpoints passed these checks:
 
-### Phase 3: Normalize provider behavior
+| Check | Result | Duration |
+|---|---|---:|
+| Core structured JSON | Passed | 1.650 s |
+| Chat structured JSON | Passed | 1.445 s |
+| Building permit field suggestion | Passed, no fallback | 5.246 s |
+| Environmental permit field suggestion | Passed, no fallback | 3.886 s |
+| Public-event permit field suggestion | Passed, no fallback | 6.554 s |
+
+The application-level probe used temporary database and upload paths and removed
+them afterward. No repository data files were modified. Credentials, endpoint
+values, prompts, and raw responses were not printed or recorded in this report.
+
+The configured core and chat timeouts are 60 seconds. The observed calls
+completed in 1.445 to 6.554 seconds, with no timeout or context-exhaustion
+evidence. Do not increase timeout or context limits preemptively. Revisit them
+only when token usage, truncation, timeout counts, or latency percentiles show a
+specific constraint.
+
+## Recommended follow-up order
+
+The provider, retrieval, tenant, lifecycle, provenance, semantic suggestion, and
+representative live Azure contracts described above are complete. Continue with
+the remaining limitations in this order.
+
+### Phase 1: Normalize remaining provider behavior
 
 1. Route chat through a logged service helper with explicit text-output
    validation and fallback behavior
-2. Separate `provider_used`, `fallback_used`, and `execution_mode` in persisted
-   metadata
-3. Store immutable run-specific agent output instead of overwriting by agent
+2. Store immutable run-specific agent output instead of overwriting by agent
    name
-4. Redact or minimize logged prompt and response content
-5. Distinguish provider evidence, deterministic evidence, filename hints, and
+3. Redact or minimize logged prompt and response content
+4. Distinguish provider evidence, deterministic evidence, filename hints, and
    unsupported fallback in the schema
-6. Align edited criteria with deterministic gate logic or explicitly report
+5. Align edited criteria with deterministic gate logic or explicitly report
    which criteria source each check used
 
 Exit criteria:
 
-* Every AI-labeled result records `execution_mode`, `provider_used`, and
-   `fallback_used` truthfully
 * Chat uses the same observable logging and failure contract as structured calls
 * Agent output metadata is immutable per run
 * Applicant-facing output distinguishes sourced evidence from filename hints and
    unsupported fallback
 
-### Phase 4: Validate feature correctness
+### Phase 2: Expand feature correctness
 
 For each feature, cover this matrix:
 
@@ -346,13 +370,12 @@ Exit criteria:
 * Accepted suggestions retain enough run and evidence metadata for audit
 * UI checks cover success, fallback, failure, stale results, and mobile layout
 
-### Phase 5: Optional live Azure smoke test
+### Phase 3: Expand live Azure coverage
 
-Run only after fake-transport tests pass and only with non-sensitive fixtures.
-Verify:
+The completed smoke test covers structured core and chat calls plus field
+suggestions for all permit types. Future credential-gated checks can verify:
 
 * Core and chat use their intended host, model, key, and timeout
-* Responses API JSON mode is accepted by the configured deployment
 * File upload and vector-store ingestion complete within the expected timeout
 * File search uses only the approved stores
 * Logs do not expose credentials or prohibited source content
@@ -364,7 +387,8 @@ record API keys or raw confidential prompts.
 Exit criteria:
 
 * Fake-transport and full mock suites pass before credentials are used
-* One synthetic fixture completes through the configured Azure deployment
+* One synthetic attachment fixture completes through the configured Azure
+   deployment
 * Sanitized evidence records the deployment, model, API version, timestamp,
   fixture ID, retrieval stores, and terminal status
 
@@ -410,12 +434,12 @@ Start future work at these ownership boundaries:
 * `app/domains/lupademo/specs/prompts/`: versioned prompt text
 * `tests/test_smoke.py`: current mock-mode regression suite
 
-## First continuation task
+## Next continuation task
 
-Begin with provider and job contract tests. They are narrow, do not require UI
-changes, and can falsify the highest-risk assumptions before implementation.
-After each repair, run the focused test and then the full established suite.
+Begin with the direct wizard intake finalizer. Add a focused regression proving
+that provider settings reach the finalizer, then make the smallest correction
+needed. Run that test and the full established suite after the repair.
 
 Do not start by tuning prompts. Prompt quality cannot compensate for shared
-tenant state, inaccessible results, misleading job semantics, missing failure
-handling, or retrieval-scope defects.
+logging gaps, mutable run metadata, synthetic evidence, or criteria-source
+mismatches.

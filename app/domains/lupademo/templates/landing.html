@@ -20,6 +20,7 @@
     <h2 id="start-heading">Valitse aloitustapa</h2>
   </div>
   <div class="primary-path">
+    <span class="path-number" aria-hidden="true">01</span>
     <div class="path-copy">
       <span class="status-label">Suositeltu, jos aineisto on jo koottu</span>
       <h2>Tarkista valmis hakemuspaketti</h2>
@@ -29,11 +30,13 @@
   </div>
   <div class="secondary-paths">
     <a href="/projects/new" class="secondary-path">
+      <span class="path-number" aria-hidden="true">02</span>
       <span><strong>Laadi hakemus AI:n kanssa</strong><small>Aloita ohjatusti</small></span>
       <span aria-hidden="true">→</span>
     </a>
     {% if workspace_options %}
     <a href="/lv" class="secondary-path">
+      <span class="path-number" aria-hidden="true">03</span>
       <span><strong>Jatka nykyistä hanketta</strong><small>Näytä asiointikokonaisuus</small></span>
       <span aria-hidden="true">→</span>
     </a>

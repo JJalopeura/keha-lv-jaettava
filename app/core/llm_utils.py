@@ -97,21 +97,34 @@ def call_llm_json(
         except Exception:
             log_id = None
     try:
-        _rate_limit()
-        resp = client.responses(
-            input_text=prompt, vector_store_ids=vector_store_ids_list,
-            response_format="json_object", max_output_tokens=max_output_tokens,
-            reasoning_effort=reasoning_effort, text_verbosity=text_verbosity,
-        )
-        text = client.extract_output_text(resp)
-        if text is None:
-            err = f"No output_text in response: {resp}"
-            raise RuntimeError(err)
-        try:
-            return json.loads(text)
-        except Exception as e:
-            err = f"Failed to parse JSON output: {e}. Raw: {text[:500]}"
-            raise RuntimeError(err)
+        for attempt in range(2):
+            retrying = attempt == 1
+            request_tokens = max(max_output_tokens or 0, 6000) * 2 if retrying else max_output_tokens
+            request_reasoning = "low" if retrying else reasoning_effort
+            _rate_limit()
+            resp = client.responses(
+                input_text=prompt, vector_store_ids=vector_store_ids_list,
+                response_format="json_object", max_output_tokens=request_tokens,
+                reasoning_effort=request_reasoning, text_verbosity=text_verbosity,
+            )
+            text = client.extract_output_text(resp)
+            if text is None:
+                err = f"No output_text in response: {resp}"
+                incomplete = resp.get("status") == "incomplete" and (
+                    (resp.get("incomplete_details") or {}).get("reason") == "max_output_tokens"
+                )
+                if not retrying and incomplete:
+                    continue
+                raise RuntimeError(err)
+            try:
+                result = json.loads(text)
+                err = None
+                return result
+            except json.JSONDecodeError as exc:
+                err = f"Failed to parse JSON output: {exc}. Raw: {text[:500]}"
+                if not retrying:
+                    continue
+                raise RuntimeError(err) from exc
     except Exception as e:
         if err is None:
             err = str(e)

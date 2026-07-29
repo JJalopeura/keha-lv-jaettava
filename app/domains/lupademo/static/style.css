@@ -3148,6 +3148,14 @@ button:disabled {
   border: 0;
 }
 
+.assistant-launch {
+  margin-bottom: 12px;
+}
+
+.assistant-launch button {
+  width: 100%;
+}
+
 .assistant-disclosure > summary {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

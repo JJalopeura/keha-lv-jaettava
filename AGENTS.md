@@ -1,4 +1,7 @@
-# AGENTS.md — KEHA LV AI-demo
+---
+title: KEHA LV AI Demo Agent Guide
+description: Architecture, conventions, and validated workflows for repository agents
+---
 
 ## What this project is
 
@@ -130,7 +133,7 @@ Uploaded files stored on disk (`data/uploads/`) + metadata in SQLite `files` tab
 
 - `POST /api/v1/field-suggestions` — Field completion
 - `POST /api/v1/applications:precheck` — Application check
-- `POST /api/v1/application-packages:analyze` — Full package analysis (async, returns job ID + streaming endpoints)
+- `POST /api/v1/application-packages:analyze` — Full package analysis (synchronous, returns HTTP 200 with a completed job and result reference)
 - `POST /api/v1/authority:summarize` — Authority summary
 - `GET /api/v1/criteria/{criteria_set_id}` — Criteria retrieval (tenant-scoped)
 
@@ -182,10 +185,21 @@ pip install -r requirements.txt
 ## How to test
 
 ```bash
-.venv/bin/python -m unittest discover tests
+PYTHONWARNINGS=ignore KEHA_LV_FORCE_MOCK_LLM=true .venv/bin/python -m unittest discover tests
 ```
 
-Tests use mock LLM + temp DB. No Azure or data/ needed.
+Tests use the mock LLM and a temporary database. No Azure credentials or `data/`
+state are needed. `tests/test_smoke.py` forces mock mode during module import, so
+environment overrides do not turn the normal suite into live Azure tests.
+
+For an optional live Azure check, source the ignored `.env`, explicitly set
+`KEHA_LV_LLM_PROVIDER=azure` and `KEHA_LV_FORCE_MOCK_LLM=false`, and use temporary
+`KEHA_LV_DB_PATH` and `KEHA_LV_UPLOADS_DIR` values. Verify persisted provenance
+with `provider == "azure"` and `fallback_used is False`; plausible output alone
+can hide a deterministic fallback. Never print credentials, endpoint values,
+prompts, or raw responses. See
+`docs/ai-functionality-validation-handoff.md` for the procedure, completed
+contracts, current limitations, and sanitized validation results.
 
 ## Templates
 

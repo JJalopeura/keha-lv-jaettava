@@ -366,6 +366,38 @@ class StructuredCallContracts(unittest.TestCase):
 
         self.assertIn("Failed to parse JSON output", self.db.list_ai_logs(agent="test.invalid")[0]["error"])
 
+    def test_output_limit_retries_with_larger_budget_and_low_reasoning(self) -> None:
+        class RetryClient(self.FakeClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.requests: list[dict[str, object]] = []
+
+            def responses(self, **kwargs: object) -> dict:
+                self.requests.append(kwargs)
+                if len(self.requests) == 1:
+                    return {
+                        "status": "incomplete",
+                        "incomplete_details": {"reason": "max_output_tokens"},
+                        "output": [],
+                    }
+                return {"output": [{"type": "message", "content": [{"type": "output_text", "text": '{"ok": true}'}]}]}
+
+        client = RetryClient()
+        result = call_llm_json(
+            client,
+            "synthetic prompt",
+            db=self.db,
+            agent="test.retry",
+            max_output_tokens=6000,
+            reasoning_effort="medium",
+        )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(len(client.requests), 2)
+        self.assertEqual(client.requests[1]["max_output_tokens"], 12000)
+        self.assertEqual(client.requests[1]["reasoning_effort"], "low")
+        self.assertIsNone(self.db.list_ai_logs(agent="test.retry")[0]["error"])
+
     def test_provider_failure_is_logged_as_error(self) -> None:
         with self.assertRaisesRegex(TimeoutError, "provider timed out"):
             call_llm_json(
@@ -755,6 +787,38 @@ class Pages(unittest.TestCase):
         self.assertIn("Vaihe 2 / 6", wizard.text)
         self.assertNotIn("Aineistotyöpöytä", wizard.text)
 
+    def test_package_workbench_renders_pending_extraction_without_accepted_value(self) -> None:
+        package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
+        queue = svc.artifact_json(db, case, "field_extraction_queue", PERMIT, {"items": []})
+        original_items = queue.get("items", [])
+        original_analysis = svc.artifact_json(db, case, "package_analysis_result", PERMIT, {})
+        queue["items"] = [
+            {
+                "field_id": "applicant_name",
+                "suggested_value": "Esimerkki Oy",
+                "source_document": "hakemus.txt",
+                "confidence": 0.9,
+                "status": "pending",
+            }
+        ]
+        svc.save_artifact(db, case, "field_extraction_queue", PERMIT, queue)
+        svc.save_artifact(
+            db,
+            case,
+            "package_analysis_result",
+            PERMIT,
+            {"summary": "Analyysi valmis", "readiness": "incomplete", "readiness_score": 60, "findings": []},
+        )
+        try:
+            response = client.get(f"/applicant/packages/{package_id}")
+        finally:
+            queue["items"] = original_items
+            svc.save_artifact(db, case, "field_extraction_queue", PERMIT, queue)
+            svc.save_artifact(db, case, "package_analysis_result", PERMIT, original_analysis)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Esimerkki Oy", response.text)
+
     def test_step_two_collapses_help_and_defers_suggestion_review(self) -> None:
         page = client.get(f"{base}/wizard/2")
 
@@ -815,7 +879,10 @@ class Pages(unittest.TestCase):
         self.assertIn("data-ai-jobs-panel", assistant)
         self.assertIn("window.location.reload();", wizard)
         self.assertIn("}, 5000);", wizard)
-        self.assertIn("step == 2 and material_job_view", assistant)
+        self.assertIn("assistant_job = material_job_view if step == 2", assistant)
+        self.assertIn("form_suggestion_jobs[0] if step == 3", assistant)
+        self.assertIn("/ai/intake-analysis", assistant)
+        self.assertIn("/ai/suggest-form", assistant)
         self.assertNotIn("ai_jobs[0].status in", wizard)
         self.assertIn('new Set(["succeeded", "failed", "cancelled"])', wizard)
 
@@ -824,20 +891,24 @@ class Pages(unittest.TestCase):
         self.assertIn("window.setInterval(poll, 5000)", workbench)
         self.assertIn("window.location.reload();", workbench)
 
-    def test_wizard_progress_renders_in_assistant_on_material_step_for_terminal_jobs(self) -> None:
-        job = svc.start_material_ingest_job(db, case, PERMIT, 1, azure_enabled=False)
+    def test_wizard_progress_renders_in_assistant_for_step_jobs(self) -> None:
+        material_job = svc.start_material_ingest_job(db, case, PERMIT, 1, azure_enabled=False)
+        suggestion_job = svc.start_form_suggestions_job(db, case, PERMIT)
         try:
             step_two = client.get(f"{base}/wizard/2")
             step_three = client.get(f"{base}/wizard/3")
-            svc.cancel_ai_job(db, job["id"])
+            svc.cancel_ai_job(db, material_job["id"])
             terminal_step_two = client.get(f"{base}/wizard/2")
         finally:
-            if svc.find_ai_job(db, job["id"])["job"].get("status") in {"pending", "running"}:
-                svc.cancel_ai_job(db, job["id"])
+            for job in (material_job, suggestion_job):
+                if svc.find_ai_job(db, job["id"])["job"].get("status") in {"pending", "running"}:
+                    svc.cancel_ai_job(db, job["id"])
 
         self.assertEqual(step_two.status_code, 200)
         self.assertIn('class="assistant-job"', step_two.text)
-        self.assertNotIn('class="assistant-job"', step_three.text)
+        self.assertEqual(step_three.status_code, 200)
+        self.assertIn('class="assistant-job"', step_three.text)
+        self.assertIn(f'data-job-id="{suggestion_job["id"]}"', step_three.text)
         self.assertEqual(terminal_step_two.status_code, 200)
         self.assertIn('class="assistant-job"', terminal_step_two.text)
         self.assertIn('data-job-initial-status="cancelled"', terminal_step_two.text)
