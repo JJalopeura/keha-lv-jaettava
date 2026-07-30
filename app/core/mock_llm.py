@@ -327,3 +327,9 @@ class MockLLMClient:
 
     def extract_output_text(self, resp: dict[str, Any]) -> str | None:
         return resp.get("output_text")
+
+    def responses_stream(self, *, input_text: str, **kwargs: Any):
+        """Simulate streaming by yielding mock text in chunks."""
+        text = self._mock_text(input_text or "")
+        for i in range(0, len(text), 3):
+            yield text[i:i+3]

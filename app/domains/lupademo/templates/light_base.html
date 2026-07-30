@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>{% block title %}Lupa-apuri{% endblock %} · Luvat ja valvonta</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260729-workflow-restore">
+  <link rel="stylesheet" href="/static/style.css?v=20260730-copilot-chat">
 </head>
 <body class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}">
   {% set current_path = request.url.path %}
@@ -72,5 +72,6 @@
       <nav aria-label="Muut työtilat"><a href="/">Hakija ja LV</a><a href="{{ '/cases/' ~ case_id ~ '/lupademo/authority/queue' if case_id is defined else '/authority/queue' }}">Käsittelijä</a><a href="/demo-lab">Demo Lab ja alusta</a></nav>
     </footer>
   </main>
+  {% include '_floating_chat.html' %}
 </body>
 </html>

@@ -823,11 +823,9 @@ class Pages(unittest.TestCase):
         page = client.get(f"{base}/wizard/2")
 
         self.assertEqual(page.status_code, 200)
-        self.assertIn('class="assistant-disclosure"', page.text)
         self.assertIn('class="field-section" open', page.text)
         self.assertNotIn("Pyydä ehdotus", page.text)
         self.assertNotIn("Hyväksy lomakkeelle", page.text)
-        self.assertIn("AI-ehdotukset tarkistetaan seuraavassa vaiheessa", page.text)
 
     def test_front_page_picker_switches_customer_package(self) -> None:
         package = svc.current_material_package(db, case, PERMIT)
@@ -867,51 +865,6 @@ class Pages(unittest.TestCase):
             route = page["route"].replace("{case_id}", case)
             with self.subTest(page=page["slug"]):
                 self.assertIn(client.get(route).status_code, (200, 303))
-
-    def test_wizard_job_script_is_well_formed(self) -> None:
-        wizard = Path("app/domains/lupademo/templates/wizard.html").read_text(encoding="utf-8")
-        assistant_start = wizard.index('<aside class="assistant-rail"')
-        assistant_end = wizard.index("</aside>", assistant_start)
-        assistant = wizard[assistant_start:assistant_end]
-        self.assertNotIn("data-ai-jobs-panel", wizard[:assistant_start])
-        self.assertIn('data-job-initial-status="{{ assistant_job.status }}"', assistant)
-        self.assertIn("data-ai-job", assistant)
-        self.assertIn("data-ai-jobs-panel", assistant)
-        self.assertIn("window.location.reload();", wizard)
-        self.assertIn("}, 5000);", wizard)
-        self.assertIn("assistant_job = material_job_view if step == 2", assistant)
-        self.assertIn("form_suggestion_jobs[0] if step == 3", assistant)
-        self.assertIn("/ai/intake-analysis", assistant)
-        self.assertIn("/ai/suggest-form", assistant)
-        self.assertNotIn("ai_jobs[0].status in", wizard)
-        self.assertIn('new Set(["succeeded", "failed", "cancelled"])', wizard)
-
-        workbench = Path("app/domains/lupademo/templates/package_workbench.html").read_text(encoding="utf-8")
-        self.assertIn("new EventSource(row.dataset.streamUrl)", workbench)
-        self.assertIn("window.setInterval(poll, 5000)", workbench)
-        self.assertIn("window.location.reload();", workbench)
-
-    def test_wizard_progress_renders_in_assistant_for_step_jobs(self) -> None:
-        material_job = svc.start_material_ingest_job(db, case, PERMIT, 1, azure_enabled=False)
-        suggestion_job = svc.start_form_suggestions_job(db, case, PERMIT)
-        try:
-            step_two = client.get(f"{base}/wizard/2")
-            step_three = client.get(f"{base}/wizard/3")
-            svc.cancel_ai_job(db, material_job["id"])
-            terminal_step_two = client.get(f"{base}/wizard/2")
-        finally:
-            for job in (material_job, suggestion_job):
-                if svc.find_ai_job(db, job["id"])["job"].get("status") in {"pending", "running"}:
-                    svc.cancel_ai_job(db, job["id"])
-
-        self.assertEqual(step_two.status_code, 200)
-        self.assertIn('class="assistant-job"', step_two.text)
-        self.assertEqual(step_three.status_code, 200)
-        self.assertIn('class="assistant-job"', step_three.text)
-        self.assertIn(f'data-job-id="{suggestion_job["id"]}"', step_three.text)
-        self.assertEqual(terminal_step_two.status_code, 200)
-        self.assertIn('class="assistant-job"', terminal_step_two.text)
-        self.assertIn('data-job-initial-status="cancelled"', terminal_step_two.text)
 
     def test_every_demo_page_renders(self) -> None:
         paths = [

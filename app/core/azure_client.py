@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import mimetypes
 import os
 import time
@@ -197,3 +198,71 @@ class AzureOpenAIClient:
         except Exception:
             return None
         return None
+
+    def responses_stream(
+        self,
+        *,
+        input_text: Optional[str] = None,
+        input_items: Optional[List[Dict[str, Any]]] = None,
+        vector_store_ids: Optional[List[str]] = None,
+        max_output_tokens: Optional[int] = None,
+        previous_response_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
+        text_verbosity: Optional[str] = None,
+        model: Optional[str] = None,
+    ):
+        """Stream response text chunks via SSE. Yields str chunks."""
+        payload = _build_responses_payload(
+            model or self.model,
+            input_text=input_text,
+            input_items=input_items,
+            vector_store_ids=vector_store_ids,
+            max_output_tokens=max_output_tokens,
+            previous_response_id=previous_response_id,
+            reasoning_effort=reasoning_effort,
+            text_verbosity=text_verbosity,
+            stream=True,
+        )
+        url = self._url(f"{self.api_path_prefix}responses")
+        params: Dict[str, Any] = {}
+        if self._uses_api_version:
+            params["api-version"] = self.api_version
+
+        with httpx.Client(timeout=self.timeout_s) as client:
+            headers = {"Content-Type": "application/json", **self._headers()}
+            with client.stream("POST", url, params=params, headers=headers, json=payload) as resp:
+                if resp.status_code >= 400:
+                    try:
+                        data = resp.json()
+                        err = data.get("error", {})
+                        msg = err.get("message") or data
+                    except Exception:
+                        msg = resp.text
+                    raise RuntimeError(f"POST responses (stream) -> HTTP {resp.status_code}: {msg}")
+                for line in resp.iter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        event = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = _extract_stream_delta(event)
+                    if delta:
+                        yield delta
+
+
+def _extract_stream_delta(event: dict) -> str | None:
+    """Extract text delta from a Responses API streaming event."""
+    delta = event.get("delta", "")
+    if delta:
+        return str(delta)
+    try:
+        for part in event.get("content", []):
+            if part.get("type") == "output_text":
+                return str(part.get("text", ""))
+    except Exception:
+        pass
+    return None

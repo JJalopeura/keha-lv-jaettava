@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from jinja2 import StrictUndefined
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
 from .template_filters import finnish_datetime
+from app.core.llm_factory import create_llm_client
 
 DOMAIN_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
@@ -662,6 +663,71 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     def contextual_chat(case_id: str, application_id: str, message: str = Form(...)):
         svc.contextual_chat_answer(db(), case_id, application_id, message, settings=settings())
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#contextual-chat", status_code=303)
+
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/chat/messages")
+    async def chat_messages(case_id: str, application_id: str, request: Request):
+        payload = await request.json()
+        message = str(payload.get("message") or "").strip()
+        if not message:
+            return JSONResponse({"error": "message_required"}, status_code=400)
+        result = svc.contextual_chat_answer(db(), case_id, application_id, message, settings=settings())
+        chat = svc.artifact_json(db(), case_id, "contextual_chat", svc.application_id_for(application_id), {"messages": []})
+        last = chat.get("messages", [])[-1] if chat.get("messages") else None
+        return {
+            "answer": last.get("answer") or result.get("answer", "") if last else result.get("answer", ""),
+            "messages": chat.get("messages", [])[-6:],
+        }
+
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/chat/stream")
+    async def chat_stream(case_id: str, application_id: str, request: Request):
+        """SSE streaming chat endpoint. Yields text/event-stream."""
+        payload = await request.json()
+        message = str(payload.get("message") or "").strip()
+        if not message:
+            return JSONResponse({"error": "message_required"}, status_code=400)
+
+        permit_type = svc.application_id_for(application_id)
+        context = svc.contextual_chat_context(db(), case_id, permit_type)
+        prompt = (
+            "Olet lupahakemuksen contextual chat -avustaja. Vastaa suomeksi hakijan kysymykseen. "
+            "Käytä vain annettua lomake- ja liitekontekstia. Älä käytä benchmark- tai viranomaisesimerkkiaineistoa. "
+            "Älä muuta hakemuksen tietoja; jos ehdotat muutosta, kerro että käyttäjän pitää hyväksyä se erikseen.\n\n"
+            f"Kysymys: {message}\n\n"
+            f"Konteksti JSON: {json.dumps(context, ensure_ascii=False)}"
+        )
+
+        async def generate():
+            full_answer = ""
+            try:
+                client = create_llm_client(settings(), purpose="chat")
+                for chunk in client.responses_stream(
+                    input_text=prompt,
+                    max_output_tokens=900,
+                    reasoning_effort="low",
+                    text_verbosity="medium",
+                ):
+                    full_answer += chunk
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                yield f"data: {json.dumps({'done': True})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                return
+
+            # Save to artifact store
+            history = svc.artifact_json(db(), case_id, "contextual_chat", permit_type, {"messages": []})
+            turn = {
+                "id": f"chat_{uuid.uuid4().hex[:10]}",
+                "role": "user",
+                "message": message,
+                "answer": full_answer,
+                "created_at": time.time(),
+            }
+            history.setdefault("messages", []).append(turn)
+            history["messages"] = history["messages"][-30:]
+            svc.save_artifact(db(), case_id, "contextual_chat", permit_type, history)
+            svc.event(db(), case_id, "ai.chat.answered", "Contextual chat answered (stream)", {"permit_type": permit_type})
+
+        return StreamingResponse(generate(), media_type="text/event-stream")
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/voice/mock")
     def voice_mock(case_id: str, application_id: str, transcript: str = Form("")):
