@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>{% block title %}Lupa-apuri{% endblock %} · Luvat ja valvonta</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260730-copilot-chat">
+  <link rel="stylesheet" href="/static/style.css?v=20260730-v2">
 </head>
 <body class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}">
   {% set current_path = request.url.path %}
   {% set authority_workspace = '/authority/' in current_path %}
   {% set demo_workspace = current_path.startswith('/demo-lab') or current_path.startswith('/demo/') or '/admin/' in current_path or '/metrics' in current_path or '/suggestion-service' in current_path or current_path.startswith('/integrations/') %}
-  {% set workspace_name = 'Käsittelijä' if authority_workspace else ('Demo Lab ja alusta' if demo_workspace else 'Hakija ja LV') %}
+  {% set workspace_name = 'Viranomainen' if authority_workspace else ('Demo Lab ja alusta' if demo_workspace else 'Hakija') %}
   <a class="skip-link" href="#main-content">Siirry sisältöön</a>
   <header class="app-header" data-workspace="{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else 'applicant') }}">
     <a href="/" class="app-brand" aria-label="Lupa-apurin etusivu">
@@ -35,15 +35,15 @@
     {% endif %}
     <nav class="app-nav" aria-label="{{ workspace_name }}: päänavigaatio">
       {% if authority_workspace %}
-      <a href="{{ '/cases/' ~ case_id ~ '/lupademo/authority/queue' if case_id is defined else '/authority/queue' }}" aria-current="page">Työjono</a>
+      <a href="/authority/queue" aria-current="page">Työjono</a>
       {% elif demo_workspace %}
       <a href="/demo-lab"{% if current_path == '/demo-lab' %} aria-current="page"{% endif %}>Yleiskuva</a>
       <a href="/demo/scenarios"{% if current_path.startswith('/demo/') or current_path == '/demo-lab/presenter' %} aria-current="page"{% endif %}>Demon ohjaus</a>
       {% if case_id is defined %}
-      <a href="/cases/{{ case_id }}/lupademo/metrics"{% if '/metrics' in current_path %} aria-current="page"{% endif %}>Vaikuttavuus</a>
-      <a href="/cases/{{ case_id }}/lupademo/admin/criteria"{% if '/admin/criteria' in current_path %} aria-current="page"{% endif %}>Kriteeristöt</a>
+      <a href="/metrics"{% if '/metrics' in current_path %} aria-current="page"{% endif %}>Vaikuttavuus</a>
+      <a href="/admin/criteria"{% if '/admin/criteria' in current_path %} aria-current="page"{% endif %}>Kriteeristöt</a>
       {% endif %}
-      <a href="/integrations/api-playground"{% if current_path.startswith('/integrations/') or '/suggestion-service' in current_path %} aria-current="page"{% endif %}>Integraatiot</a>
+      <a href="/admin/suggestion-service"{% if '/suggestion-service' in current_path or '/integrations/' in current_path %} aria-current="page"{% endif %}>Integraatiot</a>
       {% elif case_id is defined %}
       <a href="/lv/projects/{{ case_id }}"{% if current_path.startswith('/lv/projects/') %} aria-current="page"{% endif %}>Hanke</a>
       <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id if application is defined and application else 'building_residential' }}/wizard/1"{% if '/application/' in current_path or '/package' in current_path %} aria-current="page"{% endif %}>Hakemus</a>
@@ -69,7 +69,7 @@
     {% block content %}{% endblock %}
     <footer class="service-footer">
       <span>Demo: Luvat ja valvonta</span>
-      <nav aria-label="Muut työtilat"><a href="/">Hakija ja LV</a><a href="{{ '/cases/' ~ case_id ~ '/lupademo/authority/queue' if case_id is defined else '/authority/queue' }}">Käsittelijä</a><a href="/demo-lab">Demo Lab ja alusta</a></nav>
+      <nav aria-label="Muut työtilat"><a href="/">Hakija</a><a href="/authority/queue">Viranomainen</a><a href="/demo-lab">Demo Lab ja alusta</a></nav>
     </footer>
   </main>
   {% include '_floating_chat.html' %}

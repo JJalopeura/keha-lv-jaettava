@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% from "_components.html" import page_header, status_summary, recommended_action, technical_details %}
-{% block title %}Käsittelijän työtila{% endblock %}
+{% block title %}Viranomaisen työtila{% endblock %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
-{{ page_header(project.name, (application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija') ~ ' · ' ~ (common.data.get('municipality') or 'Kunta ei tiedossa'), schema.title, [{'label': 'Työjono', 'href': '/cases/' ~ case_id ~ '/lupademo/authority/queue' ~ ('?' ~ request.url.query if request.url.query else '')}, {'label': 'Hakemuksen käsittely', 'href': ''}]) }}
+{{ page_header(project.name, (application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija') ~ ' · ' ~ (common.data.get('municipality') or 'Kunta ei tiedossa'), schema.title, [{'label': 'Työjono', 'href': '/authority/queue' ~ ('?' ~ request.url.query if request.url.query else '')}, {'label': 'Hakemuksen käsittely', 'href': ''}]) }}
 
 <div class="status-action-layout" id="overview">
   {{ status_summary('Hakemus on vastaanotettu', 'Varmista viranomaiselle toimitettu aineisto ennen AI-havaintojen tai luonnosten käyttöä.', 'attention', application.status|replace('_', ' ')|capitalize) }}
@@ -39,7 +39,7 @@
 
 <div class="casework-grid" id="review">
   <section class="review-column">
-    <div class="column-heading"><div><p class="section-kicker">Käsittelijän työlista</p><h2>Tarkista seuraavaksi</h2></div><span>{{ caseworker_observations.caseworker_checklist|length }}</span></div>
+    <div class="column-heading"><div><p class="section-kicker">Viranomaisen työlista</p><h2>Tarkista seuraavaksi</h2></div><span>{{ caseworker_observations.caseworker_checklist|length }}</span></div>
     {% for item in caseworker_observations.caseworker_checklist %}
     <article class="review-row {{ item.status }}"><span class="review-icon">{% if item.status == 'ready' %}✓{% else %}!{% endif %}</span><div><strong>{{ item.title }}</strong><p>{{ item.detail }}</p><small>{{ item.source }}</small></div></article>
     {% endfor %}

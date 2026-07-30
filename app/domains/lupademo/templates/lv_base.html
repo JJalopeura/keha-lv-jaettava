@@ -26,7 +26,7 @@
     {% block content %}{% endblock %}
     <footer class="service-footer">
       <span>Demo: Luvat ja valvonta</span>
-      <nav aria-label="Demon muut näkymät"><a href="/">Hakija</a><a href="{{ '/cases/' ~ case_id ~ '/lupademo/authority/queue' if case_id is defined else '/authority/queue' }}">Viranomaisen työtila</a><a href="/demo-lab{{ present_suffix }}">Demo Lab</a></nav>
+      <nav aria-label="Demon muut näkymät"><a href="/">Hakija</a><a href="/authority/queue">Viranomaisen työtila</a><a href="/demo-lab{{ present_suffix }}">Demo Lab</a></nav>
     </footer>
   </main>
 </body>

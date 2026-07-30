@@ -85,8 +85,8 @@
     {% endif %}
  </section>
 
-<details class="project-data-details">
-  <summary>Projektin tiedot</summary>
+<div class="project-data-details">
+  <h2>Projektin tiedot</h2>
   <div class="project-data-details__content">
     <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="form-grid">
       {% for key, value in common.data.items() %}
@@ -97,6 +97,6 @@
       <button>Tallenna yhteiset tiedot</button>
     </form>
   </div>
-</details>
+</div>
 
 {% endblock %}

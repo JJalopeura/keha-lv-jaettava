@@ -189,8 +189,33 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
 
     @router.get("/admin/audit-trail", response_class=HTMLResponse)
     def audit_trail_global(request: Request):
+        # Aggregate events and AI logs from all cases
+        all_events: list[dict[str, Any]] = []
+        all_ai_calls: list[dict[str, Any]] = []
+        for c in db().list_cases():
+            events = svc.artifact_json(db(), c["id"], "lupademo_events", "main", {"events": []}).get("events", [])
+            for item in events:
+                if isinstance(item, dict):
+                    item["_case_id"] = c["id"]
+                    all_events.append(item)
+            for item in db().list_ai_logs(case_id=c["id"], limit=200):
+                all_ai_calls.append({
+                    "id": item.get("id"),
+                    "created_at": item.get("created_at"),
+                    "agent": str(item.get("agent") or "").removeprefix("lupademo."),
+                    "model": item.get("model") or "-",
+                    "duration_ms": item.get("duration_ms"),
+                    "status": "failed" if item.get("error") else "completed",
+                    "error": item.get("error") or "",
+                    "_case_id": c["id"],
+                })
+        all_events = list(sorted(all_events, key=lambda e: e.get("ts", 0), reverse=True))[:500]
+        all_ai_calls = list(sorted(all_ai_calls, key=lambda c: c.get("created_at", ""), reverse=True))[:500]
         case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
-        return audit_trail(request, case_id)
+        return templates.TemplateResponse(
+            "audit_trail.html",
+            {"request": request, **context(case_id), "audit_events": all_events, "ai_calls": all_ai_calls},
+        )
 
     @router.post("/cases/{case_id}/lupademo/admin/benchmark-lab/run")
     def benchmark_lab_run(case_id: str):
@@ -222,17 +247,106 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
         svc.run_agent_chain_audit(db(), settings(), case_id)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/metrics", status_code=303)
 
+    # --- Global redirects (no case_id in URL) ---
+
+    @router.get("/metrics", response_class=HTMLResponse)
+    def metrics_global(request: Request):
+        case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        # Aggregate metrics across all cases
+        aggregated: dict[str, Any] = {}
+        counters = ["application_count", "submitted_count", "accepted_suggestions", "rejected_suggestions",
+                     "checks_run", "detected_issues", "blocking_issues_before", "blocking_issues_after",
+                     "major_issues_before", "major_issues_after", "info_request_drafts", "completed_ai_jobs",
+                     "contextual_chat_suggestions", "fallback_count"]
+        scores: list[float] = []
+        for c in db().list_cases():
+            m = svc.metrics_snapshot(db(), c["id"])
+            for key in counters:
+                aggregated[key] = aggregated.get(key, 0) + int(m.get(key, 0) or 0)
+            if m.get("average_quality_score"):
+                scores.append(float(m["average_quality_score"]))
+        if scores:
+            m = svc.metrics_snapshot(db(), case_id)
+            m.update(aggregated)
+            m["average_quality_score"] = round(sum(scores) / len(scores), 1)
+            m["application_count"] = aggregated.get("application_count", 0)
+            m["submitted_count"] = aggregated.get("submitted_count", 0)
+        else:
+            m = svc.metrics_snapshot(db(), case_id)
+            m.update(aggregated)
+        return templates.TemplateResponse(request, "metrics.html", {**context(case_id), "metrics": m})
+
+    @router.get("/metrics/report.html", response_class=HTMLResponse)
+    def metrics_report_global(request: Request):
+        case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        return metrics_report_html(request, case_id)
+
+    @router.get("/metrics/report.json")
+    def metrics_report_json_global(case_id: str = ""):
+        cid = case_id or scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        return metrics_report_json(cid)
+
+    @router.get("/admin/criteria", response_class=HTMLResponse)
+    def criteria_global(request: Request):
+        case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        ctx = context(case_id)
+        permit_types = list(svc.PERMIT_SCHEMAS.keys())
+        ctx.update({
+            "criteria_sets": [svc.effective_criteria(db(), case_id, pt) for pt in permit_types],
+            "criteria_histories": {pt: svc.criteria_history(db(), case_id, pt) for pt in permit_types},
+            "criteria_history_rows": {pt: svc.criteria_history_rows(svc.criteria_history(db(), case_id, pt)) for pt in permit_types},
+            "criteria_rule_rows": {pt: svc.criteria_rule_rows(svc.effective_criteria(db(), case_id, pt)) for pt in permit_types},
+            "criteria_test_results": {pt: svc.artifact_json(db(), case_id, "criteria_test_result", pt, {}) for pt in permit_types},
+            "source_ingest": svc.artifact_json(db(), case_id, "source_material_ingest", "main", {}),
+        })
+        return templates.TemplateResponse("criteria.html", {**ctx, "request": request})
+
+    @router.get("/admin/suggestion-service", response_class=HTMLResponse)
+    def suggestion_service_global(request: Request):
+        case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        ctx = context(case_id)
+        ctx.update({
+            "api_clients": security.public_client_options(),
+            "request_log": svc.artifact_json(db(), case_id, "suggestion_service_request_log", "main", {"items": []}),
+        })
+        return templates.TemplateResponse("suggestion_service.html", {**ctx, "request": request})
+
+    @router.get("/admin/production-hardening", response_class=HTMLResponse)
+    def production_hardening_global(request: Request):
+        case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        return production_hardening(request, case_id)
+
     @router.get("/demo-lab", response_class=HTMLResponse)
     def demo_lab_index(request: Request):
         case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        # Aggregate key metrics across all cases
+        all_metrics = {"application_count": 0, "submitted_count": 0, "average_quality_score": 0, "fallback_count": 0}
+        all_eval = {"authority_example_count": 0, "target_count": 0}
+        all_readiness = {"ready_count": 0, "total_count": 0}
+        quality_scores: list[float] = []
+        for c in db().list_cases():
+            m = svc.metrics_snapshot(db(), c["id"])
+            all_metrics["application_count"] += m.get("application_count", 0)
+            all_metrics["submitted_count"] += m.get("submitted_count", 0)
+            all_metrics["fallback_count"] += m.get("fallback_count", 0)
+            if m.get("average_quality_score"):
+                quality_scores.append(float(m["average_quality_score"]))
+            e = svc.benchmark_lab_snapshot(db(), c["id"])
+            all_eval["authority_example_count"] += e.get("authority_example_count", 0)
+            all_eval["target_count"] += e.get("target_count", 0)
+            r = svc.production_hardening_snapshot(db(), c["id"])
+            all_readiness["ready_count"] += r.get("ready_count", 0)
+            all_readiness["total_count"] += r.get("total_count", 0)
+        if quality_scores:
+            all_metrics["average_quality_score"] = round(sum(quality_scores) / len(quality_scores), 1)
         return templates.TemplateResponse(
             request,
             "demo_lab.html",
             {
                 **context(case_id),
-                "metrics": svc.metrics_snapshot(db(), case_id),
-                "evaluation": svc.benchmark_lab_snapshot(db(), case_id),
-                "readiness": svc.production_hardening_snapshot(db(), case_id),
+                "metrics": all_metrics,
+                "evaluation": all_eval,
+                "readiness": all_readiness,
             },
         )
 

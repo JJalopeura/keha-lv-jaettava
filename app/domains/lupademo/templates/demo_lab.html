@@ -19,7 +19,7 @@
   {{ recommended_action(
     "Tarkista vaikuttavuuden näyttö" if readiness_complete else "Ratkaise valmiuden poikkeamat",
     "Varmista, että keskeiset tulokset ovat perusteltavissa ennen esitystä." if readiness_complete else "Avaa valmiusnäkymä ja käy keskeneräiset tarkistukset läpi.",
-    "/cases/" ~ case_id ~ "/lupademo/metrics" if readiness_complete else "/cases/" ~ case_id ~ "/lupademo/admin/production-hardening",
+    "/metrics" if readiness_complete else "/admin/production-hardening",
     "Avaa vaikuttavuus" if readiness_complete else "Avaa tuotantovalmius",
     "normal" if readiness_complete else "warning"
   ) }}
@@ -45,12 +45,12 @@
 <section aria-labelledby="platform-capabilities-heading">
   <h2 id="platform-capabilities-heading">Alustan toiminnot</h2>
   <div class="grid three">
-    <article><h3>Vaikuttavuus</h3><p>Hakemusten laatu, AI-avustuksen vaikutus ja arvioitu ajansäästö.</p><a href="/cases/{{ case_id }}/lupademo/metrics">Avaa vaikuttavuus</a></article>
-    <article><h3>Kriteeristöt</h3><p>Aktiiviset sääntöversiot, testit ja muutoshistoria.</p><a href="/cases/{{ case_id }}/lupademo/admin/criteria">Avaa kriteeristöt</a></article>
-    <article><h3>Integraatiot</h3><p>AI-ehdotuspalvelun API ja virkailijan ehdotustyökalu.</p><a href="/cases/{{ case_id }}/lupademo/suggestion-service">Avaa integraatiot</a></article>
-    <article><h3>Arviointi</h3><p>Vertailuaineiston kattavuus ja arviointikohteet.</p><a href="/cases/{{ case_id }}/lupademo/admin/benchmark-lab">Avaa arviointi</a></article>
-    <article><h3>Tapahtumaloki</h3><p>Hankkeen toimet ja AI-ajojen jäljitettävyys.</p><a href="/cases/{{ case_id }}/lupademo/admin/audit-trail">Avaa tapahtumaloki</a></article>
-    <article><h3>Tuotantovalmius</h3><p>Valmiusvaatimukset, näyttö ja keskeneräiset tarkistukset.</p><a href="/cases/{{ case_id }}/lupademo/admin/production-hardening">Avaa tuotantovalmius</a></article>
+    <article><h3>Vaikuttavuus</h3><p>Hakemusten laatu, AI-avustuksen vaikutus ja arvioitu ajansäästö.</p><a href="/metrics">Avaa vaikuttavuus</a></article>
+    <article><h3>Kriteeristöt</h3><p>Aktiiviset sääntöversiot, testit ja muutoshistoria.</p><a href="/admin/criteria">Avaa kriteeristöt</a></article>
+    <article><h3>Integraatiot</h3><p>AI-ehdotuspalvelun API ja virkailijan ehdotustyökalu.</p><a href="/admin/suggestion-service">Avaa integraatiot</a></article>
+    <article><h3>Arviointi</h3><p>Vertailuaineiston kattavuus ja arviointikohteet.</p><a href="/admin/benchmarks">Avaa arviointi</a></article>
+    <article><h3>Tapahtumaloki</h3><p>Hankkeen toimet ja AI-ajojen jäljitettävyys.</p><a href="/admin/audit-trail">Avaa tapahtumaloki</a></article>
+    <article><h3>Tuotantovalmius</h3><p>Valmiusvaatimukset, näyttö ja keskeneräiset tarkistukset.</p><a href="/admin/production-hardening">Avaa tuotantovalmius</a></article>
   </div>
 </section>
 

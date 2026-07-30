@@ -1,0 +1,78 @@
+{% set active = (ai_jobs|selectattr('status', 'in', ['queued', 'running'])|list)[:1] %}
+{% set last = (ai_jobs|rejectattr('status', 'in', ['queued', 'running'])|list)[:1] %}
+{% set last_ok = last[0] if last and last[0].get('status') == 'succeeded' else none %}
+{% set last_fail = last[0] if last and last[0].get('status') == 'failed' else none %}
+{% set state = 'running' if active else ('ok' if last_ok else ('failed' if last_fail else 'idle')) %}
+
+<section class="analysis-panel{% if state == 'running' %} is-running{% elif state == 'ok' %} is-complete{% elif state == 'failed' %} is-failed{% endif %}" aria-live="polite" data-ai-jobs-panel>
+  <div class="analysis-lead">
+    <span class="ai-orbit" aria-hidden="true"><i></i></span>
+    <div>
+      {% if state == 'running' %}
+      <p class="section-kicker">AI käsittelee</p>
+      <strong>{{ active[0].get('title') or active[0].get('kind', '') }}</strong>
+      {% elif state == 'ok' %}
+      <p class="section-kicker">AI valmis</p>
+      <strong>{{ last_ok.get('summary') or last_ok.get('title', 'Käsittely valmis') }}</strong>
+      {% elif state == 'failed' %}
+      <p class="section-kicker">Käsittely epäonnistui</p>
+      <strong>{{ last_fail.get('summary', 'Virhe') }}</strong>
+      {% else %}
+      <p class="section-kicker">AI valmiina</p>
+      <strong>Ei aktiivisia tehtäviä</strong>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if state != 'running' and step is defined and step == 2 %}
+  <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/intake-analysis">
+    <button class="primary-cta">{{ 'Analysoi uudelleen' if intake_analysis is defined and intake_analysis else 'Analysoi aineisto AI:lla' }} <span aria-hidden="true">→</span></button>
+  </form>
+  {% endif %}
+
+  {% if state == 'running' %}
+  {% for job in active %}
+  <article class="job-progress" data-ai-job
+    data-status-url="/api/v1/jobs/{{ job.id }}"
+    data-stream-url="/api/v1/jobs/{{ job.id }}/stream">
+    <div class="job-progress-meta">
+      <span><b data-job-progress>{{ job.get('progress_percent', 0) }}</b>% · <span data-job-eta>{{ job.get('estimated_seconds_remaining', 0) }}</span> s</span>
+    </div>
+    <div class="progress-track"><span data-job-progress-bar style="width: {{ job.get('progress_percent', 0) }}%"></span></div>
+  </article>
+  {% endfor %}
+  {% endif %}
+</section>
+
+{% if state == 'running' %}
+<script>
+(function () {
+  var row = document.querySelector("[data-ai-job]");
+  if (!row) return;
+  var terminal = new Set(["succeeded", "failed", "cancelled"]);
+  var pollingId = null;
+  function apply(payload) {
+    var p = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
+    row.querySelector("[data-job-progress]").textContent = p;
+    row.querySelector("[data-job-eta]").textContent = payload.estimated_seconds_remaining ?? 0;
+    row.querySelector("[data-job-progress-bar]").style.width = p + "%";
+    if (terminal.has(payload.status)) {
+      if (pollingId) window.clearInterval(pollingId);
+      setTimeout(function () { location.replace(location.href); }, 300);
+      return true;
+    }
+    return false;
+  }
+  async function poll() {
+    var r = await fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } });
+    return r.ok && apply(await r.json());
+  }
+  if (row.dataset.streamUrl && "EventSource" in window) {
+    var src = new EventSource(row.dataset.streamUrl);
+    src.addEventListener("status", function (e) { if (apply(JSON.parse(e.data))) src.close(); });
+    src.onerror = function () { src.close(); };
+  }
+  poll().then(function (done) { if (!done) pollingId = window.setInterval(poll, 5000); });
+})();
+</script>
+{% endif %}

@@ -168,13 +168,13 @@ ENVIRONMENTAL_MATERIAL_STORIES = [
 ]
 
 
-MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024
+MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
 
 
-MAX_UPLOAD_ZIP_BYTES = 100 * 1024 * 1024
+MAX_UPLOAD_ZIP_BYTES = 200 * 1024 * 1024
 
 
-MAX_UPLOAD_ZIP_TOTAL_BYTES = 150 * 1024 * 1024
+MAX_UPLOAD_ZIP_TOTAL_BYTES = 300 * 1024 * 1024
 
 
 MAX_UPLOAD_ZIP_FILE_COUNT = 200
@@ -392,17 +392,19 @@ def save_upload_file(settings: Any, case_id: str, filename: str, content: bytes)
     return str(target)
 
 
-def retrieval_context(db: Any, case_id: str, permit_type: str, *, max_chars: int = 16000) -> dict[str, Any]:
+def retrieval_context(db: Any, case_id: str, permit_type: str, *, max_chars: int = 64000) -> dict[str, Any]:
     attachments = list_attachments(db, case_id, permit_type)
     excerpts = []
     used = 0
+    per_doc = max(800, max_chars // max(1, len(attachments)))  # 800-char floor, even spread otherwise
     for att in attachments:
         text = str(att.get("text_excerpt") or "")
         if not text:
             continue
-        chunk = text[: max(0, max_chars - used)]
-        if not chunk:
+        budget = min(per_doc, max(0, max_chars - used))
+        if budget < 200:
             break
+        chunk = text[:budget]
         excerpts.append(
             {
                 "source_id": att.get("id"),
@@ -737,7 +739,10 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
                     continue
                 clean_suggestion = dict(suggestion)
                 clean_suggestion["evidence_refs"] = _normalize_evidence_refs(clean_suggestion.get("evidence_refs", []), limit=6)
-                clean_suggestions.append(Suggestion(**clean_suggestion))
+                try:
+                    clean_suggestions.append(Suggestion(**clean_suggestion))
+                except Exception:
+                    continue  # skip malformed items instead of failing entire response
         return {
             "request_id": str(normalized.get("request_id") or ""),
             "criteria_version": str(normalized.get("criteria_version") or ""),

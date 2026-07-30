@@ -74,24 +74,27 @@ def create_authority_router(db_getter: Callable[[], Any], settings_getter: Calla
             "environmental_story": svc.artifact_json(db_obj, case_id, "environmental_material_story", "main", {}),
         }
 
-    @router.get("/cases/{case_id}/lupademo/authority/queue", response_class=HTMLResponse)
-    def authority_queue(request: Request, case_id: str, permit_type: str = "", municipality: str = ""):
-        svc.ensure_seed_state(db(), case_id)
-        queue = svc.artifact_json(db(), case_id, "authority_queue", "main", {"items": []})
-        items = queue.get("items", [])
-        if permit_type:
-            items = [item for item in items if item.get("permit_type") == permit_type or item.get("application_id") == permit_type]
-        if municipality:
-            items = [item for item in items if str(item.get("municipality") or "").lower() == municipality.lower()]
-        return templates.TemplateResponse(request, "authority_queue.html", {**context(case_id), "queue": {**queue, "items": items}, "filters": {"permit_type": permit_type, "municipality": municipality}})
-
-    @router.get("/authority/queue", response_class=HTMLResponse)
-    def authority_queue_global(permit_type: str = "", municipality: str = ""):
-        case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+    @router.get("/cases/{case_id}/lupademo/authority/queue")
+    def authority_queue(case_id: str, permit_type: str = "", municipality: str = ""):
         suffix = ""
         if permit_type or municipality:
             suffix = f"?permit_type={permit_type}&municipality={municipality}"
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/authority/queue{suffix}", status_code=303)
+        return RedirectResponse(url=f"/authority/queue{suffix}", status_code=301)
+
+    @router.get("/authority/queue", response_class=HTMLResponse)
+    def authority_queue_global(request: Request, permit_type: str = "", municipality: str = ""):
+        # Aggregate items from all cases' authority queues
+        all_items: list[dict[str, Any]] = []
+        for c in db().list_cases():
+            q = svc.artifact_json(db(), c["id"], "authority_queue", "main", {"items": []})
+            for item in q.get("items", []):
+                item["case_id"] = c["id"]
+                all_items.append(item)
+        if permit_type:
+            all_items = [item for item in all_items if item.get("permit_type") == permit_type or item.get("application_id") == permit_type]
+        if municipality:
+            all_items = [item for item in all_items if str(item.get("municipality") or "").lower() == municipality.lower()]
+        return templates.TemplateResponse(request, "authority_queue.html", {"queue": {"items": all_items}, "filters": {"permit_type": permit_type, "municipality": municipality}})
 
     @router.get("/cases/{case_id}/lupademo/authority/applications/{application_id}", response_class=HTMLResponse)
     def authority_detail(request: Request, case_id: str, application_id: str):

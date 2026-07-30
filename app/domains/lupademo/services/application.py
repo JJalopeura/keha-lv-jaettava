@@ -964,6 +964,8 @@ def deterministic_suggestion(permit_type: str, field_id: str, form_data: dict[st
         "rescue_plan": "Pelastussuunnitelmassa kuvataan osallistujamäärä, poistumisreitit, ensiapu, järjestyksenvalvonta, alkusammutus ja häiriötilanteiden toimintamalli.",
         "traffic_arrangements": "Liikennejärjestelyissä kuvataan suljettavat alueet, opastus, esteettömät kulkureitit, huoltoajo ja vaikutukset joukkoliikenteeseen.",
         "waste_management": "Jätehuolto järjestetään lajitteluastioilla, tyhjennyksillä ja tapahtuman jälkisiivouksella.",
+        "environmental_impacts": "Toiminnan ympäristövaikutukset kohdistuvat pääasiassa ilmapäästöihin, meluun, liikenteeseen ja jätevesiin. Vaikutukset arvioidaan YVA-selostuksen ja lupahakemuksen liitteiden perusteella.",
+        "risk_preparedness": "Laitoksella on ennaltavarautumissuunnitelma ja toimintaohjeet häiriö- ja poikkeustilanteita varten. Keskeiset riskit liittyvät kemikaalien käsittelyyn, tulipaloon ja vuotoihin.",
     }
     suggested_value = values.get(field_id, "")
     if suggested_value and attachments:
@@ -987,17 +989,19 @@ def deterministic_suggestion(permit_type: str, field_id: str, form_data: dict[st
     return suggestion
 
 
-def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: str, settings: Any = None) -> Suggestion:
+def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: str, settings: Any = None, *, job_id: str = "") -> Suggestion:
     app = ensure_application(db, case_id, permit_type)
-    job = start_ai_job(
-        db,
-        case_id,
-        app["permit_type"],
-        "field_suggestion",
-        f"Kenttäehdotus: {field_id}",
-        ["retrieval_context", "field_suggestion_agent", "validate_suggestion", "persist_pending_suggestion"],
-        eta_seconds=15,
-    )
+    if not job_id:
+        job = start_ai_job(
+            db,
+            case_id,
+            app["permit_type"],
+            "field_suggestion",
+            f"Kenttäehdotus: {field_id}",
+            ["retrieval_context", "field_suggestion_agent", "validate_suggestion", "persist_pending_suggestion"],
+            eta_seconds=15,
+        )
+        job_id = job["id"]
     fallback_suggestion = deterministic_suggestion(app["permit_type"], field_id, app.get("form_data", {}), list_attachments(db, case_id, app["permit_type"]))
     if settings is not None:
         schema = load_form_schema(app["permit_type"])
@@ -1041,9 +1045,11 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
         suggestion.diff_summary = "Korvaa tyhjän kentän ehdotuksella." if not current_value else "Täydentää nykyistä arvoa AI-ehdotuksella."
     FieldSuggestionResponse(request_id=f"ui_{uuid.uuid4().hex[:8]}", criteria_version=criteria_version(app["permit_type"], db, case_id), suggestions=[suggestion])
     pending = artifact_json(db, case_id, "ai_suggestions", app["permit_type"], {"suggestions": []})
+    # ponytail: replace existing suggestion for same field instead of appending duplicate
+    pending["suggestions"] = [s for s in pending.get("suggestions", []) if s.get("field_id") != field_id]
     pending.setdefault("suggestions", []).append(suggestion)
     save_artifact(db, case_id, "ai_suggestions", app["permit_type"], pending)
-    complete_ai_job(db, case_id, app["permit_type"], job["id"], summary=f"Ehdotus luotu kentälle {field_id}.", result_artifact=f"ai_suggestions:{app['permit_type']}")
+    complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Ehdotus luotu kentälle {field_id}.", result_artifact=f"ai_suggestions:{app['permit_type']}")
     event(db, case_id, "ai.suggestion.created", "AI field suggestion created", {"application_id": app["permit_type"], "field_id": field_id, "suggestion_id": suggestion.id})
     return suggestion
 
@@ -1178,17 +1184,19 @@ def merge_issues(*groups: list[Issue]) -> list[Issue]:
     return list(seen.values())
 
 
-def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any = None) -> ApplicationCheckResponse:
+def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any = None, *, job_id: str = "") -> ApplicationCheckResponse:
     app = ensure_application(db, case_id, permit_type)
-    job = start_ai_job(
-        db,
-        case_id,
-        app["permit_type"],
-        "application_check",
-        "AI- ja sääntötarkistus",
-        ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"],
-        eta_seconds=35,
-    )
+    if not job_id:
+        job = start_ai_job(
+            db,
+            case_id,
+            app["permit_type"],
+            "application_check",
+            "AI- ja sääntötarkistus",
+            ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"],
+            eta_seconds=35,
+        )
+        job_id = job["id"]
     attachments = list_attachments(db, case_id, app["permit_type"])
     deterministic = deterministic_issues(app["permit_type"], app.get("form_data", {}), attachments)
     agent_issues: list[Issue] = []
@@ -1292,7 +1300,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         save_artifact(db, case_id, "applicant_precheck_report", app["permit_type"], precheck)
     event(db, case_id, "ai.check.completed", "Application check completed", {"application_id": app["permit_type"], "issues": len(issues), "blocking": blockers, "major": major, "score": response.score})
     save_artifact(db, case_id, "precheck_gate", app["permit_type"], precheck_gate_status(db, case_id, app["permit_type"]))
-    complete_ai_job(db, case_id, app["permit_type"], job["id"], summary=f"Tarkistus valmis: {len(issues)} havaintoa, pisteet {response.score}.", result_artifact=f"check_report:{app['permit_type']}")
+    complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Tarkistus valmis: {len(issues)} havaintoa, pisteet {response.score}.", result_artifact=f"check_report:{app['permit_type']}")
     return response
 
 

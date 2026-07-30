@@ -748,7 +748,7 @@ class Pages(unittest.TestCase):
             svc.execute_form_suggestions_job = original_executor
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], f"{base}/wizard/3#ai-jobs")
+        self.assertEqual(response.headers["location"], f"{base}/wizard/3#suggestions")
         job = next(job for job in svc.list_ai_jobs(db, case, PERMIT) if job["kind"] == "form_suggestions")
         self.assertEqual(job["kind"], "form_suggestions")
         self.assertEqual(job["status"], "running")

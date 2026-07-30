@@ -85,6 +85,19 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
                 )
         return options
 
+    def _dedup_suggestions(items: list[dict]) -> list[dict]:
+        """Keep only the last suggestion per field_id (list order = oldest first)."""
+        seen: set[str] = set()
+        result: list[dict] = []
+        for item in reversed(items):
+            fid = str(item.get("field_id") or "")
+            if fid in seen:
+                continue
+            seen.add(fid)
+            result.append(item)
+        result.reverse()
+        return result
+
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
         svc.ensure_seed_state(db(), case_id)
         sync = svc.detect_common_data_changes(db(), case_id)
@@ -115,7 +128,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             "schema": svc.load_form_schema(app["permit_type"]),
             "criteria": svc.load_criteria(app["permit_type"]),
             "attachments": svc.list_attachments(db_obj, case_id, app["permit_type"]),
-            "suggestions": aj("ai_suggestions", {"suggestions": []}).get("suggestions", []),
+            "suggestions": _dedup_suggestions(aj("ai_suggestions", {"suggestions": []}).get("suggestions", [])),
             "check_report": aj("check_report", {}),
             "precheck_gate": svc.precheck_gate_status(db_obj, case_id, app["permit_type"]),
             "package": aj("submission_package", {}),
@@ -537,18 +550,85 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     async def upload_material_files(
         case_id: str,
         application_id: str,
-        files: list[UploadFile] = File(...),
+        background_tasks: BackgroundTasks,
+        files: list[UploadFile] = File(default=[]),
+        zip_file: UploadFile | None = File(default=None),
         package_name: str = Form(""),
+        text_body: str = Form(""),
         return_package_id: str = Form(""),
     ):
+        # --- ZIP path ---
+        if zip_file and zip_file.filename:
+            filename = zip_file.filename or "aineisto.zip"
+            if not filename.lower().endswith(".zip"):
+                raise HTTPException(status_code=422, detail="Only .zip material packages are supported")
+            content = await zip_file.read()
+            try:
+                svc.validate_upload_bytes(filename, content, allow_zip=True)
+                with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                    svc.validate_zip_archive(archive)
+                    document_count = sum(1 for item in archive.infolist() if not item.is_dir())
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=422, detail="Invalid zip file")
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc))
+            package = svc.create_pending_material_package(db(), case_id, application_id, filename, document_count)
+            azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
+            job = svc.start_material_ingest_job(
+                db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
+            )
+            background_tasks.add_task(
+                svc.execute_material_ingest_job,
+                db(),
+                settings(),
+                case_id,
+                application_id,
+                package["package_id"],
+                job["id"],
+                filename,
+                zip_payload=(filename, content),
+            )
+            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
+
+        # --- Multi-file path ---
         payload: list[tuple[str, bytes]] = []
         for item in files:
-            payload.append((item.filename or "dokumentti", await item.read()))
+            if not item.filename:
+                continue
+            payload.append((item.filename, await item.read()))
+
+        # --- Text-only path ---
+        if not payload and text_body.strip():
+            try:
+                svc.ingest_application_text(db(), settings(), case_id, application_id, "Hakijan kuvaus", text_body.strip(), delivery_scope="ai_context_only")
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Text material is empty")
+            return RedirectResponse(url=material_return_url(case_id, application_id, return_package_id, "#documents"), status_code=303)
+
+        if not payload:
+            raise HTTPException(status_code=422, detail="No files provided")
+
         try:
-            svc.ingest_application_files(db(), settings(), case_id, application_id, payload, display_name=package_name)
+            result = svc.ingest_application_files(db(), settings(), case_id, application_id, payload, display_name=package_name)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        return RedirectResponse(url=material_return_url(case_id, application_id, return_package_id, "#documents"), status_code=303)
+        document_count = result.get("added_count", len(payload))
+        azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
+        job = svc.start_material_ingest_job(
+            db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=result.get("material_package", {}).get("package_id", "")
+        )
+        background_tasks.add_task(
+            svc.execute_material_ingest_job,
+            db(),
+            settings(),
+            case_id,
+            application_id,
+            result.get("material_package", {}).get("package_id", ""),
+            job["id"],
+            package_name or "Hakemusaineisto",
+            zip_payload=None,
+        )
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/add-text")
     def add_material_text(
@@ -631,15 +711,17 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         return RedirectResponse(url=target, status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field")
-    def suggest_field(case_id: str, application_id: str, field_id: str = Form(...)):
-        suggestion = svc.create_field_suggestion(db(), case_id, application_id, field_id, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestion-{suggestion.id}", status_code=303)
+    def suggest_field(case_id: str, application_id: str, field_id: str = Form(...), background_tasks: BackgroundTasks = BackgroundTasks()):
+        permit_type = svc.application_id_for(application_id)
+        job = svc.start_ai_job(db(), case_id, permit_type, "field_suggestion", f"Kenttäehdotus: {field_id}", ["retrieval_context", "field_suggestion_agent"], eta_seconds=15)
+        background_tasks.add_task(svc.create_field_suggestion, db(), case_id, application_id, field_id, settings=settings(), job_id=job["id"])
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestions", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-form")
-    def suggest_form(background_tasks: BackgroundTasks, case_id: str, application_id: str):
+    def suggest_form(case_id: str, application_id: str, background_tasks: BackgroundTasks):
         job = svc.start_form_suggestions_job(db(), case_id, application_id, settings=settings())
         background_tasks.add_task(svc.execute_form_suggestions_job, db(), case_id, application_id, job["id"], settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#ai-jobs", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestions", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/accept")
     def accept_suggestion(case_id: str, application_id: str, suggestion_id: str, edited_value: str = Form("")):
@@ -735,9 +817,11 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#voice-assistant", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/check")
-    def run_check(case_id: str, application_id: str):
-        svc.run_application_check(db(), case_id, application_id, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/5#check", status_code=303)
+    def run_check(case_id: str, application_id: str, background_tasks: BackgroundTasks):
+        permit_type = svc.application_id_for(application_id)
+        job = svc.start_ai_job(db(), case_id, permit_type, "application_check", "AI- ja sääntötarkistus", ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"], eta_seconds=35)
+        background_tasks.add_task(svc.run_application_check, db(), case_id, application_id, settings=settings(), job_id=job["id"])
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#check", status_code=303)
 
     @router.get("/cases/{case_id}/lupademo/application/{application_id}/package", response_class=HTMLResponse)
     def package(case_id: str, application_id: str):

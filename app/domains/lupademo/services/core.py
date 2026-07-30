@@ -573,7 +573,9 @@ def detect_common_data_changes(db: Any, case_id: str) -> dict[str, Any]:
         base_value = base.get(schema_field, "")
         app_entries = []
         for permit_type in PERMIT_SCHEMAS:
-            app = ensure_application(db, case_id, permit_type)
+            app = artifact_json(db, case_id, "permit_application", permit_type, {})
+            if not app:
+                continue  # skip permits with no actual application data
             form_data = app.get("form_data", {})
             app_entries.append({"application_id": permit_type, "value": form_data.get(schema_field, base_value)})
         if not app_entries:

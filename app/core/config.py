@@ -4,8 +4,21 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
+
+# Load .env file if present (before reading os.getenv)
+_env_path = ROOT / ".env"
+if _env_path.exists():
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if not _line or _line.startswith("#") or "=" not in _line:
+                continue
+            _key, _, _val = _line.partition("=")
+            _key = _key.strip()
+            _val = _val.strip().strip('"').strip("'")
+            if _key and _key not in os.environ:
+                os.environ[_key] = _val
 
 
 @dataclass(frozen=True)
