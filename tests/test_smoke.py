@@ -12,6 +12,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import httpx
@@ -250,18 +251,20 @@ class ProviderContracts(unittest.TestCase):
 
     def test_factory_selects_core_and_chat_configuration(self) -> None:
         settings = self._settings()
-        with patch.dict(os.environ, {"KEHA_LV_FORCE_MOCK_LLM": "false"}):
-            core = create_llm_client(settings, purpose="core")
-            chat = create_llm_client(settings, purpose="chat")
+        core = create_llm_client(settings, purpose="core")
+        chat = create_llm_client(settings, purpose="chat")
 
         self.assertIsInstance(core, AzureOpenAIClient)
-        self.assertEqual((core.host, core.api_key, core.model, core.timeout_s), (
+        self.assertIsInstance(chat, AzureOpenAIClient)
+        core_azure: AzureOpenAIClient = core  # type: ignore[assignment]
+        chat_azure: AzureOpenAIClient = chat  # type: ignore[assignment]
+        self.assertEqual((core_azure.host, core_azure.api_key, core_azure.model, core_azure.timeout_s), (
             settings.azure_openai_host_core,
             settings.azure_openai_api_key_core,
             settings.azure_openai_model_core,
             settings.azure_openai_timeout_s_core,
         ))
-        self.assertEqual((chat.host, chat.api_key, chat.model, chat.timeout_s), (
+        self.assertEqual((chat_azure.host, chat_azure.api_key, chat_azure.model, chat_azure.timeout_s), (
             settings.azure_openai_host_chat,
             settings.azure_openai_api_key_chat,
             settings.azure_openai_model_chat,
@@ -269,13 +272,12 @@ class ProviderContracts(unittest.TestCase):
         ))
 
     def test_factory_force_mock_overrides_azure(self) -> None:
-        with patch.dict(os.environ, {"KEHA_LV_FORCE_MOCK_LLM": "true"}):
-            selected = create_llm_client(self._settings())
+        selected = create_llm_client(self._settings(force_mock_llm=True))
 
         self.assertIsInstance(selected, MockLLMClient)
 
     def test_azure_responses_request_contract(self) -> None:
-        captured: dict[str, object] = {}
+        captured: dict[str, Any] = {}
 
         def handle(request: httpx.Request) -> httpx.Response:
             captured["request"] = request
@@ -629,7 +631,10 @@ class Authentication(unittest.TestCase):
                 self.assertIsNone(security._get_client_by_key(key))
 
     def test_valid_key_still_resolves(self) -> None:
-        self.assertEqual(security._get_client_by_key("demo-avi-key")["tenant_id"], "avi_demo")
+        client = security._get_client_by_key("demo-avi-key")
+        self.assertIsNotNone(client)
+        assert client is not None  # type guard for pyright
+        self.assertEqual(client["tenant_id"], "avi_demo")
 
     def test_cross_tenant_payload_is_rejected(self) -> None:
         """This check was dead code: the assignment ran before the comparison."""

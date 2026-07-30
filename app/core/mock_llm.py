@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any, Dict, Optional
 import uuid
 
@@ -194,14 +195,10 @@ class MockLLMClient:
         }
 
     def _extract_first(self, pattern: str, text: str) -> Optional[str]:
-        import re
-
         match = re.search(pattern, text or "", flags=re.IGNORECASE)
         return match.group(1) if match else None
 
     def _extract_all(self, pattern: str, text: str) -> list[str]:
-        import re
-
         return re.findall(pattern, text or "", flags=re.IGNORECASE)
 
     def _lupademo_evidence(self, source_id: str) -> dict[str, Any]:

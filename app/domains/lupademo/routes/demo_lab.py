@@ -9,23 +9,9 @@ from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from jinja2 import StrictUndefined
-from fastapi.templating import Jinja2Templates
-from pydantic import ValidationError
 
+from .template_filters import templates
 from .. import scenarios, security, services as svc
-from .template_filters import finnish_datetime
-
-DOMAIN_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
-templates.env.filters["finnish_datetime"] = finnish_datetime
-templates.env.globals["FINDING_CATEGORY_LABELS"] = {
-    "missing_required_info": "Puuttuva tieto",
-    "contradiction": "Ristiriita",
-    "weak_description": "Puutteellinen kuvaus",
-    "attachment_scope": "Liitteen käyttötarkoitus",
-    "criteria_gap": "Kriteeripuute",
-}
 
 def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callable[[], Any]) -> APIRouter:
     

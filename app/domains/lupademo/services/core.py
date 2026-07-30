@@ -433,7 +433,7 @@ def _real_llm_enabled(settings: Any) -> bool:
         return False
     if str(getattr(settings, "llm_provider", "mock") or "mock").lower() == "mock":
         return False
-    return str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
+    return not getattr(settings, "force_mock_llm", False)
 
 
 def _extraction_queue_item(item: dict[str, Any]) -> dict[str, Any]:
