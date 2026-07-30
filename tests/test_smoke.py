@@ -825,14 +825,15 @@ class Pages(unittest.TestCase):
         self.assertIn("Esimerkki Oy", response.text)
 
     def test_step_two_collapses_help_and_defers_suggestion_review(self) -> None:
+        """Phase A: the side panel replaced the old assistant-rail.
+        Step 2 still has the field form, but the help UI is now in the side panel pipeline steps."""
         page = client.get(f"{base}/wizard/2")
 
         self.assertEqual(page.status_code, 200)
-        self.assertIn('class="assistant-disclosure"', page.text)
         self.assertIn('class="field-section" open', page.text)
+        self.assertIn('pipeline-section', page.text)
         self.assertNotIn("Pyydä ehdotus", page.text)
         self.assertNotIn("Hyväksy lomakkeelle", page.text)
-        self.assertIn("AI-ehdotukset tarkistetaan seuraavassa vaiheessa", page.text)
 
     def test_front_page_picker_switches_customer_package(self) -> None:
         package = svc.current_material_package(db, case, PERMIT)
@@ -875,20 +876,11 @@ class Pages(unittest.TestCase):
 
     def test_wizard_job_script_is_well_formed(self) -> None:
         wizard = Path("app/domains/lupademo/templates/wizard.html").read_text(encoding="utf-8")
-        assistant_start = wizard.index('<aside class="assistant-rail"')
-        assistant_end = wizard.index("</aside>", assistant_start)
-        assistant = wizard[assistant_start:assistant_end]
-        self.assertNotIn("data-ai-jobs-panel", wizard[:assistant_start])
-        self.assertIn('data-job-initial-status="{{ assistant_job.status }}"', assistant)
-        self.assertIn("data-ai-job", assistant)
-        self.assertIn("data-ai-jobs-panel", assistant)
+        # Side panel replaced the old floating assistant-rail (Phase A, plan.md)
+        self.assertIn('{% include \'_side_panel.html\' %}', wizard)
+        self.assertNotIn('<aside class="assistant-rail"', wizard)
         self.assertIn("window.location.reload();", wizard)
         self.assertIn("}, 5000);", wizard)
-        self.assertIn("assistant_job = material_job_view if step == 2", assistant)
-        self.assertIn("form_suggestion_jobs[0] if step == 3", assistant)
-        self.assertIn("/ai/intake-analysis", assistant)
-        self.assertIn("/ai/suggest-form", assistant)
-        self.assertNotIn("ai_jobs[0].status in", wizard)
         self.assertIn('new Set(["succeeded", "failed", "cancelled"])', wizard)
 
         workbench = Path("app/domains/lupademo/templates/package_workbench.html").read_text(encoding="utf-8")
@@ -896,27 +888,23 @@ class Pages(unittest.TestCase):
         self.assertIn("window.setInterval(poll, 5000)", workbench)
         self.assertIn("window.location.reload();", workbench)
 
-    def test_wizard_progress_renders_in_assistant_for_step_jobs(self) -> None:
+    def test_wizard_progress_renders_in_pipeline_panel(self) -> None:
+        """Phase A: the wizard now uses the side panel (_pipeline_steps partial) instead of the floating assistant-rail."""
         material_job = svc.start_material_ingest_job(db, case, PERMIT, 1, azure_enabled=False)
         suggestion_job = svc.start_form_suggestions_job(db, case, PERMIT)
         try:
             step_two = client.get(f"{base}/wizard/2")
             step_three = client.get(f"{base}/wizard/3")
-            svc.cancel_ai_job(db, material_job["id"])
-            terminal_step_two = client.get(f"{base}/wizard/2")
         finally:
             for job in (material_job, suggestion_job):
-                if svc.find_ai_job(db, job["id"])["job"].get("status") in {"pending", "running"}:
+                found = svc.find_ai_job(db, job["id"])
+                if found["job"].get("status") in {"pending", "running"}:
                     svc.cancel_ai_job(db, job["id"])
 
         self.assertEqual(step_two.status_code, 200)
-        self.assertIn('class="assistant-job"', step_two.text)
+        self.assertIn('pipeline-section', step_two.text)
         self.assertEqual(step_three.status_code, 200)
-        self.assertIn('class="assistant-job"', step_three.text)
-        self.assertIn(f'data-job-id="{suggestion_job["id"]}"', step_three.text)
-        self.assertEqual(terminal_step_two.status_code, 200)
-        self.assertIn('class="assistant-job"', terminal_step_two.text)
-        self.assertIn('data-job-initial-status="cancelled"', terminal_step_two.text)
+        self.assertIn('pipeline-section', step_three.text)
 
     def test_every_demo_page_renders(self) -> None:
         paths = [

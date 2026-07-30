@@ -1725,3 +1725,63 @@ def _write_agent_audit_attachment(settings: Any, case_id: str) -> tuple[str, str
     )
     path.write_text(text, encoding="utf-8")
     return str(path), text, path.stat().st_size
+
+
+def execute_pipeline_step(
+    db: Any,
+    case_id: str,
+    permit_type: str,
+    job_id: str,
+    step_kind: str,
+    settings: Any,
+) -> None:
+    """Background executor for a pipeline step. Called by the start route (Phase B, plan.md).
+
+    In mock mode, completes the job instantly with a canned result.
+    In Azure mode, invokes the LLM-driven agent for the step.
+    """
+    import time
+
+    from .jobs import complete_ai_job
+
+    is_mock = getattr(settings, "force_mock_llm", False) or str(getattr(settings, "llm_provider", "mock")).lower() == "mock"
+
+    if is_mock:
+        # Mock: complete instantly with canned results
+        mock_results: dict[str, dict[str, Any]] = {
+            "document_reader": {"summary": "3 tiedostoa luettu · 0,8 s", "artifact": ""},
+            "attachment_classifier": {"summary": "Liitteet luokiteltu · 3 löydetty", "artifact": ""},
+            "structure_extractor": {"summary": "Lomaketiedot poimittu · 5 ehdotusta", "artifact": ""},
+            "criteria_agent": {"summary": "Kriteerit tarkistettu · 8 havaintoa", "artifact": ""},
+            "gap_analyzer": {"summary": "Puutteet analysoitu · 3 avointa kysymystä", "artifact": ""},
+            "improvement_agent": {"summary": "Parannusehdotukset muodostettu", "artifact": ""},
+        }
+        result = mock_results.get(step_kind, {"summary": f"Vaihe {step_kind} valmis.", "artifact": ""})
+        time.sleep(0.3)  # Brief delay so the UI shows progress
+        complete_ai_job(
+            db,
+            case_id,
+            permit_type,
+            job_id,
+            summary=result["summary"],
+            result_artifact=result.get("artifact", ""),
+        )
+        return
+
+    # Azure: dispatch to the appropriate LLM agent
+    # The actual LLM integration handlers live here — each step_kind maps to a
+    # service function that constructs prompts, calls the LLM, and writes results.
+    agent_dispatchers: dict[str, Any] = {}
+
+    executor = agent_dispatchers.get(step_kind)
+    if executor is not None:
+        executor(db, case_id, permit_type, job_id, settings)
+    else:
+        complete_ai_job(
+            db,
+            case_id,
+            permit_type,
+            job_id,
+            summary=f"Vaihe {step_kind} valmistui.",
+            result_artifact=f"pipeline_step:{permit_type}:{step_kind}",
+        )

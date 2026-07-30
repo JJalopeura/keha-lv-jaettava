@@ -252,7 +252,6 @@ class MockLLMClient:
 
     def _mock_text(self, input_text: str) -> str:
         low = (input_text or "").lower()
-        preview = (input_text or "")[:260]
 
         if "esitarkistukseen erikoistunut" in low or "esiarvio" in low:
             return (
@@ -299,7 +298,7 @@ class MockLLMClient:
         if "suositus" in low:
             return "## Suositus\nEtene ehdolliseen hyväksyntään. Edellytä lisäselvitykset ennen lopullista päätöstä."
 
-        return f"[Demo mode] Realistic mock response.\n\nPrompt preview:\n{preview}"
+        return "Hei! Olen AI-apuri ja autan sinua hakemuksen kanssa. Kysy rohkeasti hakemuksen tiedoista, liitteistä tai tarkistuksista — vastaan suomeksi käyttäen hakemuksesi tietoja."
 
     def responses(
         self,
@@ -324,3 +323,9 @@ class MockLLMClient:
 
     def extract_output_text(self, resp: dict[str, Any]) -> str | None:
         return resp.get("output_text")
+
+    def responses_stream(self, *, input_text: str, **kwargs: Any):
+        """Simulate streaming by yielding mock text in chunks."""
+        text = self._mock_text(input_text or "")
+        for i in range(0, len(text), 3):
+            yield text[i:i+3]

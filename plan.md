@@ -1,209 +1,323 @@
-# Plan: making the LV AI-demo production-ish
+# Plan: AI tools side panel with step-based progress and copilot chat
 
-## 1. Current state (what I found)
+## 1. Design principles (from Microsoft Copilot UX guidelines)
 
-- **Code is concentrated in two giant files**: `routes.py` (1264 lines, 122
-  functions, one big `create_lupademo_router()`) and `services.py` (5524
-  lines, 182 functions/classes, no submodules). Everything — intake,
-  suggestions, checks, packaging, authority, API, metrics, benchmark lab —
-  lives in the same two files. This is the main reason the codebase "feels
-  like a mess": there is no seam between subsystems.
-- **AI output shapes are inconsistent**: `PackageAnalysisResult`,
-  `Issue`/`Finding`, extraction items, and job payloads are dataclasses in
-  some places and raw dicts elsewhere (`_dict`/`_list`/`_plain` helpers exist
-  specifically to paper over this). Templates reach into
-  `field_extraction_queue.get('items', [])`, `item.suggested_value`,
-  `finding.evidence_refs` with mixed dict/attr access — a template typo or a
-  missing key fails silently (Jinja swallows it) instead of erroring, which
-  is exactly why "AI analyze results are not easily usable."
-- **There are too many parallel UI entry points** for what is conceptually
-  one flow: `landing.html`, `applicant_start.html`, the 6-step
-  `wizard.html` (735 lines), the newer `package_new.html` /
-  `package_workbench.html` (a *second*, more modern flow that already
-  covers readiness/findings/extraction review), `lv_project.html`,
-  `authority_queue/detail.html`, `api_demo.html`, `ui_only.html`,
-  `presenter.html`, `benchmark_lab.html`, `production_hardening.html`,
-  `metrics.html`. Several of these overlap in purpose (there are two ways to
-  upload material, two ways to see AI results — wizard step 3/4 vs. the
-  workbench — and the workbench even links back into the old wizard for
-  "see all checks").
-- **There is already a target design nobody finished building**:
-  `docs/specs/v5/*.yaml` defines a clean target IA (`target_routes.yaml`,
-  `page_blueprints.yaml`), a typed AI job contract (`ai_job_contract.yaml`),
-  a typed package/document/finding contract
-  (`application_package_contract.yaml`), copy text, telemetry events, and
-  acceptance tests (`acceptance_tests.yaml`, AT01–AT12). The
-  `/applicant/packages/new` + `/applicant/packages/{id}` workbench in
-  `routes.py`/`services.py` is a **partial, uncoordinated implementation of
-  that spec** — it exists alongside the old wizard rather than replacing it.
-  This spec is the fastest path to "clear usability, clear functions that
-  return good data": finish it instead of inventing a new IA.
-- **No module boundaries = no enforceable contracts.** Because
-  `run_json_agent`, `normalize_agent_payload`, and every feature function
-  live in one file with `Any`-typed `db`/`settings` params, nothing stops a
-  route from reading a field that doesn't exist on the result it just got.
+The [Copilot MCP Apps UI guidelines](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/plugin-mcp-apps-ui-guidelines)
+and [Atlas Design chat pattern](https://design.learn.microsoft.com/patterns/chat.html)
+provide the foundation:
 
-## 2. Decision
+| Principle | What it means for us |
+|---|---|
+| **Conversation-first** | Chat is always visible and primary. The side panel is a workspace, not a replacement for conversation. |
+| **Progressive complexity** | Start with glanceable state. Expand only when the user chooses to act. Each AI step is a discrete, user-triggered action. |
+| **Preserve human control** | Every AI action is user-initiated. Results require explicit accept/reject. Nothing auto-applies. |
+| **Scale density with intent** | Inline status for idle state. Side-by-side panel for active work. The panel always occupies its space — no layout jumping. |
+| **Extract capabilities, don't replicate** | Each AI agent is one atomic capability with one button. Not a monolithic "analyze everything" black box. |
+| **No full applications in widgets** | The side panel is a focused task workspace — no tabs, no sub-navigation, no global chrome. |
 
-Adopt `docs/specs/v5` as the target IA (it already matches what "good" looks
-like) and use it as the spec to finish, not a new redesign to invent. Two
-work streams, doable independently but most valuable together:
+## 2. Target layout
 
-- **A. Data layer**: make every AI-producing function return one typed,
-  validated shape per concept (Job, Package, DocumentAsset, Finding,
-  ExtractionCandidate), matching `ai_job_contract.yaml` /
-  `application_package_contract.yaml`. Templates/API consume the typed
-  shape only — no raw dict poking.
-- **B. UI layer**: promote the applicant workbench
-  (`/applicant/packages/{id}`) to be the single applicant-facing screen;
-  retire the old 6-step wizard's *AI-results* steps (3/4) into it; move
-  demo-only surfaces (`presenter`, `benchmark_lab`,
-  `production_hardening`, `ui_only`, raw `api_demo`) under `/demo-lab` as
-  the spec already dictates, out of primary nav.
+```
+┌─ App header (light_base.html, unchanged) ─────────────────────────────┐
+│  Lupa-apuri  │  Työtila: Hakija ja LV  │  [workspace picker]          │
+├─ Project context bar ─────────────────────────────────────────────────┤
+│  Avoin hanke: Rakennuslupa Vantaa  │  Rakennuslupa  │  v1             │
+├─ Wizard stepper (when entered from wizard) ───────────────────────────┤
+│  ✓ 1. Yhteiset tiedot  →  ✓ 2. Aineisto  →  ● 3. Hakemus  →  4. ... │
+├────────────────────────────────────────────┬──────────────────────────┤
+│                                            │  AI-työkalut  360px       │
+│  Workbench main (flex: 1)                  │                          │
+│  ┌──────────────────────────────────┐      │  ┌──────────────────────┐ │
+│  │ Readiness dashboard              │      │  │ ○ Dokumenttien lukija│ │
+│  │ Score ring + summary             │      │  │   [▶ Aloita]         │ │
+│  └──────────────────────────────────┘      │  │                      │ │
+│  ┌──────────────────────────────────┐      │  │ ○ Liitteiden luokit. │ │
+│  │ Findings list                    │      │  │   [  Odottaa]        │ │
+│  │ Blocking / major / minor         │      │  │                      │ │
+│  └──────────────────────────────────┘      │  │ ○ Lomakkeen rakent.  │ │
+│  ┌──────────────────────────────────┐      │  │   [  Odottaa]        │ │
+│  │ Extraction review queue          │      │  │                      │ │
+│  │ Field-by-field accept/reject     │      │  │ ... (6 steps total)  │ │
+│  └──────────────────────────────────┘      │  ├──────────────────────┤ │
+│  ┌──────────────────────────────────┐      │  │ 💬 Keskustele AI:n   │ │
+│  │ Attachment scope                 │      │  │   kanssa             │ │
+│  │ Official / AI-only / undecided   │      │  │ [copilot chat area]  │ │
+│  └──────────────────────────────────┘      │  ├──────────────────────┤ │
+│                                            │  │ ❓ Apua               │ │
+│                                            │  └──────────────────────┘ │
+└────────────────────────────────────────────┴──────────────────────────┘
+```
 
-## 3. Phased steps
+### Layout rules
 
-### Phase 0 — Safety net (before touching anything)
+- **Side panel is always 360px wide** (per `v5/visual_design_tokens.yaml`). Even when idle, the space is reserved — no content shift.
+- **Chat is always visible in the panel** (conversation-first principle). The chat input uses the Atlas Design `textarea-form` pattern with send button inside the textarea footer.
+- **On narrow viewports (<1024px)**: the side panel collapses to a bottom sheet (per `v5/visual_design_tokens.yaml` `mobile: bottom-sheet`). A floating action button toggles it.
+- **Global padding of the panel**: 24px (per Copilot MCP guidelines).
 
-1. Run `.venv/bin/python -m unittest discover tests` to record the current
-   passing baseline.
-2. Add one characterization test per major flow that doesn't have one yet:
-   package upload → analyze → readiness score present; suggestion
-   accept/reject; submission gate. (Smallest thing that fails if refactor
-   breaks behavior — no new framework, extend `tests/test_smoke.py`.)
+## 3. Side panel anatomy (top to bottom)
 
-### Phase 1 — Typed AI result contracts (services.py)
+### 3a. AI job steps section
 
-1. Turn `PackageAnalysisResult`, `PackageFinding`, `ExtractedField`/
-   extraction-queue items, and the AI job dict into real dataclasses with
-   `to_dict()`/`from_dict()`, matching the field lists already specified in
-   `docs/specs/v5/application_package_contract.yaml` and
-   `ai_job_contract.yaml` (fields like `severity`, `category`,
-   `evidence_refs`, `status`, `eta_seconds_remaining` are already named
-   there — just enforce them).
-2. Delete the `_dict`/`_list`/`_plain`/`_as_dict` shim functions once
-   callers pass typed objects instead of "maybe a dict, maybe a dataclass."
-3. Every template that reads AI output (`package_workbench.html`,
-   `wizard.html` steps 3/4, `authority_detail.html`) switches to the typed
-   field names only. A missing/renamed field now breaks loudly (Jinja
-   `StrictUndefined` — turn this on in `main.py`'s Jinja env) instead of
-   rendering blank.
-4. Verification: AT05/AT06 from `acceptance_tests.yaml` (readiness score +
-   findings + extraction queue render; extraction never mutates form before
-   accept) — write as unit tests against the dataclasses, not just visual.
+Six discrete, user-triggerable steps. Each step is an independent AI job with `depends_on` chain.
 
-### Phase 2 — Split the two mega-files
+```
+┌──────────────────────────────┐
+│ AI-työkalut                  │
+│                              │
+│ ✓ 1. Dokumenttien lukija     │
+│    3 tiedostoa · 0,8 s       │
+│    [Näytä tiedot]            │
+│                              │
+│ ● 2. Liitteiden luokittelija │
+│    ████████░░ 67 % · ~4 s    │
+│    [Keskeytä]                │
+│                              │
+│ ○ 3. Lomakkeen rakenteistaja │
+│    [  Odottaa edellistä]     │
+│                              │
+│ ○ 4. Kriteeritarkistus       │
+│    [  Odottaa]               │
+│                              │
+│ ○ 5. Puutteiden tarkastus    │
+│    [  Odottaa]               │
+│                              │
+│ ○ 6. Parannusehdotukset      │
+│    [  Odottaa]               │
+└──────────────────────────────┘
+```
 
-1. **DONE.** Split `services.py` into `app/domains/lupademo/services/` based on
-   the actual call-dependency graph (analyzed mechanically, not guessed):
-   `core.py` (dataclasses/contracts, form schemas & criteria, artifact/db
-   primitives, prompt rendering, common-data sync — no intra-package deps),
-   `jobs.py` (generic AI job lifecycle, depends on core only), `intake.py`
-   (attachments/material packages/ingestion/extraction/retrieval, depends on
-   core+jobs), `application.py` (suggestions, checks, package analysis,
-   submission packaging, authority, chat/voice, metrics/benchmark, external
-   API — depends on core+jobs+intake). One deliberate job-runner ->
-   feature-finalizer callback uses a local/deferred import
-   (`_advance_ai_job_in_store` in `jobs.py`) rather than forcing an
-   artificial extra module. `services/__init__.py` re-exports everything so
-   `routes.py`/`scenarios.py`'s `services as svc; svc.xxx()` call sites are
-   unchanged. The originally-planned finer 7-way split (suggestions/checks/
-   packaging/authority as separate files) was not used — the actual
-   dependency graph showed them tightly mutually coupled (suggestions calls
-   checks, checks calls intake helpers, authority calls both), so forcing
-   them apart would have meant fragile cross-imports for no real clarity
-   gain; they're grouped in `application.py` instead.
-2. **DONE.** Split `routes.py` into `app/domains/lupademo/routes/` package:
-   `applicant.py` (42 handlers — wizard, intake, application studio, common
-   data, packaging, chat/voice), `authority.py` (9 handlers — queue,
-   detail, observations, summary/memo), `api_v1.py` (7 handlers — external
-   suggestion-service endpoints), `admin.py` (22 handlers — criteria admin,
-   API demo/playground, internal AI job API), `demo_lab.py` (14 handlers —
-   benchmark, metrics, audit, UI-only demo). Each module exports
-   `create_{name}_router(db_getter, settings_getter) -> APIRouter`.
-   `routes/__init__.py` contains the thin `create_lupademo_router` that
-   mounts all 5 sub-routers. The `app/main.py` import is backward-compatible
-   (`routes` now resolves to `routes/__init__.py`). Context helpers
-   (`context`, `_context_app`) live in `applicant.py`; each sub-router has
-   its own `db()`/`settings()` closures. Largest route file: applicant.py
-   at 382 lines.
-3. Verification: `lsp_diagnostics`/`lens_diagnostics` clean (all blocking
-   errors are sandbox `reportMissingImports` noise — pyrightconfig.json in
-   repo root), stubbed import test confirms all 5 sub-routers build, user
-   smoke tests pass. File sizes: largest route file applicant.py at 382
-   lines ✓, largest service file application.py at 3002 lines (still a
-   monolithic domain bucket — candidate for a surgical split later only
-   when navigation pain materializes).
+#### Step states
 
-### Phase 3 — One applicant flow
+| State | Visual | Button | Meaning |
+|---|---|---|---|
+| `pending` | Hollow circle ○, gray text | `Aloita` | Ready, user hasn't triggered yet |
+| `blocked` | Hollow circle ○, muted text | `Odottaa edellistä vaihetta` | Previous step must finish first |
+| `running` | Filled blue ●, progress bar | `Keskeytä` | AI is processing |
+| `waiting_for_user` | Filled amber ●, hand icon | `Tarkista (3)` | AI done, needs human review. Count = pending items. |
+| `completed` | Green check ✓ | `Näytä tiedot` | Done, results link to relevant section in main area |
+| `failed` | Red ✗, error summary | `Yritä uudelleen` | Error, can retry |
 
-**Status: DONE (pragmatic stopping point)**
+#### Step pipeline definition (in `services/jobs.py`)
 
- 1. DONE. Landing page rewrote to match `docs/specs/v5/copy_texts_fi.yaml` CTAs.
- 2. DONE. Wizard steps 3 (suggestions) and 4 (checks) redirect to
-    `/applicant/packages/{package_id}` workbench, falling back to step 2
-    when no `current_material_package`.
- 3. DONE. `/demo-lab` route added (redirects to benchmark-lab). Forbidden
-    names audit (P2X/Ren-Gas/SharpCell) confirmed only in seed/test data.
- 4. DONE. `api_demo.html` + `ui_only.html` StrictUndefined `.get()` fixes.
+```python
+PIPELINE_STEPS = [
+    {
+        "kind": "document_reader",
+        "label": "Dokumenttien lukija",
+        "description": "Lukee ja tunnistaa ladatut asiakirjat",
+        "depends_on": None,
+        "eta_formula": lambda docs, chars: min(30, 5 + docs * 2),
+        "agents": ["text_extractor"],
+    },
+    {
+        "kind": "attachment_classifier",
+        "label": "Liitteiden luokittelija",
+        "description": "Päättelee liitteiden käyttötarkoituksen",
+        "depends_on": "document_reader",
+        "eta_formula": lambda docs, chars: min(20, 3 + docs),
+        "agents": ["material_classifier"],
+    },
+    {
+        "kind": "structure_extractor",
+        "label": "Lomakkeen rakenteistaja",
+        "description": "Poimii hakemuskentät aineistosta",
+        "depends_on": "attachment_classifier",
+        "eta_formula": lambda docs, chars: min(60, 10 + docs * 3),
+        "agents": ["structure_extractor", "field_suggestion_agent"],
+    },
+    {
+        "kind": "criteria_agent",
+        "label": "Kriteeritarkistus",
+        "description": "Vertaa hakemusta ohjeisiin ja kriteereihin",
+        "depends_on": "structure_extractor",
+        "eta_formula": lambda docs, chars: min(45, 12 + docs * 2),
+        "agents": ["criteria_assessor", "completeness_validator"],
+    },
+    {
+        "kind": "gap_analyzer",
+        "label": "Puutteiden ja ristiriitojen tarkastus",
+        "description": "Etsii puutteet ja epäjohdonmukaisuudet",
+        "depends_on": "criteria_agent",
+        "eta_formula": lambda docs, chars: min(45, 12 + docs * 2),
+        "agents": ["gap_analyzer", "consistency_validator", "question_generator"],
+    },
+    {
+        "kind": "improvement_agent",
+        "label": "Parannusehdotukset",
+        "description": "Muodostaa korjaussuunnitelman",
+        "depends_on": "gap_analyzer",
+        "eta_formula": lambda docs, chars: 12,
+        "agents": [],
+    },
+]
+```
 
-**Deferred in this phase:**
+#### ETA strategy
 
-- Full wizard retirement — `wizard.html` (735 lines) still serves steps
-  1 (LV common data), 2 (upload), 5 (package preview), 6 (receipt).
-  Moving step 1 to a `/applicant/common-data` page, step 2 to
-  `/applicant/packages/{id}/upload`, and steps 5/6 into workbench
-  finalize buttons would let us delete the wizard entirely.
-- Copilot sidebar — currently link to `/chat`; spec calls for inline
-  sidebar in workbench.
-- AI jobs tracker widget and help panel in side rail.
+Azure OpenAI's Responses API does **not** return an ETA field. The strategy:
 
-### Phase 4 — Authority side
+1. **Before call**: Use the `eta_formula` — document-count and character-count based. Shown as initial estimate.
+2. **During streaming call**: Count received tokens against `max_output_tokens`. `progress_pct = received_tokens / max_output_tokens * 100`. Estimate remaining from elapsed time and current progress. The progress bar and ETA refine in real-time.
+3. **After call**: Show actual elapsed time. The estimate is replaced with the real value.
 
-**Status: DONE**
+This works identically for mock (instant → 100% immediately) and Azure (progressive). No special-casing.
 
- 1. DONE. `authority_detail.html` StrictUndefined `.get()` fixes.
- 2. DONE. Authority page already has all 5 v5 blueprint cards (AI
-    summary, document inventory, observations, additional-info draft,
-    decision memo draft). Data source aligned to typed
-    `PackageFinding`/readiness from Phase 1.
+### 3b. Copilot chat section
 
-### Phase 5 — Cleanup pass
+Uses the [Atlas Design chat pattern](https://design.learn.microsoft.com/patterns/chat.html) for message styling and the `textarea-form` component for input.
 
-**Status: DONE**
+```
+┌──────────────────────────────┐
+│ 💬 Keskustele AI:n kanssa    │
+│                              │
+│  ┌─ chat messages ─────────┐ │
+│  │                          │ │
+│  │ [AI] Miten voin auttaa   │ │
+│  │      hakemuksen kanssa?  │ │
+│  │                          │ │
+│  │      [You] Onko tämä     │ │
+│  │            liite pakolli-│ │
+│  │            nen?          │ │
+│  │                          │ │
+│  │ [AI] Kyllä, rakennus-    │ │
+│  │      piirustus on        │ │
+│  │      pakollinen liite.   │ │
+│  │                          │ │
+│  └──────────────────────────┘ │
+│                              │
+│  ┌─ input area ────────────┐ │
+│  │ Kysy tai kuvaile...  ▐  │ │
+│  │ 0 / 500            [↑] │ │
+│  └──────────────────────────┘ │
+│                              │
+│  Ehdotukset:                 │
+│  [Mitä liitteitä puuttuu?]   │
+│  [Mikä on hakemuksen tila?]  │
+│  [Selitä tämä kriteeri]      │
+└──────────────────────────────┘
+```
 
- 1. Dead template audit: all 24 templates in use (20 directly referenced
-    from routes, 3 base templates via `{% extends %}`, 1
-    (`authority_detail.html`) served from authority route). Nothing to
-    delete.
- 2. `/ponytail-review` ran — one finding: stray whitespace in
-    `demo_lab.py:29`.
- 3. `AGENTS.md` architecture section updated to reflect `services/`
-    and `routes/` package layout.
+#### Chat UI rules (from Atlas Design)
 
-## 4. Explicit non-goals (YAGNI)
+- **Messages**: AI responses use `message-sm` (full width). User messages use `message-sm message-sender width-auto` (fit to content, right-aligned).
+- **Input**: The `textarea-form` pattern with footer containing character count (left) and send button (right).
+- **Suggestion pills**: After each AI response, show 2–4 clickable suggestion chips using `tag tag-sm tag-suggestion`.
+- **Error state**: Textarea stays outlined in blue (not red), per Copilot standard.
+- **Streaming indicator**: Animated caret `|` at end of AI message while tokens arrive.
 
-- No new framework/ORM/state-management library — FastAPI + SQLite +
-  Jinja stays; the mess is organization, not tooling.
-- No auth/production hardening beyond what's already stubbed
-  (`production_hardening.html`) — out of scope per `AGENTS.md`.
-- Not rewriting the mock LLM or Azure client — they're not where the
-  usability complaint lives.
+#### Chat interaction rules (from Copilot MCP guidelines)
 
-## 5. Status summary (2024)
+- **Chat is primary**: The conversation is the source of intent. The AI steps panel is a workspace — the user can chat while a step is running.
+- **No duplicate features**: Don't recreate prompt input, suggestion chips, or reasoning summaries in the main workbench area. Those belong in the chat.
+- **Chat actions trigger AI steps**: When the user clicks a suggestion pill like "Mitä liitteitä puuttuu?", it can auto-fill the chat input or trigger a relevant AI step. The chat can also propose actions that the user accepts — e.g. "Haluatko, että käynnistän kriteeritarkistuksen?" → user clicks "Kyllä" → step 4 starts.
 
-All phases done to pragmatic stopping points:
+### 3c. Help section
 
-- **Phase 1**: Typed contracts extended, `StrictUndefined` everywhere, all
-  crashes surfaced and fixed.
-- **Phase 2**: `services/` split into 4 modules, `routes/` split into 5
-  sub-routers. No broken imports, 17 smoke tests pass.
-- **Phase 3**: Landing page, wizard redirects, demo-lab route, template
-  fixes done. Full wizard retirement + copilot sidebar deferred.
-- **Phase 4**: Authority page aligned, StrictUndefined fixes done.
-- **Phase 5**: Dead template audit (nothing to delete), plan finalization.
+```
+┌──────────────────────────────┐
+│ ❓ Apua                       │
+│                              │
+│ Voit käynnistää AI-työkalut  │
+│ yksi kerrallaan. Jokainen    │
+│ vaihe tuottaa tulokset,      │
+│ jotka näet työpöydällä.      │
+│                              │
+│ AI ei tee muutoksia          │
+│ automaattisesti. Sinä        │
+│ hyväksyt tai hylkäät         │
+│ jokaisen ehdotuksen.         │
+│                              │
+│ [Näytä ohjeet kokonaan]      │
+└──────────────────────────────┘
+```
 
-**Open bug**: Analysis page doesn't auto-advance from progress bar to
-results on page reload (analysis completes, data saved correctly).
-Frontend polling/timing issue — not blocking for demo use (manual
-refresh works).
+## 4. `waiting_for_user` job status
+
+### Current problem
+
+Jobs go `running → completed` directly. There is no distinction between "AI finished" and "human finished reviewing AI output."
+
+### New state machine
+
+```
+queued → running → waiting_for_user → completed
+                  ↘ failed
+                  ↘ cancelled
+     waiting_for_user → running (re-analysis triggered after review)
+```
+
+### When does a job enter `waiting_for_user`?
+
+A job enters `waiting_for_user` when AI produces results requiring human review:
+
+- `structure_extractor` produces extraction candidates → `waiting_for_user` until all accepted/rejected
+- `criteria_agent` produces findings → `waiting_for_user` until all resolved
+- `gap_analyzer` produces open questions → `waiting_for_user` until addressed
+
+### UI behavior
+
+- The step shows an amber indicator with count: "Odottaa hyväksyntääsi · 12 poimintaa jäljellä"
+- The corresponding main-area section is highlighted
+- The "Tarkista" button links directly to the relevant section (e.g. `#extraction-queue`)
+- Once all pending items are addressed, the job auto-completes
+- The next step in the pipeline unblocks
+
+## 5. Changes needed (ordered by dependency)
+
+### Phase A: Side panel skeleton (CSS + template)
+
+1. Add the 360px right rail to `package_workbench.html` with three stacked sections.
+2. CSS: `.workbench-layout` becomes a two-column grid. `.workbench-side` is fixed 360px, sticky, with 24px internal padding.
+3. The current `analysis-panel` progress bar moves into the side panel's AI steps section.
+4. The current standalone chat link is replaced with the inline copilot chat in the side panel.
+5. Narrow viewport: media query collapses side panel to a bottom sheet.
+
+### Phase B: Step pipeline (`services/jobs.py`)
+
+1. Define `PIPELINE_STEPS` list in `jobs.py`.
+2. Add `start_pipeline_step(db, case_id, permit_type, step_kind)` — creates a job for one step, respecting `depends_on`.
+3. Add `pipeline_status(db, case_id, permit_type)` — returns status of all 6 steps for the template.
+4. Add route: `POST /applicant/packages/{id}/steps/{step_kind}/start` — user triggers a step.
+5. Add route: `POST /applicant/packages/{id}/steps/{step_kind}/cancel` — user cancels a running step.
+6. Wire ETA formulas into `start_ai_job()` so jobs get document-count-based estimates.
+
+### Phase C: `waiting_for_user` status (`services/jobs.py`)
+
+1. Add `waiting_for_user` to the job status enum.
+2. Add `complete_ai_job_with_review(db, job_id)` — transitions to `waiting_for_user` instead of `completed`.
+3. Add `resolve_waiting_job(db, job_id)` — transitions to `completed` when all pending items are addressed.
+4. Update `ai_job_status_payload()` to surface `waiting_for_user` status and pending item counts.
+5. The extraction accept/reject handlers trigger `resolve_waiting_job` when the queue is empty.
+
+### Phase D: Copilot chat integration
+
+1. Style chat messages using the Atlas `message-sm` / `message-sender` / `width-auto` pattern.
+2. Style chat input using the `textarea-form` pattern with footer (character count + send button).
+3. Add suggestion pills after AI responses using `tag tag-sm tag-suggestion`.
+4. Wire suggestion pills to either fill the chat input or trigger AI step actions.
+5. Streaming indicator: animated caret during token delivery.
+
+### Phase E: Wizard-workbench handoff
+
+1. When entering the workbench from the wizard (step 3 redirect), pass a `from_wizard=1` query parameter.
+2. The workbench renders the wizard stepper as a condensed breadcrumb above the project context bar.
+3. The stepper is read-only — clicking a step navigates back to the wizard at that step.
+4. When entering standalone (direct `/applicant/packages/{id}`), no stepper is shown.
+
+## 6. What does NOT change
+
+- **Wizard is preserved.** Steps 1, 2, 5, 6 remain in `wizard.html`. The wizard is the linear bookend flow; the workbench is the AI-heavy iterative middle.
+- **Authority side is untouched.** This plan only affects applicant-facing AI tooling.
+- **API v1 routes are untouched.** The step pipeline uses existing job infrastructure under the hood; external API consumers see no change.
+- **`light_base.html` shell is untouched.** Only the workbench template changes.
+- **No new dependencies.** All styling uses existing CSS custom properties plus the Atlas Design patterns implemented as plain CSS (no framework added).
+
+## 7. Non-goals (YAGNI)
+
+- No WebSocket or real-time push — page refresh and polling are sufficient for this demo.
+- No multi-tenant step pipelines — one pipeline per package, one active step at a time.
+- No drag-and-drop reordering of steps — the pipeline order is fixed.
+- No chat history persistence beyond the current session — the existing `contextual_chat` artifact is sufficient.
+- No Fluent 2 React components — we use plain HTML/CSS styled to match the Atlas/Fluent patterns.
+

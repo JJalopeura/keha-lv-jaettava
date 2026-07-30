@@ -66,7 +66,7 @@ def find_ai_job(db: Any, job_id: str) -> dict[str, Any]:
 
 
 def ai_job_status_payload(job: dict[str, Any], *, case_id: str = "", application_id: str = "") -> dict[str, Any]:
-    status_map = {"completed": "succeeded", "pending": "queued"}
+    status_map = {"completed": "succeeded", "pending": "queued", "waiting_for_user": "needs_user_input"}
     status = status_map.get(str(job.get("status") or ""), str(job.get("status") or "running"))
     updated_at = float(job.get("updated_at") or job.get("created_at") or time.time())
     events_payload = []
@@ -345,3 +345,221 @@ def complete_ai_job(
     save_artifact(db, case_id, "ai_jobs", permit_type, store)
     event(db, case_id, "ai.job.completed" if not failed else "ai.job.failed", "AI job finished", {"job_id": job_id, "permit_type": permit_type, "status": selected.get("status")})
     return selected
+
+
+# ── Pipeline step definitions (plan.md Phase B) ──
+
+PIPELINE_STEPS: list[dict[str, Any]] = [
+    {
+        "kind": "document_reader",
+        "label": "Dokumenttien lukija",
+        "description": "Lukee ja tunnistaa ladatut asiakirjat",
+        "depends_on": None,
+        "agents": ["text_extractor"],
+    },
+    {
+        "kind": "attachment_classifier",
+        "label": "Liitteiden luokittelija",
+        "description": "Päättelee liitteiden käyttötarkoituksen",
+        "depends_on": "document_reader",
+        "agents": ["material_classifier"],
+    },
+    {
+        "kind": "structure_extractor",
+        "label": "Lomakkeen rakenteistaja",
+        "description": "Poimii hakemuskentät aineistosta",
+        "depends_on": "attachment_classifier",
+        "agents": ["structure_extractor", "field_suggestion_agent"],
+    },
+    {
+        "kind": "criteria_agent",
+        "label": "Kriteeritarkistus",
+        "description": "Vertaa hakemusta ohjeisiin ja kriteereihin",
+        "depends_on": "structure_extractor",
+        "agents": ["criteria_assessor", "completeness_validator"],
+    },
+    {
+        "kind": "gap_analyzer",
+        "label": "Puutteiden ja ristiriitojen tarkastus",
+        "description": "Etsii puutteet ja epäjohdonmukaisuudet",
+        "depends_on": "criteria_agent",
+        "agents": ["gap_analyzer", "consistency_validator", "question_generator"],
+    },
+    {
+        "kind": "improvement_agent",
+        "label": "Parannusehdotukset",
+        "description": "Muodostaa korjaussuunnitelman",
+        "depends_on": "gap_analyzer",
+        "agents": [],
+    },
+]
+
+
+def _step_depends_on(step_kind: str) -> str | None:
+    for step in PIPELINE_STEPS:
+        if step["kind"] == step_kind:
+            return step.get("depends_on")
+    return None
+
+
+def _count_attachments(db: Any, case_id: str, permit_type: str) -> int:
+    """Count attachments for ETA estimation."""
+    from .core import _list
+
+    try:
+        attachments = _list(artifact_json(db, case_id, "attachments", permit_type, {}).get("files", []))
+        return len(attachments)
+    except Exception:
+        return 0
+
+
+def _eta_for_step(step_kind: str, attachment_count: int) -> int:
+    """Return estimated seconds for a pipeline step based on document count."""
+    formulas = {
+        "document_reader": lambda docs: min(30, 5 + docs * 2),
+        "attachment_classifier": lambda docs: min(20, 3 + docs),
+        "structure_extractor": lambda docs: min(60, 10 + docs * 3),
+        "criteria_agent": lambda docs: min(45, 12 + docs * 2),
+        "gap_analyzer": lambda docs: min(45, 12 + docs * 2),
+        "improvement_agent": lambda docs: 12,
+    }
+    fn = formulas.get(step_kind)
+    return fn(attachment_count) if fn else 20
+
+
+def _resolve_waiting_jobs(db: Any, case_id: str, permit_type: str) -> None:
+    """Auto-resolve any waiting_for_user jobs whose review queues are empty."""
+    store = _job_store(db, case_id, permit_type)
+    changed = False
+    for job in store.get("jobs", []):
+        if job.get("status") != "waiting_for_user":
+            continue
+        kind = job.get("kind")
+        if kind == "structure_extractor":
+            queue = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []})
+            pending = [i for i in queue.get("items", []) if i.get("status") == "pending"]
+            if not pending:
+                job["status"] = "completed"
+                job["progress_pct"] = 100
+                job["eta_seconds"] = 0
+                job["updated_at"] = time.time()
+                job["finished_at"] = time.time()
+                job["summary"] = "Kaikki poiminnat käsitelty."
+                changed = True
+    if changed:
+        save_artifact(db, case_id, "ai_jobs", permit_type, store)
+
+
+def pipeline_status(db: Any, case_id: str, permit_type: str) -> list[dict[str, Any]]:
+    """Return the status of all 6 pipeline steps for the given case/permit type."""
+    permit_type = application_id_for(permit_type)
+    jobs = list_ai_jobs(db, case_id, permit_type)
+    attachment_count = _count_attachments(db, case_id, permit_type)
+
+    # Auto-resolve waiting_for_user jobs whose extraction queue is now empty
+    _resolve_waiting_jobs(db, case_id, permit_type)
+    # Re-fetch after potential resolution
+    jobs = list_ai_jobs(db, case_id, permit_type)
+
+    step_states: list[dict[str, Any]] = []
+    for step_def in PIPELINE_STEPS:
+        kind = step_def["kind"]
+        matching = [j for j in jobs if j.get("kind") == kind]
+        latest = matching[0] if matching else None
+
+        state = "pending"
+        blocked_reason = ""
+        summary = ""
+        progress_pct = 0
+        eta_seconds = 0
+        pending_count = 0
+
+        if latest:
+            status = latest.get("status")
+            if status == "running":
+                state = "running"
+                progress_pct = latest.get("progress_pct", 0)
+                eta_seconds = latest.get("eta_seconds", 0)
+            elif status == "waiting_for_user":
+                state = "waiting_for_user"
+                queue = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []})
+                pending_count = len([i for i in queue.get("items", []) if i.get("status") == "pending"])
+            elif status == "failed":
+                state = "failed"
+                summary = latest.get("summary", "Virhe")
+            elif status == "completed":
+                state = "completed"
+                summary = latest.get("summary", "Valmis")
+            elif status == "cancelled":
+                state = "pending"
+
+        # Check depends_on blocking
+        if state == "pending":
+            dep = step_def.get("depends_on")
+            if dep:
+                dep_jobs = [j for j in jobs if j.get("kind") == dep and j.get("status") == "completed"]
+                if not dep_jobs:
+                    state = "blocked"
+                    blocked_reason = "Odottaa edellistä vaihetta"
+
+        step_states.append(
+            {
+                "kind": kind,
+                "label": step_def["label"],
+                "description": step_def.get("description", ""),
+                "state": state,
+                "blocked_reason": blocked_reason,
+                "summary": summary,
+                "progress_pct": progress_pct,
+                "eta_seconds": eta_seconds if eta_seconds else _eta_for_step(kind, attachment_count),
+                "pending_count": pending_count,
+                "depends_on": step_def.get("depends_on"),
+                "job_id": latest.get("id") if latest and state in {"running", "waiting_for_user"} else "",
+            }
+        )
+
+    return step_states
+
+
+def start_pipeline_step(
+    db: Any,
+    case_id: str,
+    permit_type: str,
+    step_kind: str,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Start one pipeline step, respecting depends_on unless force=True."""
+    permit_type = application_id_for(permit_type)
+
+    step_def = next((s for s in PIPELINE_STEPS if s["kind"] == step_kind), None)
+    if step_def is None:
+        raise ValueError(f"unknown_pipeline_step: {step_kind}")
+
+    if not force:
+        dep = step_def.get("depends_on")
+        if dep:
+            dep_jobs = list_ai_jobs(db, case_id, permit_type)
+            if not any(j.get("kind") == dep and j.get("status") == "completed" for j in dep_jobs):
+                raise ValueError(f"step_blocked_by_dependency: {step_kind} requires {dep} to be completed")
+
+    # Prevent starting an already-running step
+    running = [j for j in list_ai_jobs(db, case_id, permit_type) if j.get("kind") == step_kind and j.get("status") in {"running", "waiting_for_user"}]
+    if running:
+        raise ValueError(f"step_already_active: {step_kind}")
+
+    attachment_count = _count_attachments(db, case_id, permit_type)
+    eta = _eta_for_step(step_kind, attachment_count)
+    is_mock = os.getenv("KEHA_LV_FORCE_MOCK_LLM") or os.getenv("KEHA_LV_LLM_PROVIDER", "mock") == "mock"
+
+    job = start_ai_job(
+        db,
+        case_id,
+        permit_type,
+        kind=step_kind,
+        title=step_def["label"],
+        agent_names=step_def.get("agents", []),
+        eta_seconds=eta if not is_mock else _job_simulation_seconds(),
+        managed_background=not is_mock,
+    )
+    return job

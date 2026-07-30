@@ -94,7 +94,7 @@
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/save" class="form-grid">
       <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2">
       {% for field in schema.fields[:8] %}
-      <label>{{ field.label }}{% if field.required %} *{% endif %}
+      <label><span>{{ field.label }}{% if field.required %} *{% endif %}</span>
         {% if field.type == "textarea" %}
         <textarea name="{{ field.id }}">{{ application.form_data.get(field.id, "") }}</textarea>
         {% else %}
@@ -127,7 +127,7 @@
       <summary id="tab-{{ tab.id }}"><span>{{ tab.label }}</span><small>Avaa ja täytä</small></summary>
       <div class="application-field-grid" aria-labelledby="tab-{{ tab.id }}">
         {% for field in schema.fields if field.tab == tab.id %}
-        <label class="application-field {% if field.type == 'textarea' %}wide-field{% endif %}" id="field-{{ field.id }}">{{ field.label }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}
+        <label class="application-field {% if field.type == 'textarea' %}wide-field{% endif %}" id="field-{{ field.id }}"><span>{{ field.label }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}</span>
           {% if field.type == "textarea" %}
           <textarea name="{{ field.id }}">{{ application.form_data.get(field.id, "") }}</textarea>
           {% else %}
@@ -593,74 +593,9 @@
 </nav>
 </div>
 
-<aside class="assistant-rail" id="hakemusapuri" aria-label="Hakemusapuri">
-  <details class="assistant-disclosure">
-    <summary>
-      <span class="assistant-mark" aria-hidden="true">✦</span>
-      <span class="assistant-summary-copy"><small>Apua tähän vaiheeseen</small><strong>Hakemusapuri</strong></span>
-      <span class="assistant-toggle-label" aria-hidden="true">Avaa</span>
-    </summary>
-    <div class="assistant-body">
-      <p class="assistant-context">Kysy hakemuksen täyttämisestä tai siitä, mitä tietoja vielä puuttuu.</p>
-
-  {% set form_suggestion_jobs = ai_jobs|selectattr('kind', 'equalto', 'form_suggestions')|selectattr('status', 'in', ['pending', 'running'])|list %}
-  {% set assistant_job = material_job_view if step == 2 else (form_suggestion_jobs[0] if step == 3 and form_suggestion_jobs else none) %}
-  {% if step == 2 and (not material_job or material_job.status not in ['pending', 'running']) %}
-  <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/intake-analysis" class="assistant-launch">
-    <button class="{% if present %}next-action{% endif %}">{{ 'Analysoi aineisto uudelleen' if intake_analysis else 'Analysoi aineisto' }}</button>
-  </form>
-  {% elif step == 3 and not assistant_job %}
-  <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-form" class="assistant-launch">
-    <button>Täytä luonnos liitteistä</button>
-  </form>
-  {% endif %}
-
-  {% if assistant_job %}
-  <section class="assistant-job" id="ai-jobs" aria-live="polite" data-ai-jobs-panel>
-    <article data-ai-job data-job-id="{{ assistant_job.id }}" data-job-initial-status="{{ assistant_job.status }}" data-status-url="/api/v1/jobs/{{ assistant_job.id }}" data-stream-url="/api/v1/jobs/{{ assistant_job.id }}/stream" data-cancel-url="/api/v1/jobs/{{ assistant_job.id }}/cancel" data-retry-url="/api/v1/jobs/{{ assistant_job.id }}/retry">
-      <div class="assistant-job-title"><span class="ai-orbit small"><i></i></span><div><strong data-job-summary>{{ assistant_job.summary or assistant_job.title }}</strong><small><span data-job-progress>{{ assistant_job.progress_percent }}</span>% · noin <span data-job-eta>{{ assistant_job.estimated_seconds_remaining }}</span> s</small></div></div>
-      <div class="progress-track"><span data-job-progress-bar style="width: {{ assistant_job.progress_percent }}%"></span></div>
-      <div class="visually-hidden" data-job-status>{{ assistant_job.status }}</div>
-      <div class="visually-hidden" data-job-agents>{% for agent in assistant_job.agents %}<span>{{ agent.label }} · {{ agent.status }}</span>{% endfor %}</div>
-      <div class="assistant-job-actions"><button type="button" class="text-button" data-job-cancel>Peruuta</button><button type="button" class="text-button" data-job-retry>Yritä uudelleen</button><button type="button" class="text-button" data-job-background>Jatka taustalla</button></div>
-      <details class="assistant-technical"><summary>Näytä tekninen loki</summary><pre data-job-log>{{ assistant_job.agents|tojson }}</pre></details>
-    </article>
-  </section>
-  {% endif %}
-
-  {% set latest_chat = contextual_chat.messages[-1] if contextual_chat.messages else none %}
-  {% if latest_chat %}
-  <div class="assistant-message">
-    <span class="assistant-avatar" aria-hidden="true">AI</span>
-    <div><p>{{ latest_chat.answer }}</p>{% if latest_chat.proposed_changes %}<a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#suggestions">{{ latest_chat.proposed_changes|length }} ehdotusta odottaa hyväksyntää →</a>{% endif %}</div>
-  </div>
-  {% else %}
-  <div class="assistant-message">
-    <span class="assistant-avatar" aria-hidden="true">AI</span>
-    <div><p>{% if step == 1 %}Voin auttaa tarkistamaan perustiedot ja kertoa, mitä seuraavaksi tarvitaan.{% elif step == 2 %}Voin verrata lomaketta liitteisiin ja etsiä puuttuvia tietoja.{% elif step == 3 %}Voin perustella ehdotukset ja muotoilla tekstiä selkeämmäksi.{% elif step == 4 %}Voin selittää tarkistuksen havainnot ja ehdottaa korjausjärjestystä.{% elif step == 5 %}Voin tarkistaa, mitä aineistoa olet lähettämässä.{% else %}Voin selittää kuitin ja seuraavat käsittelyvaiheet.{% endif %}</p></div>
-  </div>
-  {% endif %}
-
-  <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat" class="assistant-compose">
-    <label for="assistant-message" class="visually-hidden">Kysy Hakemusapurilta</label>
-    <textarea id="assistant-message" name="message" rows="3" placeholder="Kysy tästä hakemuksesta…" required></textarea>
-    <button aria-label="Lähetä kysymys">Lähetä <span aria-hidden="true">↑</span></button>
-  </form>
-  <div class="assistant-prompts" aria-label="Valmiit kysymykset">
-    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat"><button name="message" value="Mitä hakemuksesta puuttuu juuri nyt?">Mitä puuttuu?</button></form>
-    {% if step == 3 %}
-    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/chat"><button name="message" value="Mitkä AI-poiminnat minun kannattaa tarkistaa ensin?">Tarkista poiminnat</button></form>
-    {% endif %}
-  </div>
-  {% if step == 2 %}
-  <div class="assistant-boundary"><span aria-hidden="true">i</span><p>AI-ehdotukset tarkistetaan seuraavassa vaiheessa ennen kuin ne muuttavat hakemusta.</p></div>
-  {% else %}
-  <div class="assistant-boundary"><span aria-hidden="true">i</span><p>Ehdotukset eivät muuta lomaketta ennen hyväksyntää. Sinä päätät jokaisesta muutoksesta.</p></div>
-  {% endif %}
-    </div>
-  </details>
-</aside>
+  {% include '_side_panel.html' %}
 </div>
+
 <script>
 (function () {
   const panel = document.querySelector("[data-ai-jobs-panel]");

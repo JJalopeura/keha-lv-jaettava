@@ -1,0 +1,164 @@
+{% set pipeline_steps = pipeline_steps|default([]) %}
+{% set step_icons = {
+  'pending': '○',
+  'blocked': '○',
+  'running': '●',
+  'waiting_for_user': '●',
+  'completed': '✓',
+  'failed': '✗',
+} %}
+{% set step_classes = {
+  'pending': 'pipeline-pending',
+  'blocked': 'pipeline-blocked',
+  'running': 'pipeline-running',
+  'waiting_for_user': 'pipeline-waiting',
+  'completed': 'pipeline-complete',
+  'failed': 'pipeline-failed',
+} %}
+{% set pkg_id = package_id|default(material_package.get('package_id', '')) %}
+<section class="pipeline-section" aria-label="AI-työkalut" data-pipeline-panel>
+  <div class="panel-heading">
+    <p class="section-kicker">AI-työkalut</p>
+    <h2>Automaattiset tarkistukset</h2>
+  </div>
+  <ol class="pipeline-steps">
+    {% for step in pipeline_steps %}
+    {% set state = step.get('state', 'pending') %}
+    {% set job_id = step.get('job_id', '') %}
+    <li class="pipeline-step {{ step_classes.get(state, 'pipeline-pending') }}"
+      data-step-kind="{{ step.get('kind', '') }}"
+      {% if job_id %}data-ai-job data-status-url="/api/v1/jobs/{{ job_id }}" data-stream-url="/api/v1/jobs/{{ job_id }}/stream"{% endif %}>
+      <span class="step-icon" aria-hidden="true">{{ step_icons.get(state, '○') }}</span>
+      <div class="step-body">
+        <strong>{{ step.get('label', 'Tuntematon vaihe') }}</strong>
+        {% if state == 'completed' %}
+        <small>{{ step.get('summary', 'Valmis') }}</small>
+        {% elif state == 'running' %}
+        <small><span class="step-progress-bar" data-job-progress-bar style="width: {{ step.get('progress_pct', 0) }}%"></span><b data-job-progress>{{ step.get('progress_pct', 0) }}</b>% · ~<span data-job-eta>{{ step.get('eta_seconds', 0) }}</span> s</small>
+        {% elif state == 'waiting_for_user' %}
+        <small>Odottaa hyväksyntääsi · {{ step.get('pending_count', 0) }} kohdetta</small>
+        {% elif state == 'blocked' %}
+        <small>{{ step.get('blocked_reason', 'Odottaa edellistä vaihetta') }}</small>
+        {% elif state == 'failed' %}
+        <small>{{ step.get('summary', 'Virhe') }}</small>
+        {% else %}
+        <small>{{ step.get('description', 'Valmis aloitettavaksi') }}</small>
+        {% endif %}
+      </div>
+      <div class="step-action">
+        {% if state == 'pending' and pkg_id %}
+        <form method="post" action="/applicant/packages/{{ pkg_id }}/steps/{{ step.kind }}/start">
+          <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.query_params %}?{{ request.query_params }}{% endif %}">
+          <button class="step-btn secondary compact">Aloita</button>
+        </form>
+        {% elif state == 'running' and pkg_id %}
+        <form method="post" action="/applicant/packages/{{ pkg_id }}/steps/{{ step.kind }}/cancel">
+          <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.query_params %}?{{ request.query_params }}{% endif %}">
+          <button class="step-btn secondary compact">Keskeytä</button>
+        </form>
+        {% elif state == 'waiting_for_user' %}
+        <a class="step-btn primary compact" href="#extractions">Tarkista</a>
+        {% elif state == 'completed' %}
+        <a class="step-btn secondary compact" href="#readiness-dashboard">Näytä</a>
+        {% elif state == 'failed' and pkg_id %}
+        <form method="post" action="/applicant/packages/{{ pkg_id }}/steps/{{ step.kind }}/start">
+          <input type="hidden" name="force" value="1">
+          <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.query_params %}?{{ request.query_params }}{% endif %}">
+          <button class="step-btn secondary compact">Yritä uudelleen</button>
+        </form>
+        {% endif %}
+      </div>
+    </li>
+    {% else %}
+    <li class="pipeline-step pipeline-blocked">
+      <span class="step-icon" aria-hidden="true">○</span>
+      <div class="step-body">
+        <strong>Lataa aineisto ensin</strong>
+        {% if pkg_id %}
+        <small>Siirry aineistotyöpöytään aloittaaksesi AI-tarkistukset.</small>
+        {% else %}
+        <small>Lataa hakemusaineisto ennen kuin AI-työkalut voidaan käynnistää.</small>
+        {% endif %}
+      </div>
+      <div class="step-action">
+        <a class="step-btn primary compact" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Lataa aineisto</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+<script>
+(function () {
+  var panel = document.querySelector("[data-pipeline-panel]");
+  if (!panel) return;
+
+  var terminalStatuses = { "succeeded": true, "failed": true, "cancelled": true, "needs_user_input": true };
+
+  function setText(row, selector, value) {
+    var target = row.querySelector(selector);
+    if (target && value !== undefined && value !== null) target.textContent = String(value);
+  }
+
+  function applyStatus(row, payload) {
+    if (!payload || typeof payload !== "object") return false;
+    var progress = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
+    setText(row, "[data-job-progress]", progress);
+    setText(row, "[data-job-eta]", payload.estimated_seconds_remaining);
+    var bar = row.querySelector("[data-job-progress-bar]");
+    if (bar) bar.style.width = progress + "%";
+    var done = terminalStatuses.hasOwnProperty(payload.status);
+    if (done) {
+      setTimeout(function () { window.location.reload(); }, 800);
+    }
+    return done;
+  }
+
+  async function fetchStatus(row) {
+    var url = row.getAttribute("data-status-url");
+    if (!url) return false;
+    try {
+      var response = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!response.ok) return false;
+      return applyStatus(row, await response.json());
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  panel.querySelectorAll("[data-ai-job]").forEach(function (row) {
+    var streamUrl = row.getAttribute("data-stream-url");
+    var pollingId = null;
+
+    function stopPolling() {
+      if (pollingId) window.clearInterval(pollingId);
+      pollingId = null;
+    }
+
+    if (streamUrl && "EventSource" in window) {
+      try {
+        var source = new EventSource(streamUrl);
+        source.addEventListener("status", function (event) {
+          try {
+            if (applyStatus(row, JSON.parse(event.data))) {
+              source.close();
+              stopPolling();
+            }
+          } catch (_e) {
+            source.close();
+          }
+        });
+        source.onerror = function () { source.close(); };
+      } catch (_e) { /* EventSource not supported */ }
+    }
+
+    fetchStatus(row).then(function (done) {
+      if (!done) {
+        pollingId = window.setInterval(function () {
+          fetchStatus(row).then(function (d) { if (d) stopPolling(); });
+        }, 5000);
+      }
+    });
+  });
+})();
+</script>

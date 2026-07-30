@@ -22,7 +22,8 @@ Runs fully offline with a mock LLM (rule-based, instant) by default. Swap to Azu
 app/
   main.py                    FastAPI app, mounts router + static, global error handler, /healthz
   core/
-    config.py                Settings dataclass loaded from env vars (KEHA_LV_* + AZURE_OPENAI_*)
+    config.py                Settings dataclass + _bool_env() helper; force_mock_llm
+                             computed once at startup (no scattered env-var checks)
     db.py                    SQLite store: cases, files, artifacts (JSON docs), app_settings, ai_logs
     llm_factory.py           create_llm_client() → mock or Azure client
     llm_utils.py             call_llm_json() helper, prompt templating
@@ -30,8 +31,10 @@ app/
   domains/lupademo/
     routes/                  HTTP routes package (Phase 2 split, see /workspace/plan.md):
       __init__.py               thin create_lupademo_router that mounts 5 sub-routers
+      template_filters.py        shared Jinja2Templates instance + finnish_datetime filter
+                                + FINDING_CATEGORY_LABELS global (imported by all 5 routers)
       applicant.py              42 handlers — wizard, intake, application studio, common
-                                data, packaging, chat/voice (~382 lines)
+                                data, packaging, chat/voice (~360 lines)
       authority.py              9 handlers — queue, detail, observations, summary/memo
       api_v1.py                  7 handlers — external suggestion-service endpoints
       admin.py                   22 handlers — criteria admin, API demo/playground,
@@ -52,10 +55,11 @@ app/
                                 Dependency order (graphify-verified):
                                 application → intake → jobs → core
                                 Core imports nothing intra-package. No cycles exist.
-    scenarios.py             Demo scenario definitions + case creation (4 built-in scenarios, fallback in code)
+    scenarios.py             Demo scenario definitions + case creation (1 minimal fallback;
+                             4 canonical scenarios in specs/scenarios/demo_scenarios.json)
     security.py              API key / tenant auth for suggestion-service endpoints
     static/style.css          Single CSS file
-    templates/*.html          23 Jinja2 templates (wizard, authority, admin, API demo, etc.)
+    templates/*.html          21 Jinja2 templates — all extend light_base.html directly
     specs/                     JSON specs: form schemas, permit criteria, scenarios, roles, eval definitions
 docs/specs/                   Additional reference specs (not loaded at runtime)
 data/                         Created at first run: SQLite DB + uploads/ (gitignored)
@@ -167,11 +171,22 @@ Separate UI at `/cases/{case_id}/lupademo/authority/`:
 
 ## How the mock LLM works
 
-When `KEHA_LV_LLM_PROVIDER=mock` (default), `mock_llm.py` responds instantly:
+Three env vars control it, all read once at startup into `Settings`:
 
-- For field suggestions: returns plausible Finnish values from prompt context
-- No network calls, no API keys needed
-- Demo scenarios are pre-seeded so AI features work out of the box
+| Var | Default | Effect |
+|-----|---------|--------|
+| `KEHA_LV_LLM_PROVIDER` | `mock` | `"mock"` or `"azure"` |
+| `KEHA_LV_FORCE_MOCK_LLM` | off | Overrides to mock even if provider=azure |
+| `KEHA_LV_DEMO_MODE` | `true` | If on + provider=azure but no key → falls back to mock |
+
+Decision chain in `create_llm_client()`:
+1. If `provider == "mock"` → `MockLLMClient`
+2. If `force_mock_llm` → `MockLLMClient`
+3. If `demo_mode` AND no API key → `MockLLMClient`
+4. Otherwise → `AzureOpenAIClient`
+
+`MockLLMClient` responds instantly with pre-crafted Finnish responses.
+No network calls, no API keys needed. Demo scenarios are pre-seeded.
 
 ## How to run
 
@@ -203,16 +218,13 @@ contracts, current limitations, and sanitized validation results.
 
 ## Templates
 
-Jinja2 templates in `app/domains/lupademo/templates/`. Base templates:
+Jinja2 templates in `app/domains/lupademo/templates/`. Single base template:
 
-- `base.html` — Main layout (wizard, authority, admin)
-- `light_base.html` — Lightweight pages (API demo, suggestion service)
-- `lv_base.html` — LV project wrapper
+- `light_base.html` — All 21 templates extend it directly (shell chrome, navigation, footer)
 
-Template inheritance: 22 of 23 templates extend either `base.html` or `light_base.html`.
-`lv_base.html` extends `base.html` and wraps LV-project-specific pages.
-`light_base.html` is standalone (lightweight pages with minimal chrome).
-When adding a new template, extend the appropriate base — don't create a fourth.
+When adding a new template, extend `light_base.html`.
+The shared `templates` Jinja2Templates instance lives in `routes/template_filters.py`
+and is imported by all 5 route modules — do not create a second instance.
 
 ## Files to never read in full unless essential
 
@@ -227,7 +239,7 @@ When adding a new template, extend the appropriate base — don't create a fourt
 - New business logic → add to the matching `services/*.py` module (core/jobs/intake/application — see architecture above); only import *downward* (application may import intake/jobs/core, intake may import jobs/core, jobs may import core, core imports nothing intra-package)
 - New artifact type → use `svc.save_artifact()` / `svc.artifact_json()` pattern
 - New form field → add to schema in `services/core.py` `PERMIT_SCHEMAS` (the big dicts)
-- New scenario → add to `specs/scenarios/demo_scenarios.json` (runtime) or `scenarios.py` (fallback)
+- New scenario → add to `specs/scenarios/demo_scenarios.json` (canonical source); `scenarios.py` has a minimal 1-entry fallback for when the JSON file is missing
 - Access DB → use the `db()` getter injected into router closures
 - Access settings → use the `settings()` getter injected into router closures
 
@@ -236,9 +248,10 @@ When adding a new template, extend the appropriate base — don't create a fourt
 These three functions are the most-connected nodes in the codebase (graphify-verified).
 Changes to their signatures or behavior ripple everywhere:
 
-- `save_artifact()` — every write path flows through it (56 callers)
-- `artifact_json()` — every read path flows through it (48 callers)
-- `event()` — all audit-trail entries flow through it (45 callers)
+- `save_artifact()` — every write path flows through it (56 callers, graphify-verified)
+- `artifact_json()` — every read path flows through it (47 callers, graphify-verified)
+- `event()` — all audit-trail entries flow through it (44 callers, graphify-verified)
+- `application_id_for()` — central permit-type resolver (45 callers)
 
 Before changing any of these, check `svc.__init__.py` for their re-exports — that's the
 single public API surface they expose.

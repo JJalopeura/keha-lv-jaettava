@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from .template_filters import templates
 from .. import scenarios, security, services as svc
+from app.core.llm_factory import create_llm_client
 
 def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Callable[[], Any]) -> APIRouter:
     router = APIRouter()
@@ -110,6 +111,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             "package_analysis": aj("package_analysis_result", {}),
             "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
             "ai_jobs": ai_job_views,
+            "pipeline_steps": svc.pipeline_status(db_obj, case_id, app["permit_type"]),
             "material_job": material_job,
             "material_job_view": next(
                 (job for job in ai_job_views if material_job and job.get("id") == material_job.get("id")),
@@ -263,6 +265,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
                 "context_attachments": [item for item in attachments if item.get("delivery_scope") == "ai_context_only"],
                 "material_intake": svc.artifact_json(db(), case_id, "material_intake", permit_type, {}),
                 "ai_jobs": ai_jobs,
+                "pipeline_steps": svc.pipeline_status(db(), case_id, permit_type),
                 "active_job": active_job_view,
                 "package_analysis": svc.artifact_json(db(), case_id, "package_analysis_result", permit_type, {}),
                 "field_extraction_queue": svc.artifact_json(db(), case_id, "field_extraction_queue", permit_type, {"items": []}),
@@ -302,6 +305,66 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
             settings(),
         )
         return RedirectResponse(url=f"/applicant/packages/{package_id}#analysis", status_code=303)
+
+    @router.post("/applicant/packages/{package_id}/steps/{step_kind}/start")
+    def applicant_pipeline_step_start(
+        package_id: str,
+        step_kind: str,
+        background_tasks: BackgroundTasks,
+        force: bool = Form(False),
+        redirect_to: str = Form(""),
+    ):
+        try:
+            found = svc.find_material_package(db(), package_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Package not found")
+        try:
+            job = svc.start_pipeline_step(
+                db(),
+                found["case_id"],
+                found["permit_type"],
+                step_kind,
+                force=force,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+
+        settings_obj = settings()
+        background_tasks.add_task(
+            svc.execute_pipeline_step,
+            db(),
+            found["case_id"],
+            found["permit_type"],
+            job["id"],
+            step_kind,
+            settings_obj,
+        )
+        fallback = redirect_to or f"/applicant/packages/{package_id}#pipeline-{step_kind}"
+        return RedirectResponse(url=fallback, status_code=303)
+
+    @router.post("/applicant/packages/{package_id}/steps/{step_kind}/cancel")
+    def applicant_pipeline_step_cancel(
+        package_id: str,
+        step_kind: str,
+        redirect_to: str = Form(""),
+    ):
+        try:
+            found = svc.find_material_package(db(), package_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Package not found")
+        jobs = svc.list_ai_jobs(db(), found["case_id"], found["permit_type"])
+        active = next(
+            (j for j in jobs if j.get("kind") == step_kind and j.get("status") in {"running", "waiting_for_user"}),
+            None,
+        )
+        if active is None:
+            raise HTTPException(status_code=404, detail="No active job for this step")
+        try:
+            svc.cancel_ai_job(db(), active["id"])
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        fallback = redirect_to or f"/applicant/packages/{package_id}"
+        return RedirectResponse(url=fallback, status_code=303)
 
     @router.get("/projects/new", response_class=HTMLResponse)
     def project_new(request: Request):
@@ -646,6 +709,71 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     def contextual_chat(case_id: str, application_id: str, message: str = Form(...)):
         svc.contextual_chat_answer(db(), case_id, application_id, message, settings=settings())
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#contextual-chat", status_code=303)
+
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/chat/messages")
+    async def chat_messages(case_id: str, application_id: str, request: Request):
+        payload = await request.json()
+        message = str(payload.get("message") or "").strip()
+        if not message:
+            return JSONResponse({"error": "message_required"}, status_code=400)
+        result = svc.contextual_chat_answer(db(), case_id, application_id, message, settings=settings())
+        chat = svc.artifact_json(db(), case_id, "contextual_chat", svc.application_id_for(application_id), {"messages": []})
+        last = chat.get("messages", [])[-1] if chat.get("messages") else None
+        return {
+            "answer": last.get("answer") or result.get("answer", "") if last else result.get("answer", ""),
+            "messages": chat.get("messages", [])[-6:],
+        }
+
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/chat/stream")
+    async def chat_stream(case_id: str, application_id: str, request: Request):
+        """SSE streaming chat endpoint. Yields text/event-stream."""
+        payload = await request.json()
+        message = str(payload.get("message") or "").strip()
+        if not message:
+            return JSONResponse({"error": "message_required"}, status_code=400)
+
+        permit_type = svc.application_id_for(application_id)
+        context = svc.contextual_chat_context(db(), case_id, permit_type)
+        prompt = (
+            "Olet lupahakemuksen contextual chat -avustaja. Vastaa suomeksi hakijan kysymykseen. "
+            "Käytä vain annettua lomake- ja liitekontekstia. Älä käytä benchmark- tai viranomaisesimerkkiaineistoa. "
+            "Älä muuta hakemuksen tietoja; jos ehdotat muutosta, kerro että käyttäjän pitää hyväksyä se erikseen.\n\n"
+            f"Kysymys: {message}\n\n"
+            f"Konteksti JSON: {json.dumps(context, ensure_ascii=False)}"
+        )
+
+        async def generate():
+            full_answer = ""
+            try:
+                client = create_llm_client(settings(), purpose="chat")
+                for chunk in client.responses_stream(
+                    input_text=prompt,
+                    max_output_tokens=900,
+                    reasoning_effort="low",
+                    text_verbosity="medium",
+                ):
+                    full_answer += chunk
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                yield f"data: {json.dumps({'done': True})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                return
+
+            # Save to artifact store
+            history = svc.artifact_json(db(), case_id, "contextual_chat", permit_type, {"messages": []})
+            turn = {
+                "id": f"chat_{uuid.uuid4().hex[:10]}",
+                "role": "user",
+                "message": message,
+                "answer": full_answer,
+                "created_at": time.time(),
+            }
+            history.setdefault("messages", []).append(turn)
+            history["messages"] = history["messages"][-30:]
+            svc.save_artifact(db(), case_id, "contextual_chat", permit_type, history)
+            svc.event(db(), case_id, "ai.chat.answered", "Contextual chat answered (stream)", {"permit_type": permit_type})
+
+        return StreamingResponse(generate(), media_type="text/event-stream")
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/voice/mock")
     def voice_mock(case_id: str, application_id: str, transcript: str = Form("")):
