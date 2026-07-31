@@ -360,7 +360,7 @@ def load_form_schema(permit_type: str) -> dict[str, Any]:
     return load_json(SPEC_ROOT / "form_schemas" / filename, {})
 
 
-def load_prompt(agent: str) -> str:
+def _load_prompt(agent: str) -> str:
     prompt_agent = {
         "field_suggestion_agent": "field_suggestion",
         "form_suggestion_agent": "form_suggestion",
@@ -390,7 +390,7 @@ def load_prompt(agent: str) -> str:
 
 
 def render_agent_prompt(agent: str, values: dict[str, Any]) -> str:
-    text = load_prompt(agent)
+    text = _load_prompt(agent)
     return Template(text).render(**values)
 
 
@@ -411,11 +411,6 @@ def _list(value: Any) -> list[Any]:
 def _plain(items: Any) -> list[Any]:
     """Dataclasses -> dicts, dicts passed through; agent output lists mix both."""
     return [asdict(i) if is_dataclass(i) and not isinstance(i, type) else i for i in items]
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    """Agent results arrive as either a response dataclass or a plain dict."""
-    return asdict(value) if is_dataclass(value) and not isinstance(value, type) else _dict(value)
 
 
 def save_artifact(db: Any, case_id: str, type_: str, name: str, data: dict[str, Any]) -> None:

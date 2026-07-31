@@ -1,22 +1,11 @@
-"""Auto-split from the former monolithic services.py (2024 cleanup, Phase 2).
-
-Module boundaries (see /workspace/plan.md Phase 2):
-  core        - dataclasses/type contracts, form schemas & criteria, artifact/db
-                primitives, prompt rendering, common-data sync. No intra-package deps.
-  jobs        - generic AI job lifecycle (start/advance/complete/cancel/retry).
-                Depends on core only (one deliberate deferred import into
-                `application` inside _advance_ai_job_in_store - see comment there).
-  intake      - attachments, material packages, ingestion, text/structure
-                extraction, classification, retrieval/vector-store context.
-                Depends on core + jobs.
-  application - suggestions, criteria checks, package analysis, submission
-                packaging, authority views, chat/voice, metrics/benchmark
-                reporting, external suggestion-service API. Depends on
-                core + jobs + intake.
+"""Suggestions, criteria checks, package analysis, submission packaging,
+authority views, chat/voice, metrics/benchmark, external suggestion-service API.
+Depends on core + jobs + intake.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import mimetypes
 import os
@@ -40,7 +29,7 @@ from jinja2 import Template
 from app.core.llm_factory import create_llm_client
 from app.core.llm_utils import call_llm_json, vector_store_ids
 
-from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _as_dict, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
+from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
 from .jobs import complete_ai_job, find_ai_job, list_ai_jobs, start_ai_job
 from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
@@ -158,7 +147,7 @@ def restore_criteria_version(db: Any, case_id: str, permit_type: str, history_in
     selected = versions[history_index].get("criteria", {})
     if not isinstance(selected, dict) or not selected:
         raise ValueError("criteria_history_entry_missing_criteria")
-    restored = json.loads(json.dumps(selected, ensure_ascii=False))
+    restored = copy.deepcopy(selected)
     restored["status"] = "active"
     restored["restored_from_version"] = selected.get("version", "")
     restored["restored_at"] = time.time()
@@ -173,7 +162,7 @@ def upsert_criteria_rule(db: Any, case_id: str, permit_type: str, rule: dict[str
     rule_id = str(rule.get("id") or "").strip()
     if not rule_id:
         raise ValueError("criteria_rule_id_required")
-    updated = json.loads(json.dumps(effective_criteria(db, case_id, permit_type), ensure_ascii=False))
+    updated = copy.deepcopy(effective_criteria(db, case_id, permit_type))
     rules = updated.setdefault("rules", [])
     if not isinstance(rules, list):
         rules = []
@@ -208,7 +197,7 @@ def delete_criteria_rule(db: Any, case_id: str, permit_type: str, rule_id: str, 
     rule_id = str(rule_id or "").strip()
     if not rule_id:
         raise ValueError("criteria_rule_id_required")
-    updated = json.loads(json.dumps(effective_criteria(db, case_id, permit_type), ensure_ascii=False))
+    updated = copy.deepcopy(effective_criteria(db, case_id, permit_type))
     rules = updated.get("rules", [])
     if not isinstance(rules, list):
         rules = []
@@ -383,6 +372,38 @@ def intake_analysis_questions(schema: dict[str, Any], app: dict[str, Any], attac
     return questions[:12]
 
 
+def _run_check_agents(
+    db: Any,
+    settings: Any,
+    case_id: str,
+    base_values: dict[str, Any],
+    *,
+    vector_ids: list[str] | None = None,
+    max_output_tokens: int = 5000,
+) -> list[Issue]:
+    """Run completeness and consistency validator agents and return merged issues."""
+    if vector_ids is None:
+        vector_ids = azure_vector_store_ids(db, settings, case_id)
+    agent_issues: list[Issue] = []
+    for agent_name in ("completeness_validator", "consistency_validator"):
+        response = run_json_agent(
+            db,
+            settings,
+            case_id,
+            agent_name,
+            base_values,
+            IssueListResponse,
+            vector_ids=vector_ids,
+            fallback={"issues": []},
+            max_output_tokens=max_output_tokens,
+        )
+        if isinstance(response, IssueListResponse):
+            agent_issues.extend(response.issues)
+        elif isinstance(response, dict):
+            agent_issues.extend(response.get("issues", []))
+    return agent_issues
+
+
 def package_analysis_from_current_state(
     db: Any,
     case_id: str,
@@ -446,24 +467,7 @@ def package_analysis_from_current_state(
             "common_data": json.dumps(common.get("data", {}), ensure_ascii=False),
             "attachment_context": json.dumps(retrieval, ensure_ascii=False),
         }
-        agent_issues: list[Issue] = []
-        vector_ids = azure_vector_store_ids(db, settings, case_id)
-        for agent_name in ("completeness_validator", "consistency_validator"):
-            response = run_json_agent(
-                db,
-                settings,
-                case_id,
-                agent_name,
-                base_values,
-                IssueListResponse,
-                vector_ids=vector_ids,
-                fallback={"issues": []},
-                max_output_tokens=6000,
-            )
-            if isinstance(response, IssueListResponse):
-                agent_issues.extend(response.issues)
-            elif isinstance(response, dict):
-                agent_issues.extend(response.get("issues", []))
+        agent_issues = _run_check_agents(db, settings, case_id, base_values, max_output_tokens=6000)
         issues = merge_issues(issues, agent_issues)
     joined_text = "\n".join(str(att.get("text_excerpt") or att.get("summary") or "") for att in attachments).lower()
     specific_contradictions = [issue for issue in issues if issue.type == "inconsistent"]
@@ -1218,22 +1222,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             "retrieved_context": json.dumps(context, ensure_ascii=False),
         }
         vector_ids = azure_vector_store_ids(db, settings, case_id)
-        for agent in ("completeness_validator", "consistency_validator"):
-            response = run_json_agent(
-                db,
-                settings,
-                case_id,
-                agent,
-                base_values,
-                IssueListResponse,
-                vector_ids=vector_ids,
-                fallback={"issues": []},
-                max_output_tokens=5000,
-            )
-            if isinstance(response, IssueListResponse):
-                agent_issues.extend(response.issues)
-            elif isinstance(response, dict):
-                agent_issues.extend(response.get("issues", []))
+        agent_issues = _run_check_agents(db, settings, case_id, base_values, vector_ids=vector_ids, max_output_tokens=5000)
         criteria_response = run_json_agent(
             db,
             settings,
@@ -2163,13 +2152,6 @@ def _readiness_item(item_id: str, title: str, status: str, evidence: list[str], 
     }
 
 
-def _read_text_if_exists(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8") if path.exists() else ""
-    except Exception:
-        return ""
-
-
 def readiness_snapshot(
     db: Any,
     case_id: str,
@@ -2184,7 +2166,12 @@ def readiness_snapshot(
     by_case = _dict(analysis.get("by_case"))
     prompt_files = sorted((SPEC_ROOT / "prompts").glob("*.prompt.md"))
     e2e_path = ROOT / "tests" / "e2e" / "lupademo-full-flows.spec.js"
-    e2e_text = _read_text_if_exists(e2e_path)
+    e2e_text = ""
+    if e2e_path.exists():
+        try:
+            e2e_text = e2e_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
     e2e_named_flows = len(re.findall(r"E2E-00[1-5]", e2e_text))
     e2e_total_tests = len(re.findall(r"(?m)^\s*test\(", e2e_text))
     case_names = {str(key).lower().replace("-", "").replace(" ", "") for key in by_case}
@@ -2745,7 +2732,7 @@ def authority_summary(db: Any, case_id: str, permit_type: str, settings: Any = N
             fallback=fallback,
             max_output_tokens=5000,
         )
-        summary = _as_dict(summary_model)
+        summary = asdict(summary_model) if is_dataclass(summary_model) and not isinstance(summary_model, type) else _dict(summary_model)
     else:
         summary = fallback
     save_artifact(db, case_id, "authority_summary", app["permit_type"], summary)
@@ -3029,23 +3016,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             "retrieved_context": json.dumps({"mode": "api_payload", "attachments": req.attachments}, ensure_ascii=False),
         }
         vector_ids = azure_vector_store_ids(db, settings, api_case)
-        agent_issues: list[Issue] = []
-        for agent in ("completeness_validator", "consistency_validator"):
-            response = run_json_agent(
-                db,
-                settings,
-                api_case,
-                agent,
-                base_values,
-                IssueListResponse,
-                vector_ids=vector_ids,
-                fallback={"issues": []},
-                max_output_tokens=5000,
-            )
-            if isinstance(response, IssueListResponse):
-                agent_issues.extend(response.issues)
-            elif isinstance(response, dict):
-                agent_issues.extend(response.get("issues", []))
+        agent_issues = _run_check_agents(db, settings, api_case, base_values, vector_ids=vector_ids, max_output_tokens=5000)
         criteria_response = run_json_agent(
             db,
             settings,

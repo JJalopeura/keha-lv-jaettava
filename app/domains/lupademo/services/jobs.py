@@ -1,18 +1,5 @@
-"""Auto-split from the former monolithic services.py (2024 cleanup, Phase 2).
-
-Module boundaries (see /workspace/plan.md Phase 2):
-  core        - dataclasses/type contracts, form schemas & criteria, artifact/db
-                primitives, prompt rendering, common-data sync. No intra-package deps.
-  jobs        - generic AI job lifecycle (start/advance/complete/cancel/retry).
-                Depends on core only (one deliberate deferred import into
-                `application` inside _advance_ai_job_in_store - see comment there).
-  intake      - attachments, material packages, ingestion, text/structure
-                extraction, classification, retrieval/vector-store context.
-                Depends on core + jobs.
-  application - suggestions, criteria checks, package analysis, submission
-                packaging, authority views, chat/voice, metrics/benchmark
-                reporting, external suggestion-service API. Depends on
-                core + jobs + intake.
+"""Generic AI job lifecycle (start/advance/complete/cancel/retry).
+Depends on core only.
 """
 
 from __future__ import annotations

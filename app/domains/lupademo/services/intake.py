@@ -1,18 +1,5 @@
-"""Auto-split from the former monolithic services.py (2024 cleanup, Phase 2).
-
-Module boundaries (see /workspace/plan.md Phase 2):
-  core        - dataclasses/type contracts, form schemas & criteria, artifact/db
-                primitives, prompt rendering, common-data sync. No intra-package deps.
-  jobs        - generic AI job lifecycle (start/advance/complete/cancel/retry).
-                Depends on core only (one deliberate deferred import into
-                `application` inside _advance_ai_job_in_store - see comment there).
-  intake      - attachments, material packages, ingestion, text/structure
-                extraction, classification, retrieval/vector-store context.
-                Depends on core + jobs.
-  application - suggestions, criteria checks, package analysis, submission
-                packaging, authority views, chat/voice, metrics/benchmark
-                reporting, external suggestion-service API. Depends on
-                core + jobs + intake.
+"""Attachments, material packages, ingestion, extraction, classification,
+retrieval/vector-store context. Depends on core + jobs.
 """
 
 from __future__ import annotations
@@ -44,128 +31,10 @@ from .core import AttachmentClassificationResponse, AuthorityMemoDraft, Casework
 from .jobs import complete_ai_job, start_ai_job
 
 
-ENVIRONMENTAL_MATERIAL_STORIES = [
-    {
-        "id": "generic_industrial_environmental_demo",
-        "label": "Teollinen ympäristölupahanke / kemikaalit / BAT / tarkkailu",
-        "documents": [
-            {
-                "filename": "hakemus_tiivistelma.txt",
-                "primary_type": "environmental_application",
-                "delivery_scope": "official_submission",
-                "text": "Toiminta koostuu teollisesta tuotannosta, raaka-aineiden käsittelystä, varastoinnista ja päästöjen hallinnasta. Hakija esittää luvanvaraisuuden ympäristönsuojelulain 27 §:n perusteella ja toimivaltaiseksi viranomaiseksi aluehallintovirastoa.",
-            },
-            {
-                "filename": "kemikaaliluettelo_tyoaineisto.txt",
-                "primary_type": "chemical_inventory",
-                "delivery_scope": "ai_context_only",
-                "text": "Kemikaaliluettelo sisältää prosessin raaka-aineet, varastoitavat kemikaalit ja käyttöturvallisuustiedotteiden koosteen. Aineisto on hakijan työversio ja tarvitsee julkisuusluokittelun ennen viranomaispakettia.",
-            },
-            {
-                "filename": "bat_arviointi.txt",
-                "primary_type": "bat_assessment",
-                "delivery_scope": "official_submission",
-                "text": "BAT-arviointi kuvaa energiatehokkuuden, päästöjen minimoinnin, prosessiturvallisuuden ja poikkeustilanteiden hallinnan.",
-            },
-            {
-                "filename": "tarkkailusuunnitelma.txt",
-                "primary_type": "monitoring_plan",
-                "delivery_scope": "official_submission",
-                "text": "Tarkkailusuunnitelma kattaa käyttötarkkailun, päästöt ilmaan, jätevesien seurannan, melun ja vuosiraportoinnin.",
-            },
-            {
-                "filename": "viranomaiskuulutus_benchmark.txt",
-                "primary_type": "authority_notice",
-                "delivery_scope": "internal_authority_only",
-                "text": "Viranomaisesimerkki kuulutuksesta. Tätä käytetään vain benchmark-aineistona, ei hakijan paketin osana.",
-            },
-        ],
-    },
-    {
-        "id": "p2x_hydrogen_demo",
-        "label": "Vihreän vedyn tuotanto / kemikaalit / YVA/BAT",
-        "documents": [
-            {
-                "filename": "P2X_lupahakemus_tiivistelma.txt",
-                "primary_type": "environmental_application",
-                "delivery_scope": "official_submission",
-                "text": "Toiminta koostuu vihreän vedyn tuotannosta, elektrolyysistä ja synteettisen polttoaineen valmistuksesta. Hakija esittää luvanvaraisuuden ympäristönsuojelulain 27 §:n perusteella ja toimivaltaiseksi viranomaiseksi AVI:a.",
-            },
-            {
-                "filename": "P2X_kemikaaliluettelo.txt",
-                "primary_type": "chemical_inventory",
-                "delivery_scope": "ai_context_only",
-                "text": "Kemikaaliluettelo sisältää metanolin, vedyn, hapen ja prosessikemikaalit. Aineisto on hakijan työversio ja tarvitsee julkisuusluokittelun.",
-            },
-            {
-                "filename": "P2X_BAT_arviointi.txt",
-                "primary_type": "bat_assessment",
-                "delivery_scope": "official_submission",
-                "text": "BAT-arviointi kuvaa energiatehokkuuden, päästöjen minimoinnin, prosessiturvallisuuden ja poikkeustilanteiden hallinnan.",
-            },
-            {
-                "filename": "P2X_tarkkailusuunnitelma.txt",
-                "primary_type": "monitoring_plan",
-                "delivery_scope": "official_submission",
-                "text": "Tarkkailusuunnitelma kattaa käyttötarkkailun, päästöt ilmaan, jätevesien seurannan, melun ja vuosiraportoinnin.",
-            },
-            {
-                "filename": "AVI_kuulutus_esimerkki.txt",
-                "primary_type": "authority_notice",
-                "delivery_scope": "internal_authority_only",
-                "text": "Viranomaisesimerkki kuulutuksesta. Tätä käytetään vain benchmark-aineistona, ei hakijan paketin osana.",
-            },
-        ],
-    },
-    {
-        "id": "rengas_energy_demo",
-        "label": "Uusiutuvan energian tuotantolaitos / putkistot / päästöt",
-        "documents": [
-            {
-                "filename": "RenGas_hakemusrunko.txt",
-                "primary_type": "environmental_application",
-                "delivery_scope": "official_submission",
-                "text": "Uusiutuvan energian tuotantolaitos vastaanottaa biogeenistä hiilidioksidia ja tuottaa synteettistä metaania. Hakemus kuvaa putkistot, varastosäiliöt ja ilmapäästöt.",
-            },
-            {
-                "filename": "RenGas_ilmapaastomallinnus.txt",
-                "primary_type": "air_quality_model",
-                "delivery_scope": "official_submission",
-                "text": "Ilmapäästömallinnus arvioi typen oksidit, hajut ja häiriötilanteiden vaikutukset lähialueella.",
-            },
-            {
-                "filename": "RenGas_varautumissuunnitelma.txt",
-                "primary_type": "risk_preparedness_plan",
-                "delivery_scope": "official_submission",
-                "text": "Varautumissuunnitelma käsittelee vedyn, metaanin ja paineellisten putkistojen poikkeustilanteet.",
-            },
-        ],
-    },
-    {
-        "id": "sharpcell_industrial_demo",
-        "label": "Teollinen laitos / päästöt / tarkkailu / täydennykset",
-        "documents": [
-            {
-                "filename": "SharpCell_prosessikuvaus.txt",
-                "primary_type": "environmental_application",
-                "delivery_scope": "official_submission",
-                "text": "Teollinen laitos valmistaa akkukomponentteja. Prosessikuvaus sisältää raaka-aineet, energiankäytön, vesien käsittelyn ja jätteet.",
-            },
-            {
-                "filename": "SharpCell_tarkkailu.txt",
-                "primary_type": "monitoring_plan",
-                "delivery_scope": "official_submission",
-                "text": "Tarkkailu sisältää jätevesien metallipitoisuudet, pölypäästöt, melun ja raportointitiheyden.",
-            },
-            {
-                "filename": "SharpCell_taydennyspyynto_esimerkki.txt",
-                "primary_type": "authority_additional_info_request",
-                "delivery_scope": "internal_authority_only",
-                "text": "Viranomaisen täydennyspyyntöesimerkki aiemmasta prosessista. Ei ingestoida hakemusmateriaaliksi.",
-            },
-        ],
-    },
-]
+ENVIRONMENTAL_MATERIAL_STORIES_PATH = Path(__file__).resolve().parent.parent / "specs" / "scenarios" / "environmental_material_stories.json"
+
+with open(ENVIRONMENTAL_MATERIAL_STORIES_PATH, encoding="utf-8") as _f:
+    ENVIRONMENTAL_MATERIAL_STORIES: list[dict[str, Any]] = json.load(_f)
 
 
 MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
