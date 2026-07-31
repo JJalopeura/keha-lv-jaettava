@@ -597,7 +597,10 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             for job in svc.list_ai_jobs(db(), case_id, application_id)
         ):
             raise HTTPException(status_code=409, detail="analysis_already_running")
-        job = svc.start_intake_analysis_job(db(), case_id, application_id, settings=settings(), managed_background=True)
+        job = svc.start_intake_analysis_job(
+            db(), case_id, application_id, settings=settings(), managed_background=True,
+            agent_names=["structure_extractor", "field_extraction_agent", "gap_analyzer", "field_suggestion_agent"],
+        )
         background_tasks.add_task(
             svc.execute_intake_analysis_job,
             db(),
@@ -605,6 +608,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             application_id,
             job["id"],
             settings(),
+            full_check=False,
         )
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
 
@@ -633,7 +637,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field")
     def suggest_field(case_id: str, application_id: str, field_id: str = Form(...), background_tasks: BackgroundTasks = BackgroundTasks()):
         permit_type = svc.application_id_for(application_id)
-        job = svc.start_ai_job(db(), case_id, permit_type, "field_suggestion", f"Kenttäehdotus: {field_id}", ["retrieval_context", "field_suggestion_agent"], eta_seconds=job_eta_seconds("field_suggestion_retrieval"))
+        job = svc.start_ai_job(db(), case_id, permit_type, "field_suggestion", f"Kenttäehdotus: {field_id}", ["retrieval_context", "field_suggestion_agent"], eta_seconds=job_eta_seconds("field_suggestion_retrieval"), managed_background=True)
         background_tasks.add_task(svc.create_field_suggestion, db(), case_id, application_id, field_id, settings=settings(), job_id=job["id"])
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestions", status_code=303)
 
@@ -739,7 +743,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/check")
     def run_check(case_id: str, application_id: str, background_tasks: BackgroundTasks):
         permit_type = svc.application_id_for(application_id)
-        job = svc.start_ai_job(db(), case_id, permit_type, "application_check", "AI- ja sääntötarkistus", ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"], eta_seconds=job_eta_seconds("application_check"))
+        job = svc.start_ai_job(db(), case_id, permit_type, "application_check", "AI- ja sääntötarkistus", ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"], eta_seconds=job_eta_seconds("application_check"), managed_background=True)
         background_tasks.add_task(svc.run_application_check, db(), case_id, application_id, settings=settings(), job_id=job["id"])
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#check", status_code=303)
 

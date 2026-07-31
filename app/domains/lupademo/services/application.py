@@ -444,7 +444,7 @@ def package_analysis_from_current_state(
     return result
 
 
-def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None) -> dict[str, Any]:
+def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None, *, full_check: bool = True) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     if permit_type == "environmental_industrial":
         structure = structure_environmental_application_from_attachments(db, case_id, settings=settings, track_job=False)
@@ -454,12 +454,13 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
     schema = load_form_schema(permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     wizard = wizard_step_status(db, case_id, permit_type)
-    questions = intake_analysis_questions(schema, app, attachments)
-    result = {
+    questions = intake_analysis_questions(schema, app, attachments) if full_check else []
+    field_extractions = list(structure.get("field_extractions", []))
+    result: dict[str, Any] = {
         "permit_type": permit_type,
         "job_id": job_id,
-        "structured_field_count": len(structure.get("field_extractions", [])),
-        "field_extractions": structure.get("field_extractions", []),
+        "structured_field_count": len(field_extractions),
+        "field_extractions": field_extractions,
         "missing_required_fields": wizard.get("missing_required_fields", []),
         "missing_attachments": wizard.get("missing_attachments", []),
         "questions": questions,
@@ -468,17 +469,45 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
         "ai_context_attachment_count": sum(1 for item in attachments if item.get("delivery_scope") == "ai_context_only"),
         "created_at": time.time(),
     }
-    package_result = package_analysis_from_current_state(db, case_id, permit_type, job_id=job_id, structure=structure, settings=settings)
-    result["readiness"] = package_result["readiness"]
-    result["readiness_score"] = package_result["readiness_score"]
-    result["summary"] = package_result["summary"]
-    result["findings"] = package_result["findings"]
-    result["suggestions"] = package_result["suggestions"]
-    result["document_inventory"] = package_result["document_inventory"]
-    result["extraction_queue"] = package_result["extraction_queue"]
+
+    # Build extraction queue from field extractions — used by both light and full paths
+    extraction_queue = [
+        _extraction_queue_item(item)
+        for item in field_extractions
+        if item.get("field_id") and _extraction_has_substantive_value(item)
+    ]
+    save_artifact(db, case_id, "field_extraction_queue", permit_type, {"items": extraction_queue, "updated_at": time.time()})
+    result["extraction_queue"] = extraction_queue
+
+    if full_check:
+        package_result = package_analysis_from_current_state(db, case_id, permit_type, job_id=job_id, structure=structure, settings=settings)
+        result["readiness"] = package_result["readiness"]
+        result["readiness_score"] = package_result["readiness_score"]
+        result["summary"] = package_result["summary"]
+        result["findings"] = package_result["findings"]
+        result["suggestions"] = package_result["suggestions"]
+        result["document_inventory"] = package_result["document_inventory"]
+        # extraction_queue already set from package_result; overwrite with consistent copy
+        result["extraction_queue"] = package_result.get("extraction_queue", extraction_queue)
+    else:
+        # Light path: material exploration only, no completeness/consistency/criteria check.
+        # Saves field_extraction_queue for step 3 suggestion review.
+        # Also auto-generates field suggestions so step 3 is pre-populated.
+        result["readiness"] = "pending_review"
+        result["readiness_score"] = 0
+        result["summary"] = f"Aineistosta poimittu {len(field_extractions)} kenttäehdotusta."
+        result["findings"] = []
+        result["suggestions"] = [
+            {"field_id": item["field_id"], "suggested_value": item.get("suggested_value") or "", "source_document": item.get("source_document") or "", "confidence": item.get("confidence", 0.5), "status": "pending"}
+            for item in extraction_queue
+        ]
+        result["document_inventory"] = [
+            {"document_id": att.get("id"), "filename": att.get("filename"), "document_role": att.get("primary_type"), "delivery_scope": att.get("delivery_scope"), "extraction_status": att.get("extraction_status"), "text_chars": att.get("text_chars") or len(str(att.get("text_excerpt") or "")), "confidence": att.get("confidence", 0.5)}
+            for att in attachments
+        ]
+
     save_artifact(db, case_id, "intake_analysis", permit_type, result)
-    # package_analysis_result already saved by package_analysis_from_current_state
-    event(db, case_id, "ai.intake_analysis.completed", "Intake analysis completed", {"permit_type": permit_type, "questions": len(questions)})
+    event(db, case_id, "ai.intake_analysis.completed", "Intake analysis completed", {"permit_type": permit_type, "questions": len(questions), "full_check": full_check})
     return result
 
 
@@ -519,31 +548,35 @@ def start_intake_analysis_job(
     settings: Any = None,
     *,
     managed_background: bool = False,
+    agent_names: list[str] | None = None,
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
+    if agent_names is None:
+        agent_names = ["material_classifier", "structure_extractor", "gap_analyzer", "question_generator"]
     return start_ai_job(
         db,
         case_id,
         permit_type,
         "intake_analysis",
         "Aineiston analyysi ja kysymyslista",
-        ["material_classifier", "structure_extractor", "gap_analyzer", "question_generator"],
+        agent_names,
         eta_seconds=45 if settings is not None and str(getattr(settings, "llm_provider", "mock")).lower() != "mock" else 12,
         auto_finalize=not managed_background,
         managed_background=managed_background,
     )
 
 
-def execute_intake_analysis_job(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None) -> None:
+def execute_intake_analysis_job(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None, *, full_check: bool = True) -> None:
     permit_type = application_id_for(permit_type)
     try:
-        result = _build_intake_analysis_result(db, case_id, permit_type, job_id, settings=settings)
+        result = _build_intake_analysis_result(db, case_id, permit_type, job_id, settings=settings, full_check=full_check)
+        summary = f"Analyysi valmis: {len(result.get('findings', []))} havaintoa, valmius {result.get('readiness_score', 0)}/100." if full_check else f"Aineisto käsitelty: {result.get('structured_field_count', 0)} kenttäehdotusta."
         complete_ai_job(
             db,
             case_id,
             permit_type,
             job_id,
-            summary=f"Analyysi valmis: {len(result.get('findings', []))} havaintoa, valmius {result.get('readiness_score', 0)}/100.",
+            summary=summary,
             result_artifact=f"intake_analysis:{permit_type}",
         )
     except Exception as exc:
@@ -1053,11 +1086,11 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         )
         job_id = job["id"]
     attachments = list_attachments(db, case_id, app["permit_type"])
+    schema = load_form_schema(app["permit_type"])
     deterministic = deterministic_issues(app["permit_type"], app.get("form_data", {}), attachments)
     agent_issues: list[Issue] = []
     criteria_results: list[dict[str, Any]] = []
     if settings is not None:
-        schema = load_form_schema(app["permit_type"])
         criteria = effective_criteria(db, case_id, app["permit_type"])
         context = retrieval_context(db, case_id, app["permit_type"])
         common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
@@ -1103,12 +1136,14 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         issues=issues,
     )
     report_payload = asdict(response)
+    questions = intake_analysis_questions(schema, app, attachments)
     report_payload.update(
         {
             "checked_at": checked_at,
             "form_updated_at": float(app.get("updated_at") or 0),
             "attachments_updated_at": attachments_updated_at(db, case_id, app["permit_type"]),
             "criteria_version": current_criteria_version,
+            "questions": questions,
         }
     )
     save_artifact(db, case_id, "check_report", app["permit_type"], report_payload)

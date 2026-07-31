@@ -111,6 +111,7 @@
       </label>
       {% endfor %}
       </div>
+      <button class="{% if present %}next-action{% endif %}" style="margin-top:14px">Tallenna tiedot</button>
     </form>
   </div>
 </section>
@@ -310,9 +311,6 @@
         {% endfor %}
       </select>
       <button class="{% if present %}next-action{% endif %}">Pyydä ehdotus</button>
-    </form>
-    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-form" class="inline">
-      <button class="secondary">Täytä kaikki liitteistä</button>
     </form>
     <form id="accept-selected-suggestions" method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/accept-selected">
       <button class="secondary">Hyväksy valitut</button>

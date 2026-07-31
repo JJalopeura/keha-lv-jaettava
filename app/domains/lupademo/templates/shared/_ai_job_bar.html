@@ -1,16 +1,18 @@
-{% set active = (ai_jobs|selectattr('status', 'in', ['queued', 'running'])|list)[:1] %}
-{% set last = (ai_jobs|rejectattr('status', 'in', ['queued', 'running'])|list)[:1] %}
-{% set last_ok = last[0] if last and last[0].get('status') == 'succeeded' else none %}
-{% set last_fail = last[0] if last and last[0].get('status') == 'failed' else none %}
-{% set state = 'running' if active else ('ok' if last_ok else ('failed' if last_fail else 'idle')) %}
+{% set active_jobs = (ai_jobs|selectattr('status', 'in', ['queued', 'running'])|list) %}
+{% set last_job = (ai_jobs|rejectattr('status', 'in', ['queued', 'running'])|list)[:1] %}
+{% set last_ok = last_job[0] if last_job and last_job[0].get('status') == 'succeeded' else none %}
+{% set last_fail = last_job[0] if last_job and last_job[0].get('status') == 'failed' else none %}
+{% set state = 'running' if active_jobs else ('ok' if last_ok else ('failed' if last_fail else 'idle')) %}
+{% set primary_job = active_jobs[0] if active_jobs else none %}
 
 <section class="analysis-panel{% if state == 'running' %} is-running{% elif state == 'ok' %} is-complete{% elif state == 'failed' %} is-failed{% endif %}" aria-live="polite" data-ai-jobs-panel>
   <div class="analysis-lead">
     <span class="ai-orbit" aria-hidden="true"><i></i></span>
     <div>
       {% if state == 'running' %}
-      <p class="section-kicker">AI käsittelee</p>
-      <strong>{{ active[0].get('title') or active[0].get('kind', '') }}</strong>
+      <p class="section-kicker">AI käsittelee{% if active_jobs|length > 1 %} ({{ active_jobs|length }} tehtävää){% endif %}</p>
+      <strong>{{ primary_job.get('title') or primary_job.get('kind', '') }}</strong>
+      <p>{{ primary_job.get('current_step_label') or '' }}</p>
       {% elif state == 'ok' %}
       <p class="section-kicker">AI valmis</p>
       <strong>{{ last_ok.get('summary') or last_ok.get('title', 'Käsittely valmis') }}</strong>
@@ -30,15 +32,33 @@
   </form>
   {% endif %}
 
+  {% if state != 'running' and step is defined and step == 3 %}
+  <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-form">
+    <button class="primary-cta">AI-suositukset liitteistä <span aria-hidden="true">→</span></button>
+  </form>
+  {% endif %}
+
   {% if state == 'running' %}
-  {% for job in active %}
+  {% for job in active_jobs %}
   <article class="job-progress" data-ai-job
     data-status-url="/api/v1/jobs/{{ job.id }}"
-    data-stream-url="/api/v1/jobs/{{ job.id }}/stream">
+    data-stream-url="/api/v1/jobs/{{ job.id }}/stream"
+    data-job-id="{{ job.id }}">
     <div class="job-progress-meta">
+      <strong data-job-step-label>{{ job.get('current_step_label') or job.get('title') or '' }}</strong>
       <span><b data-job-progress>{{ job.get('progress_percent', 0) }}</b>% · <span data-job-eta>{{ job.get('estimated_seconds_remaining', 0) }}</span> s</span>
     </div>
     <div class="progress-track"><span data-job-progress-bar style="width: {{ job.get('progress_percent', 0) }}%"></span></div>
+    {% set events = job.get('events', []) %}
+    {% if events|length > 1 %}
+    <ul class="agent-steps">
+      {% for evt in events %}
+      <li class="{{ evt.get('level', 'info') }}{% if evt.get('progress_percent', 0) >= 100 %} completed{% endif %}" title="{{ evt.get('step', '') }}: {{ evt.get('message', '') }}">
+        <span></span>{{ evt.get('step', '') }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
   </article>
   {% endfor %}
   {% endif %}
@@ -47,32 +67,71 @@
 {% if state == 'running' %}
 <script>
 (function () {
-  var row = document.querySelector("[data-ai-job]");
-  if (!row) return;
+  var rows = document.querySelectorAll("[data-ai-job]");
+  if (!rows.length) return;
   var terminal = new Set(["succeeded", "failed", "cancelled"]);
-  var pollingId = null;
-  function apply(payload) {
+  var allDone = false;
+
+  function apply(row, payload) {
     var p = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
-    row.querySelector("[data-job-progress]").textContent = p;
-    row.querySelector("[data-job-eta]").textContent = payload.estimated_seconds_remaining ?? 0;
-    row.querySelector("[data-job-progress-bar]").style.width = p + "%";
-    if (terminal.has(payload.status)) {
-      if (pollingId) window.clearInterval(pollingId);
-      setTimeout(function () { location.replace(location.href); }, 300);
-      return true;
+    var progEl = row.querySelector("[data-job-progress]");
+    var etaEl = row.querySelector("[data-job-eta]");
+    var barEl = row.querySelector("[data-job-progress-bar]");
+    var stepEl = row.querySelector("[data-job-step-label]");
+    if (progEl) progEl.textContent = p;
+    if (etaEl) etaEl.textContent = payload.estimated_seconds_remaining ?? 0;
+    if (barEl) barEl.style.width = p + "%";
+    if (stepEl && payload.current_step_label) stepEl.textContent = payload.current_step_label;
+    return terminal.has(payload.status);
+  }
+
+  function allTerminal() {
+    for (var i = 0; i < rows.length; i++) {
+      if (!rows[i].dataset._terminal) return false;
     }
-    return false;
+    return true;
   }
-  async function poll() {
-    var r = await fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } });
-    return r.ok && apply(await r.json());
+
+  async function pollRow(row) {
+    try {
+      var r = await fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } });
+      if (!r.ok) return;
+      var payload = await r.json();
+      if (apply(row, payload)) {
+        row.dataset._terminal = "1";
+      }
+    } catch (_) {}
   }
-  if (row.dataset.streamUrl && "EventSource" in window) {
-    var src = new EventSource(row.dataset.streamUrl);
-    src.addEventListener("status", function (e) { if (apply(JSON.parse(e.data))) src.close(); });
+
+  async function pollAll() {
+    if (allDone) return;
+    var promises = [];
+    for (var i = 0; i < rows.length; i++) {
+      if (!rows[i].dataset._terminal) promises.push(pollRow(rows[i]));
+    }
+    await Promise.all(promises);
+    if (allTerminal()) {
+      allDone = true;
+      setTimeout(function () { location.replace(location.href); }, 400);
+    }
+  }
+
+  // SSE streaming for the first row (primary job)
+  if (rows[0].dataset.streamUrl && "EventSource" in window) {
+    var src = new EventSource(rows[0].dataset.streamUrl);
+    src.addEventListener("status", function (e) {
+      var payload = JSON.parse(e.data);
+      if (apply(rows[0], payload)) {
+        rows[0].dataset._terminal = "1";
+        src.close();
+      }
+    });
     src.onerror = function () { src.close(); };
   }
-  poll().then(function (done) { if (!done) pollingId = window.setInterval(poll, 5000); });
+
+  pollAll().then(function () {
+    if (!allDone) window.setInterval(pollAll, 4000);
+  });
 })();
 </script>
 {% endif %}
