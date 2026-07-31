@@ -4,48 +4,23 @@ import io
 import time
 import uuid
 import zipfile
-from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from jinja2 import StrictUndefined
-from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
-from .template_filters import finnish_datetime
-from .common import FINDING_CATEGORY_LABELS, context_app
+from .common import RouteContext
 
-DOMAIN_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
-templates.env.filters["finnish_datetime"] = finnish_datetime
-templates.env.globals["FINDING_CATEGORY_LABELS"] = FINDING_CATEGORY_LABELS
-
-def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callable[[], Any]) -> APIRouter:
-    
+def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
     router = APIRouter()
-
-    def db() -> Any:
-        return db_getter()
-
-    def settings() -> Any:
-        return settings_getter()
+    templates = ctx.templates
+    db = ctx.db
+    settings = ctx.settings
 
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
-        svc.ensure_seed_state(db(), case_id)
-        sync = svc.detect_common_data_changes(db(), case_id)
-        project = svc.artifact_json(db(), case_id, "lv_project", "main", {})
-        common = svc.artifact_json(db(), case_id, "lv_common_data", "main", {"data": svc.DEFAULT_COMMON_DATA.copy()})
-        out = {"case_id": case_id, "case": db().get_case(case_id), "project": project, "common": common, "sync": sync}
-        if permit_type:
-            app = svc.ensure_application(db(), case_id, permit_type)
-            out.update(_context_app(app, case_id, permit_type, db(), settings()))
-        return out
-
-
-    def _context_app(app: dict, case_id: str, permit_type: str, db_obj: Any, settings_obj: Any) -> dict:
-        return context_app(app, case_id, permit_type, db_obj, settings_obj)
+        return ctx.context(case_id, permit_type)
 
     @router.get("/cases/{case_id}/lupademo/suggestion-service/ui-only", response_class=HTMLResponse)
     def ui_only(request: Request, case_id: str):

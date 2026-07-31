@@ -203,16 +203,13 @@ contracts, current limitations, and sanitized validation results.
 
 ## Templates
 
-Jinja2 templates in `app/domains/lupademo/templates/`. Base templates:
+Jinja2 templates in `app/domains/lupademo/templates/`. Base template:
 
-- `base.html` — Main layout (wizard, authority, admin)
-- `light_base.html` — Lightweight pages (API demo, suggestion service)
-- `lv_base.html` — LV project wrapper
+- `light_base.html` — Root layout (full HTML doc, header, nav, footer); used by all 23 templates
 
-Template inheritance: 22 of 23 templates extend either `base.html` or `light_base.html`.
-`lv_base.html` extends `base.html` and wraps LV-project-specific pages.
-`light_base.html` is standalone (lightweight pages with minimal chrome).
-When adding a new template, extend the appropriate base — don't create a fourth.
+Template inheritance: all 23 templates extend `light_base.html` directly.
+The former `base.html` (empty shim) was deleted — it added an unnecessary
+indirection layer. When adding a new template, extend `light_base.html`.
 
 ## Files to never read in full unless essential
 

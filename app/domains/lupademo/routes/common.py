@@ -1,6 +1,9 @@
 """Shared route helpers used across all route modules."""
 from __future__ import annotations
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable, Optional
+
+from fastapi.templating import Jinja2Templates
 
 from .. import services as svc
 
@@ -147,3 +150,58 @@ def context_app_with_material(
             db_obj, case_id, "environmental_material_story", "main", {}
         ),
     }
+
+
+# ── RouteContext: single factory for shared route infrastructure ──
+
+@dataclass
+class RouteContext:
+    """Pre‑built context injected into every route sub‑router.
+
+    Eliminates the ~8‑line preamble duplicated across 5 route files:
+    Jinja2Templates instantiation, filter/global wiring, db()/settings()
+    closures, and the context() builder.
+    """
+
+    templates: Jinja2Templates
+    db_getter: Callable[[], Any]
+    settings_getter: Callable[[], Any]
+
+    def db(self) -> Any:
+        return self.db_getter()
+
+    def settings(self) -> Any:
+        return self.settings_getter()
+
+    def context(
+        self,
+        case_id: str,
+        permit_type: Optional[str] = None,
+        *,
+        app_ctx_builder: Callable[..., dict] = context_app,
+    ) -> dict[str, Any]:
+        """Build the dict every template‑rendering handler needs.
+
+        By default uses ``context_app`` (authority / admin / demo‑lab).
+        Pass ``app_ctx_builder=context_app_with_material`` for the
+        applicant router, which adds material‑job fields.
+        """
+        svc.ensure_seed_state(self.db(), case_id)
+        sync = svc.detect_common_data_changes(self.db(), case_id)
+        project = svc.artifact_json(self.db(), case_id, "lv_project", "main", {})
+        common = svc.artifact_json(
+            self.db(), case_id, "lv_common_data", "main",
+            {"data": svc.DEFAULT_COMMON_DATA.copy()},
+        )
+        out: dict[str, Any] = {
+            "case_id": case_id,
+            "case": self.db().get_case(case_id),
+            "project": project,
+            "common": common,
+            "sync": sync,
+        }
+        if permit_type:
+            app = svc.ensure_application(self.db(), case_id, permit_type)
+            out.update(app_ctx_builder(app, case_id, permit_type, self.db(), self.settings()))
+        return out
+

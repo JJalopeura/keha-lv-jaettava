@@ -1,36 +1,20 @@
 from __future__ import annotations
 import json
 import uuid
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
-from jinja2 import StrictUndefined
-from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
-from .common import job_eta_seconds
+from .common import RouteContext, job_eta_seconds, FINDING_CATEGORY_LABELS
 
-DOMAIN_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
-templates.env.globals["FINDING_CATEGORY_LABELS"] = {
-    "missing_required_info": "Puuttuva tieto",
-    "contradiction": "Ristiriita",
-    "weak_description": "Puutteellinen kuvaus",
-    "attachment_scope": "Liitteen käyttötarkoitus",
-    "criteria_gap": "Kriteeripuute",
-}
-
-def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable[[], Any]) -> APIRouter:
+def create_api_v1_router(ctx: RouteContext) -> APIRouter:
     router = APIRouter()
-
-    def db() -> Any:
-        return db_getter()
-
-    def settings() -> Any:
-        return settings_getter()
+    templates = ctx.templates
+    db = ctx.db
+    settings = ctx.settings
 
     def _demo_case_for_api() -> str:
         return scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
