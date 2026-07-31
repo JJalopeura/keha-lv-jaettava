@@ -51,10 +51,6 @@ class DB:
                 CREATE TABLE IF NOT EXISTS app_settings (
                     key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS llm_overrides (
-                    agent TEXT PRIMARY KEY, mode TEXT NOT NULL, reasoning_effort TEXT,
-                    text_verbosity TEXT, max_output_tokens INTEGER, updated_at REAL NOT NULL
-                );
                 CREATE TABLE IF NOT EXISTS ai_logs (
                     id TEXT PRIMARY KEY, case_id TEXT, task_id TEXT, agent TEXT, model TEXT,
                     request_json TEXT, response_json TEXT, duration_ms INTEGER, error TEXT,
@@ -75,22 +71,17 @@ class DB:
             )
         return case_id
 
-    _ALLOWED_CASE_COLUMNS = {"case_vector_store_id", "research_vector_store_id", "status"}
-
-    def _set_case_value(self, case_id: str, field: str, value: str) -> None:
-        if field not in self._ALLOWED_CASE_COLUMNS:
-            raise ValueError(f"Column {field} is not allowed for dynamic update")
-        with self._conn() as conn:
-            conn.execute(f"UPDATE cases SET {field}=?, updated_at=? WHERE id=?", (value, time.time(), case_id))
-
     def set_case_vector_store(self, case_id: str, vs_id: str) -> None:
-        self._set_case_value(case_id, "case_vector_store_id", vs_id)
+        with self._conn() as conn:
+            conn.execute("UPDATE cases SET case_vector_store_id=?, updated_at=? WHERE id=?", (vs_id, time.time(), case_id))
 
     def set_research_vector_store(self, case_id: str, vs_id: str) -> None:
-        self._set_case_value(case_id, "research_vector_store_id", vs_id)
+        with self._conn() as conn:
+            conn.execute("UPDATE cases SET research_vector_store_id=?, updated_at=? WHERE id=?", (vs_id, time.time(), case_id))
 
     def set_case_status(self, case_id: str, status: str) -> None:
-        self._set_case_value(case_id, "status", status)
+        with self._conn() as conn:
+            conn.execute("UPDATE cases SET status=?, updated_at=? WHERE id=?", (status, time.time(), case_id))
 
     def list_cases(self) -> list[dict[str, Any]]:
         with self._conn() as conn:
@@ -186,11 +177,6 @@ class DB:
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
                 (key, value, time.time()),
             )
-
-    def get_llm_override(self, agent: str) -> Optional[dict[str, Any]]:
-        with self._conn() as conn:
-            row = conn.execute("SELECT * FROM llm_overrides WHERE agent=?", (agent,)).fetchone()
-        return dict(row) if row else None
 
     def add_ai_log(self, *, case_id: Optional[str], task_id: Optional[str], agent: Optional[str],
                    model: Optional[str], request_json: Optional[str], response_json: Optional[str],

@@ -15,66 +15,6 @@ SPEC_SCENARIOS = DOMAIN_ROOT / "specs" / "scenarios" / "demo_scenarios.json"
 ACTIVE_CASE_KEY = "lupademo_active_case_id"
 ACTIVE_SCENARIO_KEY = "lupademo_active_scenario_id"
 
-FALLBACK_SCENARIOS: list[dict[str, Any]] = [
-    {
-        "id": "building_vantaa_residential",
-        "label": "Rakennuslupa: asuinrakennus Vantaalla",
-        "persona": "Aurora Kodit Oy / Aino Hakija",
-        "entry_intent": "Haluan jättää rakennuslupahakemuksen",
-        "permit_types": ["building_residential"],
-        "tenant_id": "vantaa_demo",
-        "default_next": "/lv/projects/{case_id}",
-        "proof_points": [
-            "LV-yhteiset tiedot pohjaksi",
-            "AI täyttää ja tarkistaa kenttiä",
-            "Blocking-puutteet estävät lähetyksen",
-            "Viranomaispaketti erottaa liitteet ja AI-tausta-aineiston",
-        ],
-    },
-    {
-        "id": "environmental_industrial_generic",
-        "label": "Ympäristölupa: uusiutuvan energian teollinen hanke",
-        "persona": "Teollisen hankkeen toiminnanharjoittaja",
-        "entry_intent": "Haluan jättää ympäristölupahakemuksen",
-        "permit_types": ["environmental_industrial"],
-        "tenant_id": "avi_demo",
-        "proof_points": [
-            "Epärakenteisen aineiston rakenteistus",
-            "Luvanvaraisuus ja toimivaltainen viranomainen",
-            "BAT/YVA/kemikaalit/tarkkailu",
-            "Viranomaisen täydennyspyyntöluonnos",
-        ],
-    },
-    {
-        "id": "event_public_vantaa",
-        "label": "Tapahtuma: julkinen kaupunkitapahtuma",
-        "persona": "Paikallinen tapahtumajärjestäjä",
-        "entry_intent": "Haluan järjestää yleisötapahtuman",
-        "permit_types": ["event_public"],
-        "tenant_id": "vantaa_demo",
-        "proof_points": [
-            "Maanomistajan lupa",
-            "Pelastussuunnitelma",
-            "Liikenne ja jätehuolto",
-            "AI erottaa muistiinpanot viranomaisliitteistä",
-        ],
-    },
-    {
-        "id": "national_suggestion_service",
-        "label": "Kansallinen AI-ehdotuspalvelu",
-        "persona": "Asiointipalvelun tuoteomistaja / virasto",
-        "entry_intent": "Haluan hyödyntää AI-ehdotuspalvelua",
-        "permit_types": ["building_residential", "environmental_industrial"],
-        "tenant_id": "multi",
-        "proof_points": [
-            "API-integraatio",
-            "UI-only kevytkäyttö",
-            "Tenant- ja kriteeriversiovalinta",
-            "Request/response audit",
-        ],
-    },
-]
-
 
 def list_scenarios() -> list[dict[str, Any]]:
     try:
@@ -84,7 +24,7 @@ def list_scenarios() -> list[dict[str, Any]]:
             return [s for s in scenarios if isinstance(s, dict) and s.get("id")]
     except Exception:
         pass
-    return [dict(s) for s in FALLBACK_SCENARIOS]
+    return []
 
 
 def get_scenario(scenario_id: str) -> dict[str, Any]:

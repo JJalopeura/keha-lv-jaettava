@@ -13,8 +13,7 @@ from .authority import create_authority_router
 from .api_v1 import create_api_v1_router
 from .admin import create_admin_router
 from .demo_lab import create_demo_lab_router
-from .common import RouteContext, FINDING_CATEGORY_LABELS
-from .template_filters import finnish_datetime
+from .common import RouteContext, FINDING_CATEGORY_LABELS, finnish_datetime
 
 
 def create_lupademo_router(db_getter: Callable[[], Any], settings_getter: Callable[[], Any]) -> APIRouter:

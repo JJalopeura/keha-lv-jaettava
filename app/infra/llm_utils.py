@@ -2,30 +2,13 @@
 from __future__ import annotations
 import json
 import os
-import threading
 import time
 from typing import Any, Dict, List, Optional
 
 from .config import Settings
 from .db import DB
 
-
 from .azure_client import _build_responses_payload
-_LLM_RATE_LOCK = threading.Lock()
-_LLM_LAST_CALL = 0.0
-_LLM_MIN_INTERVAL_S = float(os.getenv("KEHA_LV_LLM_MIN_INTERVAL_S", "0") or "0")
-
-
-def _rate_limit() -> None:
-    if _LLM_MIN_INTERVAL_S <= 0:
-        return
-    global _LLM_LAST_CALL
-    with _LLM_RATE_LOCK:
-        now = time.time()
-        wait_s = _LLM_MIN_INTERVAL_S - (now - _LLM_LAST_CALL)
-        if wait_s > 0:
-            time.sleep(wait_s)
-        _LLM_LAST_CALL = time.time()
 
 
 def vector_store_ids(
@@ -72,11 +55,6 @@ def call_llm_json(
     reasoning_effort: Optional[str] = None,
     text_verbosity: Optional[str] = None,
 ) -> Dict[str, Any]:
-    reasoning_effort, text_verbosity, max_output_tokens = _apply_llm_overrides(
-        db=db, agent=agent,
-        reasoning_effort=reasoning_effort, text_verbosity=text_verbosity,
-        max_output_tokens=max_output_tokens,
-    )
     payload = _build_responses_payload(
         client.model, input_text=prompt, vector_store_ids=vector_store_ids_list,
         response_format="json_object", max_output_tokens=max_output_tokens,
@@ -101,7 +79,6 @@ def call_llm_json(
             retrying = attempt == 1
             request_tokens = max(max_output_tokens or 0, 6000) * 2 if retrying else max_output_tokens
             request_reasoning = "low" if retrying else reasoning_effort
-            _rate_limit()
             resp = client.responses(
                 input_text=prompt, vector_store_ids=vector_store_ids_list,
                 response_format="json_object", max_output_tokens=request_tokens,
@@ -141,55 +118,3 @@ def call_llm_json(
             except Exception:
                 pass
 
-
-def _apply_llm_overrides(
-    *,
-    db: Optional[DB],
-    agent: Optional[str],
-    reasoning_effort: Optional[str],
-    text_verbosity: Optional[str],
-    max_output_tokens: Optional[int],
-) -> tuple[Optional[str], Optional[str], Optional[int]]:
-    if db is None or not agent:
-        return reasoning_effort, text_verbosity, max_output_tokens
-    try:
-        global_fast = db.get_app_setting("fast_mode")
-    except Exception:
-        global_fast = None
-    fast_enabled = str(global_fast or "").strip() in {"1", "true", "yes", "on"}
-
-    override = None
-    try:
-        override = db.get_llm_override(agent)
-    except Exception:
-        override = None
-
-    mode = (override or {}).get("mode") if isinstance(override, dict) else None
-    mode = (mode or "auto").strip().lower()
-
-    force_fast = mode == "fast" or (mode == "auto" and fast_enabled)
-    force_normal = mode == "normal"
-
-    if force_fast and not force_normal:
-        reasoning_effort = "low"
-        text_verbosity = "low"
-
-    if isinstance(override, dict):
-        if override.get("reasoning_effort"):
-            reasoning_effort = override.get("reasoning_effort")
-        if override.get("text_verbosity"):
-            text_verbosity = override.get("text_verbosity")
-        if override.get("max_output_tokens") is not None:
-            try:
-                max_output_tokens = int(override.get("max_output_tokens"))
-            except Exception:
-                pass
-
-    # Chat model guardrails (some chat deployments only support medium values)
-    if agent == "case.chat":
-        if reasoning_effort == "low":
-            reasoning_effort = "medium"
-        if text_verbosity == "low":
-            text_verbosity = "medium"
-
-    return reasoning_effort, text_verbosity, max_output_tokens

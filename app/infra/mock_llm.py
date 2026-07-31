@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 import json
+import random
 from typing import Any, Dict, Optional
 import uuid
 
@@ -23,7 +23,7 @@ class MockLLMClient:
         pass
 
     def _seed(self, text: str) -> int:
-        return int(hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:8], 16)
+        return random.Random(text or "").randint(0, 0xFFFFFFFF)
     def _response_id(self, input_text: str) -> str:
         return f"mock-{self._seed(input_text):08x}"
 
