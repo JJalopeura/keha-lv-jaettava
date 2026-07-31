@@ -1,5 +1,5 @@
-{% extends "light_base.html" %}
-{% from "_components.html" import page_header, status_summary, recommended_action, technical_details %}
+{% extends "shared/light_base.html" %}
+{% from "shared/_components.html" import page_header, status_summary, recommended_action, technical_details %}
 {% block title %}Integraatiot{% endblock %}
 {% block content %}
 {% set request_count = request_log["items"]|length %}

@@ -1,0 +1,121 @@
+{
+  "schema_id": "event_public_v1",
+  "permit_type": "event_public",
+  "title": "Tapahtumalupa / julkinen kaupunkitapahtuma",
+  "authority_default": "Kunnan tapahtumapalvelut / poliisi / pelastusviranomainen",
+  "tabs": [
+    {
+      "id": "basic",
+      "label": "Tapahtuma"
+    },
+    {
+      "id": "safety",
+      "label": "Turvallisuus ja järjestelyt"
+    },
+    {
+      "id": "attachments",
+      "label": "Liitteet"
+    },
+    {
+      "id": "summary",
+      "label": "Yhteenveto"
+    }
+  ],
+  "fields": [
+    {
+      "id": "applicant_name",
+      "tab": "basic",
+      "label": "Hakija",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "business_id",
+      "tab": "basic",
+      "label": "Y-tunnus",
+      "type": "text",
+      "required": true,
+      "common_data": true
+    },
+    {
+      "id": "event_name",
+      "tab": "basic",
+      "label": "Tapahtuman nimi",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "event_description",
+      "tab": "basic",
+      "label": "Tapahtuman kuvaus",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "event_location",
+      "tab": "basic",
+      "label": "Paikka ja alue",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "expected_attendees",
+      "tab": "basic",
+      "label": "Arvioitu osallistujamäärä",
+      "type": "number",
+      "required": true
+    },
+    {
+      "id": "landowner_permission",
+      "tab": "safety",
+      "label": "Maanomistajan lupa",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "rescue_plan",
+      "tab": "safety",
+      "label": "Pelastussuunnitelma",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "noise_notice",
+      "tab": "safety",
+      "label": "Melu ja ilmoitustarve",
+      "type": "textarea",
+      "required": false,
+      "ai_suggest": true
+    },
+    {
+      "id": "traffic_arrangements",
+      "tab": "safety",
+      "label": "Liikennejärjestelyt",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    },
+    {
+      "id": "waste_management",
+      "tab": "safety",
+      "label": "Jätehuolto",
+      "type": "textarea",
+      "required": true,
+      "ai_suggest": true
+    }
+  ],
+  "required_attachments": [
+    "landowner_permission",
+    "rescue_plan"
+  ],
+  "recommended_attachments": [
+    "traffic_plan",
+    "site_plan",
+    "noise_notice"
+  ]
+}

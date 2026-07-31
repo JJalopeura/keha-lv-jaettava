@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
 from .common import RouteContext, context_app_with_material, job_eta_seconds
-from app.core.llm_factory import create_llm_client
+from app.infra.llm_factory import create_llm_client
 
 def create_applicant_router(ctx: RouteContext) -> APIRouter:
     router = APIRouter()
@@ -75,7 +75,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     def landing(request: Request):
         return templates.TemplateResponse(
             request,
-            "landing.html",
+            "applicant/landing.html",
             {"scenarios": scenarios.list_scenarios(), "workspace_options": workspace_options()},
         )
 
@@ -92,19 +92,19 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/demo/scenarios", response_class=HTMLResponse)
     def scenario_list(request: Request):
-        return templates.TemplateResponse(request, "scenarios.html", {"scenarios": scenarios.list_scenarios()})
+        return templates.TemplateResponse(request, "admin/scenarios.html", {"scenarios": scenarios.list_scenarios()})
 
     @router.get("/demo-lab/presenter", response_class=HTMLResponse)
     def presenter_lab(request: Request):
-        return templates.TemplateResponse(request, "presenter.html", {"scenarios": scenarios.list_scenarios()})
+        return templates.TemplateResponse(request, "admin/presenter.html", {"scenarios": scenarios.list_scenarios()})
 
     @router.get("/applicant", response_class=HTMLResponse)
     def applicant_start(request: Request):
-        return templates.TemplateResponse(request, "applicant_start.html")
+        return templates.TemplateResponse(request, "applicant/applicant_start.html")
 
     @router.get("/applicant/packages/new", response_class=HTMLResponse)
     def applicant_package_new(request: Request):
-        return templates.TemplateResponse(request, "package_new.html")
+        return templates.TemplateResponse(request, "applicant/package_new.html")
 
     @router.post("/applicant/packages/new")
     async def applicant_package_create(
@@ -225,7 +225,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     @router.get("/applicant/packages/{package_id}", response_class=HTMLResponse)
     def applicant_package_workbench(request: Request, package_id: str):
         try:
-            return templates.TemplateResponse(request, "package_workbench.html", package_context(package_id))
+            return templates.TemplateResponse(request, "applicant/package_workbench.html", package_context(package_id))
         except KeyError:
             raise HTTPException(status_code=404, detail="Package not found")
 
@@ -255,7 +255,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/projects/new", response_class=HTMLResponse)
     def project_new(request: Request):
-        return templates.TemplateResponse(request, "applicant_start.html")
+        return templates.TemplateResponse(request, "applicant/applicant_start.html")
 
     @router.post("/demo/scenarios/start")
     def scenario_start(scenario_id: str = Form(...)):
@@ -303,7 +303,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/projects/{project_id}", response_class=HTMLResponse)
     def project_workspace(request: Request, project_id: str):
-        return templates.TemplateResponse(request, "lv_project.html", {**context(project_id)})
+        return templates.TemplateResponse(request, "applicant/lv_project.html", {**context(project_id)})
 
     @router.get("/projects/{project_id}/intake", response_class=HTMLResponse)
     def project_intake(project_id: str, application_id: str = "building_residential"):
@@ -343,7 +343,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/lv/projects/{case_id}", response_class=HTMLResponse)
     def lv_project(request: Request, case_id: str):
-        return templates.TemplateResponse(request, "lv_project.html", {**context(case_id)})
+        return templates.TemplateResponse(request, "applicant/lv_project.html", {**context(case_id)})
 
     @router.post("/lv/projects/{case_id}/common-data")
     async def update_lv(case_id: str, request: Request):
@@ -391,7 +391,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         ctx = context(case_id, application_id)
         if step in (5, 6):
             ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
-        return templates.TemplateResponse(request, "wizard.html", {**ctx, "step": step})
+        return templates.TemplateResponse(request, "applicant/wizard.html", {**ctx, "step": step})
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/package")
     def create_application_material_package(case_id: str, application_id: str):
@@ -757,6 +757,6 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/cases/{case_id}/lupademo/application/{application_id}/receipt", response_class=HTMLResponse)
     def receipt(request: Request, case_id: str, application_id: str):
-        return templates.TemplateResponse(request, "receipt.html", {**context(case_id, application_id)})
+        return templates.TemplateResponse(request, "applicant/receipt.html", {**context(case_id, application_id)})
 
     return router

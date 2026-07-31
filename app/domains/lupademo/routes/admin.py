@@ -21,7 +21,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
     @router.get("/cases/{case_id}/lupademo/suggestion-service", response_class=HTMLResponse)
     def suggestion_service(request: Request, case_id: str):
         return templates.TemplateResponse(
-            "suggestion_service.html",
+            "admin/suggestion_service.html",
             {
                 "request": request,
                 **context(case_id),
@@ -53,7 +53,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
         }
         result = svc.artifact_json(db(), case_id, "suggestion_service_demo", "api", {})
         return templates.TemplateResponse(
-            "api_demo.html",
+            "admin/api_demo.html",
             {
                 "request": request,
                 **context(case_id),
@@ -140,7 +140,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
     @router.get("/cases/{case_id}/lupademo/admin/criteria", response_class=HTMLResponse)
     def criteria_admin(request: Request, case_id: str):
         return templates.TemplateResponse(
-            "criteria.html",
+            "admin/criteria.html",
             {
                 "request": request,
                 **context(case_id),

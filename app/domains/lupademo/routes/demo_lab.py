@@ -25,7 +25,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
     @router.get("/cases/{case_id}/lupademo/suggestion-service/ui-only", response_class=HTMLResponse)
     def ui_only(request: Request, case_id: str):
         return templates.TemplateResponse(
-            "ui_only.html",
+            "admin/ui_only.html",
             {
                 "request": request,
                 **context(case_id),
@@ -100,7 +100,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
     @router.get("/cases/{case_id}/lupademo/admin/benchmark-lab", response_class=HTMLResponse)
     def benchmark_lab(request: Request, case_id: str):
         return templates.TemplateResponse(
-            "benchmark_lab.html",
+            "admin/benchmark_lab.html",
             {"request": request, **context(case_id), "benchmark_lab": svc.benchmark_lab_snapshot(db(), case_id)},
         )
 
@@ -130,7 +130,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
             for item in db().list_ai_logs(case_id=case_id, limit=200)
         ]
         return templates.TemplateResponse(
-            "audit_trail.html",
+            "admin/audit_trail.html",
             {"request": request, **context(case_id), "audit_events": events, "ai_calls": ai_calls},
         )
 
@@ -160,7 +160,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
         all_ai_calls = list(sorted(all_ai_calls, key=lambda c: c.get("created_at", ""), reverse=True))[:500]
         case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
         return templates.TemplateResponse(
-            "audit_trail.html",
+            "admin/audit_trail.html",
             {"request": request, **context(case_id), "audit_events": all_events, "ai_calls": all_ai_calls},
         )
 
@@ -172,13 +172,13 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
     @router.get("/cases/{case_id}/lupademo/admin/production-hardening", response_class=HTMLResponse)
     def production_hardening(request: Request, case_id: str):
         return templates.TemplateResponse(
-            "production_hardening.html",
+            "admin/production_hardening.html",
             {"request": request, **context(case_id), "hardening": svc.production_hardening_snapshot(db(), case_id)},
         )
 
     @router.get("/cases/{case_id}/lupademo/metrics", response_class=HTMLResponse)
     def metrics(request: Request, case_id: str):
-        return templates.TemplateResponse(request, "metrics.html", {**context(case_id), "metrics": svc.metrics_snapshot(db(), case_id)})
+        return templates.TemplateResponse(request, "admin/metrics.html", {**context(case_id), "metrics": svc.metrics_snapshot(db(), case_id)})
 
     @router.get("/cases/{case_id}/lupademo/metrics/report.json")
     def metrics_report_json(case_id: str):
@@ -187,7 +187,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
     @router.get("/cases/{case_id}/lupademo/metrics/report.html", response_class=HTMLResponse)
     def metrics_report_html(request: Request, case_id: str):
         metrics_payload = svc.metrics_snapshot(db(), case_id)
-        return templates.TemplateResponse(request, "metrics_report.html", {"metrics_payload": metrics_payload})
+        return templates.TemplateResponse(request, "admin/metrics_report.html", {"metrics_payload": metrics_payload})
 
     @router.post("/cases/{case_id}/lupademo/admin/agent-chain/audit-run")
     def agent_chain_audit_run(case_id: str):
@@ -230,7 +230,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
         else:
             m = svc.metrics_snapshot(db(), case_id)
             m.update(aggregated)
-        return templates.TemplateResponse(request, "metrics.html", {**context(case_id), "metrics": m})
+        return templates.TemplateResponse(request, "admin/metrics.html", {**context(case_id), "metrics": m})
 
     @router.get("/metrics/report.html", response_class=HTMLResponse)
     def metrics_report_global(request: Request):
@@ -255,7 +255,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
             "criteria_test_results": {pt: svc.artifact_json(db(), case_id, "criteria_test_result", pt, {}) for pt in permit_types},
             "source_ingest": svc.artifact_json(db(), case_id, "source_material_ingest", "main", {}),
         })
-        return templates.TemplateResponse("criteria.html", {**ctx, "request": request})
+        return templates.TemplateResponse("admin/criteria.html", {**ctx, "request": request})
 
     @router.get("/admin/suggestion-service", response_class=HTMLResponse)
     def suggestion_service_global(request: Request):
@@ -265,7 +265,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
             "api_clients": security.public_client_options(),
             "request_log": svc.artifact_json(db(), case_id, "suggestion_service_request_log", "main", {"items": []}),
         })
-        return templates.TemplateResponse("suggestion_service.html", {**ctx, "request": request})
+        return templates.TemplateResponse("admin/suggestion_service.html", {**ctx, "request": request})
 
     @router.get("/admin/production-hardening", response_class=HTMLResponse)
     def production_hardening_global(request: Request):
@@ -300,7 +300,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
             all_metrics["average_quality_score"] = round(sum(quality_scores) / len(quality_scores), 1)
         return templates.TemplateResponse(
             request,
-            "demo_lab.html",
+            "admin/demo_lab.html",
             {
                 **context(case_id),
                 "metrics": all_metrics,

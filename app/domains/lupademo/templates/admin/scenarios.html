@@ -1,5 +1,5 @@
-{% extends "light_base.html" %}
-{% from "_components.html" import page_header, status_summary, recommended_action %}
+{% extends "shared/light_base.html" %}
+{% from "shared/_components.html" import page_header, status_summary, recommended_action %}
 {% block title %}Skenaariot{% endblock %}
 {% block content %}
 {{ page_header('Skenaariot', 'Valitse valmisteltu lähtötilanne ja jatka sen jälkeen esittäjätilaan.', 'Demo Lab ja alusta', [{'label': 'Yleiskuva', 'href': '/demo-lab'}, {'label': 'Skenaariot', 'href': ''}]) }}

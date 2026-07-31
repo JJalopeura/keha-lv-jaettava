@@ -1,5 +1,5 @@
-{% extends "light_base.html" %}
-{% from "_components.html" import page_header %}
+{% extends "shared/light_base.html" %}
+{% from "shared/_components.html" import page_header %}
 {% block title %}Uusi hakemus{% endblock %}
 {% block content %}
 {{ page_header('Uusi hakemus', 'Luo hankkeelle hakemus perustiedoilla. Voit täydentää muita tietoja ja liitteitä seuraavissa vaiheissa.', 'Hakijan asiointi', [{'label': 'Etusivu', 'href': '/'}, {'label': 'Uusi hakemus', 'href': ''}]) }}

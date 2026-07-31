@@ -1,4 +1,4 @@
-{% extends "light_base.html" %}
+{% extends "shared/light_base.html" %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
 {% set source_labels = {
@@ -51,7 +51,7 @@
   {% endfor %}
 </nav>
 
-{% include '_ai_job_bar.html' %}
+{% include 'shared/_ai_job_bar.html' %}
 
 <section class="step-guidance">
   <div>

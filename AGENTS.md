@@ -18,17 +18,20 @@ Runs fully offline with a mock LLM (rule-based, instant) by default. Swap to Azu
 
 ## Architecture
 
+> **See `ARCHITECTURE.md` for the full module map, dependency graph (Mermaid), and data flow diagram.** This section summarizes key navigation points.
+
 ```
 app/
-  main.py                    FastAPI app, mounts router + static, global error handler, /healthz
-  core/
-    config.py                Settings dataclass loaded from env vars (KEHA_LV_* + AZURE_OPENAI_*)
-    db.py                    SQLite store: cases, files, artifacts (JSON docs), app_settings, ai_logs
-    llm_factory.py           create_llm_client() → mock or Azure client
-    llm_utils.py             call_llm_json() helper, prompt templating
-    mock_llm.py              Rule-based mock that responds instantly without network
+  main.py                    FastAPI app, mounts router + static, /healthz
+  infra/                     Infrastructure (no business logic):
+    config.py                  Settings dataclass from env vars
+    db.py                      SQLite store
+    llm_factory.py             create_llm_client() → mock or Azure
+    llm_utils.py               call_llm_json(), rate limiting
+    mock_llm.py                Rule-based mock (default, offline)
+    azure_client.py            Azure OpenAI client
   domains/lupademo/
-    routes/                  HTTP routes package (Phase 2 split, see /workspace/plan.md):
+    routes/                  HTTP handlers (thin — delegate to services):
       __init__.py               thin create_lupademo_router that mounts 5 sub-routers
       applicant.py              42 handlers — wizard, intake, application studio, common
                                 data, packaging, chat/voice (~382 lines)
@@ -37,25 +40,38 @@ app/
       admin.py                   22 handlers — criteria admin, API demo/playground,
                                 internal AI job API
       demo_lab.py               14 handlers — benchmark, metrics, audit, UI-only demo
-    services/                Business logic package (Phase 2 split, see /workspace/plan.md):
-      core.py                  dataclasses/contracts, form schemas & criteria, artifact/db
-                                primitives, prompt rendering, common-data sync. No intra-package deps.
-      jobs.py                   generic AI job lifecycle (start/advance/complete/cancel/retry).
-                                Depends on core only.
-      intake.py                 attachments, material packages, ingestion, extraction,
-                                classification, retrieval/vector-store context. Depends on core+jobs.
-      application.py            suggestions, criteria checks, package analysis, submission
-                                packaging, authority views, chat/voice, metrics/benchmark,
-                                external suggestion-service API. Depends on core+jobs+intake.
-      __init__.py               re-exports everything so `import services as svc; svc.xxx()` is unchanged.
+    services/                Business logic package:
+      domain.py                 Dataclasses, type contracts, schemas, path constants,
+                                prompt loading. No intra-package deps. (~350 lines)
+                                → "what does an Issue look like?"
+      db_helpers.py             Persistence primitives: artifact_json, save_artifact,
+                                event, _dict/_list/_plain, source_ref. (~80 lines)
+                                → "how do I read/write artifacts?"
+      core.py                   Application orchestration: case setup, application
+                                lifecycle, common-data sync. Re-exports from domain
+                                and db_helpers. (~250 lines)
+                                → "how do I create a case/app?"
+      criteria.py               Permit criteria CRUD: load, save, version history,
+                                rule management, severity ordering. (~180 lines)
+                                → "how do I manage permit criteria/rules?"
+      jobs.py                   Generic AI job lifecycle (start/advance/complete/
+                                cancel/retry). Depends on core only. (~350 lines)
+      intake.py                 Attachments, material packages, ingestion, extraction,
+                                classification, retrieval, agent runner.
+                                Depends on core+jobs. (~1500 lines)
+      application.py            Suggestions, checks, packaging, authority views,
+                                chat/voice, metrics, external API. The largest module.
+                                Depends on core+jobs+intake+criteria. (~2700 lines)
+      __init__.py               Re-exports everything. `import services as svc` works.
 
                                 Dependency order (graphify-verified):
-                                application → intake → jobs → core
-                                Core imports nothing intra-package. No cycles exist.
+                                application → intake → jobs → core → domain + db_helpers
+                                criteria → core → domain + db_helpers
+                                No cycles exist.
     scenarios.py             Demo scenario definitions + case creation (4 built-in scenarios, fallback in code)
     security.py              API key / tenant auth for suggestion-service endpoints
     static/style.css          Single CSS file
-    templates/*.html          23 Jinja2 templates (wizard, authority, admin, API demo, etc.)
+    templates/*.html          22 Jinja2 templates (wizard, authority, admin, API demo, etc.)
     specs/                     JSON specs: form schemas, permit criteria, scenarios, roles, eval definitions
 docs/specs/                   Additional reference specs (not loaded at runtime)
 data/                         Created at first run: SQLite DB + uploads/ (gitignored)

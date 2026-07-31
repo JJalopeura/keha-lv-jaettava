@@ -1,5 +1,5 @@
-{% extends "light_base.html" %}
-{% from "_components.html" import page_header, status_summary, recommended_action, technical_details %}
+{% extends "shared/light_base.html" %}
+{% from "shared/_components.html" import page_header, status_summary, recommended_action, technical_details %}
 {% block title %}Tuotantovalmius{% endblock %}
 {% block content %}
 {% set requirement_names = {

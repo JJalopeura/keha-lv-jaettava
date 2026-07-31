@@ -7,8 +7,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import load_settings
-from app.core.db import DB
+from app.infra.config import load_settings
+from app.infra.db import DB
 from app.domains.lupademo import services as svc
 from app.domains.lupademo.routes import create_lupademo_router
 

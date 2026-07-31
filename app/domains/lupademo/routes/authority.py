@@ -42,12 +42,12 @@ def create_authority_router(ctx: RouteContext) -> APIRouter:
             all_items = [item for item in all_items if item.get("permit_type") == permit_type or item.get("application_id") == permit_type]
         if municipality:
             all_items = [item for item in all_items if str(item.get("municipality") or "").lower() == municipality.lower()]
-        return templates.TemplateResponse(request, "authority_queue.html", {"queue": {"items": all_items}, "filters": {"permit_type": permit_type, "municipality": municipality}})
+        return templates.TemplateResponse(request, "authority/authority_queue.html", {"queue": {"items": all_items}, "filters": {"permit_type": permit_type, "municipality": municipality}})
 
     @router.get("/cases/{case_id}/lupademo/authority/applications/{application_id}", response_class=HTMLResponse)
     def authority_detail(request: Request, case_id: str, application_id: str):
         return templates.TemplateResponse(
-            "authority_detail.html",
+            "authority/authority_detail.html",
             {
                 "request": request,
                 **context(case_id, application_id),

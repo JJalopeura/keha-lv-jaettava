@@ -45,15 +45,15 @@ do not define its visible structure.
 
 | Current area | Templates | Current concern |
 |---|---|---|
-| Applicant entry | `landing.html`, `applicant_start.html` | Two starts overlap in project and applicant data capture |
-| Material intake | `package_new.html`, `package_workbench.html`, wizard step 2 | Upload, analysis, document management, and AI field review are duplicated |
-| Application workflow | `wizard.html`, `package.html`, `receipt.html` | One template owns too many jobs; submission preview and receipt have duplicate representations |
-| LV project portfolio | `lv_project.html` | Shared data and permit status coexist with integration evidence |
-| Authority casework | `authority_queue.html`, `authority_detail.html` | Operational work is coherent, but presenter proof and technical event data leak into the workspace |
-| Suggestion service | `suggestion_service.html`, `api_demo.html`, `ui_only.html` | Product choice, clerk tool, API playground, tenant metadata, and credentials are mixed |
-| Platform operations | `criteria.html`, `metrics.html`, `benchmark_lab.html`, `audit_trail.html`, `production_hardening.html` | Governance, impact, telemetry, evaluation, corpus operations, and readiness overlap |
-| Demo presentation | `demo_lab.html`, `presenter.html`, `scenarios.html` | Correct capabilities use a legacy shell and applicant route ownership |
-| Reporting | `metrics_report.html` | Outcome metrics and implementation diagnostics are combined without context |
+| Applicant entry | `applicant/landing.html`, `applicant/applicant_start.html` | Two starts overlap in project and applicant data capture |
+| Material intake | `applicant/package_new.html`, `applicant/package_workbench.html`, wizard step 2 | Upload, analysis, document management, and AI field review are duplicated |
+| Application workflow | `applicant/wizard.html`, `applicant/receipt.html` | One template owns too many jobs; submission preview and receipt have duplicate representations |
+| LV project portfolio | `applicant/lv_project.html` | Shared data and permit status coexist with integration evidence |
+| Authority casework | `authority/authority_queue.html`, `authority/authority_detail.html` | Operational work is coherent, but presenter proof and technical event data leak into the workspace |
+| Suggestion service | `admin/suggestion_service.html`, `admin/api_demo.html`, `admin/ui_only.html` | Product choice, clerk tool, API playground, tenant metadata, and credentials are mixed |
+| Platform operations | `admin/criteria.html`, `admin/metrics.html`, `admin/benchmark_lab.html`, `admin/audit_trail.html`, `admin/production_hardening.html` | Governance, impact, telemetry, evaluation, corpus operations, and readiness overlap |
+| Demo presentation | `admin/demo_lab.html`, `admin/presenter.html`, `admin/scenarios.html` | Capabilities use the shared `shared/light_base.html` shell |
+| Reporting | `admin/metrics_report.html` | Outcome metrics and implementation diagnostics are combined without context |
 
 ### Pages that belong together
 
@@ -81,7 +81,7 @@ do not define its visible structure.
 * Authority templates include demo proof content that belongs in Presenter
 * Suggestion Service home exposes tenant credentials and request history beside
   user-facing product choices
-* `presenter.html` and `scenarios.html` use the legacy `lv_base.html` shell
+* All templates now extend `shared/light_base.html` (legacy shells removed)
 
 ### Implementation architecture exposed to users
 
@@ -487,8 +487,7 @@ Do not use breadcrumbs as a substitute for workflow progress.
 
 ## Component system
 
-These components are product contracts, not visual one-offs. Their visual tokens
-are defined in [MASTER.md](../design-system/lupa-apuri/MASTER.md).
+These components are product contracts, not visual one-offs.
 
 ### AppShell
 
@@ -715,7 +714,7 @@ Variants: applicant value, AI control, authority value, integration proof, readi
 No route changes are required for the first refactoring phases. Templates may move to
 new shells and partials while preserving current endpoints.
 
-### `landing.html`
+### `applicant/landing.html`
 
 Target workspace: Applicant.
 
@@ -738,7 +737,7 @@ Move, collapse, or remove:
 Template recommendation: make `/` the canonical Applicant Home and let `/projects/new`
 redirect or present a true creation state rather than duplicating the landing page.
 
-### `package_new.html`
+### `applicant/package_new.html`
 
 Target workspace: Applicant, Materials.
 
@@ -762,7 +761,7 @@ Move, collapse, or remove:
 Template recommendation: submit to the current backend route, then transition clearly
 into Materials for the created application.
 
-### `package_workbench.html`
+### `applicant/package_workbench.html`
 
 Target workspace: Applicant, Materials.
 
@@ -788,7 +787,7 @@ Move, collapse, or remove:
 Template recommendation: retain analysis and document management, remove the parallel
 field-acceptance forms from this page.
 
-### `wizard.html`
+### `applicant/wizard.html`
 
 Target workspace: Applicant, Application.
 
@@ -818,7 +817,7 @@ Move, collapse, or remove:
 Template recommendation: split step bodies into Jinja partials while preserving the
 single route and backend operations.
 
-### `lv_project.html`
+### `applicant/lv_project.html`
 
 Target workspace: Applicant/LV-facing.
 
@@ -842,7 +841,7 @@ Move, collapse, or remove:
 Template recommendation: keep route aliases initially, but have one canonical URL in
 navigation.
 
-### `suggestion_service.html`
+### `admin/suggestion_service.html`
 
 Target workspace: Demo Lab/Platform, Integrations.
 
@@ -866,7 +865,7 @@ Move, collapse, or remove:
 
 Template recommendation: use the Demo Lab/Platform shell; link to existing API and UI-only routes.
 
-### `ui_only.html`
+### `admin/ui_only.html`
 
 Target workspace: Demo Lab/Platform, Integrations, Clerk Assistant.
 
@@ -891,7 +890,7 @@ Move, collapse, or remove:
 Template recommendation: keep its distinct non-integrated contract and do not make it
 look like the Applicant application editor.
 
-### `demo_lab.html`
+### `admin/demo_lab.html`
 
 Target workspace: Demo Lab/Platform.
 
@@ -914,7 +913,7 @@ Move, collapse, or remove:
 Template recommendation: become the Demo Lab/Platform workspace home with grouped
 platform and demo capabilities.
 
-### `metrics.html`
+### `admin/metrics.html`
 
 Target workspace: Demo Lab/Platform, Impact.
 
@@ -940,7 +939,7 @@ Move, collapse, or remove:
 Template recommendation: extract sections into partials before changing backend data; link
 technical sections to their new canonical pages until dedicated routes exist.
 
-### `criteria.html`
+### `admin/criteria.html`
 
 Target workspace: Demo Lab/Platform, Criteria.
 
@@ -966,7 +965,7 @@ Move, collapse, or remove:
 Template recommendation: preserve existing form routes while presenting separate sections or
 tabs; extract knowledge-source and test panels into partials.
 
-### `benchmark_lab.html`
+### `admin/benchmark_lab.html`
 
 Target workspace: Demo Lab/Platform, Evaluation.
 
@@ -991,7 +990,7 @@ Move, collapse, or remove:
 Template recommendation: retain refresh behavior, label it as updating the evaluation summary
 rather than running an unspecified benchmark pipeline.
 
-### `production_hardening.html`
+### `admin/production_hardening.html`
 
 Target workspace: Demo Lab/Platform, Readiness.
 
@@ -1016,7 +1015,7 @@ Move, collapse, or remove:
 Template recommendation: use the existing item data now; preserve room for ownership without
 adding unsupported backend fields.
 
-### `presenter.html`
+### `admin/presenter.html`
 
 Target workspace: Demo Lab/Platform, presenter mode.
 
@@ -1040,7 +1039,7 @@ Move, collapse, or remove:
 Template recommendation: derive every scene from existing routes and scenario data; do not
 duplicate operational controls.
 
-### `receipt.html`
+### `applicant/receipt.html`
 
 Target workspace: Applicant.
 
@@ -1069,32 +1068,28 @@ as wizard step 6 in a later route-compatible migration.
 
 | Template | Target workspace | Primary job | Recommendation |
 |---|---|---|---|
-| `applicant_start.html` | Applicant | Create application context | Reconcile with landing start options and avoid recapturing package metadata |
-| `package.html` | Applicant | Review exact submission | Consolidate into Review and Submit; preserve route as redirect or compatible view |
-| `authority_queue.html` | Caseworker | Choose next application | Remove presenter proof; make filters persistent and statuses decision-oriented |
-| `authority_detail.html` | Caseworker | Decide next casework action | Use evidence-backed observations and collapse history/technical data |
-| `api_demo.html` | Demo Lab/Platform | Test external contract | Keep request/response technical; separate widget concept and raw trace details |
-| `audit_trail.html` | Demo Lab/Platform | Investigate actions | Format times and labels; use expandable payload rows |
-| `metrics_report.html` | Standalone platform report | Share outcome summary | Keep standalone; remove low-level diagnostics or label them as appendix |
-| `scenarios.html` | Demo Lab/Platform | Select demo premise | Replace JSON-spec language and legacy shell |
-| `base.html` | Shared infrastructure | Compatibility only | Retire after all templates inherit the canonical AppShell |
-| `lv_base.html` | Shared infrastructure | Legacy demo shell | Retire after Presenter and Scenarios migrate |
+| `applicant/applicant_start.html` | Applicant | Create application context | Reconcile with landing start options and avoid recapturing package metadata |
+| `authority/authority_queue.html` | Caseworker | Choose next application | Remove presenter proof; make filters persistent and statuses decision-oriented |
+| `authority/authority_detail.html` | Caseworker | Decide next casework action | Use evidence-backed observations and collapse history/technical data |
+| `admin/api_demo.html` | Demo Lab/Platform | Test external contract | Keep request/response technical; separate widget concept and raw trace details |
+| `admin/audit_trail.html` | Demo Lab/Platform | Investigate actions | Format times and labels; use expandable payload rows |
+| `admin/metrics_report.html` | Standalone platform report | Share outcome summary | Keep standalone; remove low-level diagnostics or label them as appendix |
+| `admin/scenarios.html` | Demo Lab/Platform | Select demo premise | Uses the shared `shared/light_base.html` shell |
 
 ## Implementation plan
 
 ### Phase 1: Base shells
 
 * Establish three explicit shell states while preserving current route-compatible URL inference
-* Build one canonical AppShell in `light_base.html`
+* The canonical AppShell lives in `shared/light_base.html`
 * Add workspace identity, capability navigation, global header, main-content focus target,
   and project-context slot
-* Keep `base.html` as a compatibility pass-through during migration
-* Move Presenter and Scenarios off `lv_base.html`, then retire the legacy shell
+* Legacy shells (`base.html`, `lv_base.html`) have been removed — all templates now extend `shared/light_base.html`
 * Preserve all current routes
 
 ### Phase 2: Design tokens
 
-* Introduce the semantic tokens in [MASTER.md](../design-system/lupa-apuri/MASTER.md)
+* Introduce semantic design tokens from the design system
 * Map existing colors and spacing to tokens before changing page composition
 * Define focus, status, form, table, disclosure, and layout primitives
 * Avoid broad visual restyling until shell behavior and tokens are stable
@@ -1126,8 +1121,7 @@ except AppShell primitives that are required globally.
 * Remove AI acceptance from package workbench
 * Split wizard step bodies into partials
 * Make AI Review canonical for suggestion decisions
-* Consolidate Review and Submit with `package.html`
-* Make `receipt.html` the canonical outcome
+* Make `applicant/receipt.html` the canonical outcome
 
 ### Phase 5: Applicant project and Caseworker pages
 
@@ -1213,4 +1207,4 @@ Local visual preference is not sufficient justification.
 > Gateway with oversized typography. That recommendation conflicts with this
 > operational desktop product and was rejected. Only its accessible color,
 > typography, density, keyboard, feedback, and breadcrumb guidance informed the
-> design system.
+> design direction.

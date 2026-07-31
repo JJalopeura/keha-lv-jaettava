@@ -25,12 +25,12 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import app.domains.lupademo.security as security  # noqa: E402
 import app.domains.lupademo.services as svc  # noqa: E402
-from app.core.azure_client import AzureOpenAIClient  # noqa: E402
-from app.core.config import Settings  # noqa: E402
-from app.core.db import DB  # noqa: E402
-from app.core.llm_factory import create_llm_client  # noqa: E402
-from app.core.llm_utils import call_llm_json, vector_store_ids  # noqa: E402
-from app.core.mock_llm import MockLLMClient  # noqa: E402
+from app.infra.azure_client import AzureOpenAIClient  # noqa: E402
+from app.infra.config import Settings  # noqa: E402
+from app.infra.db import DB  # noqa: E402
+from app.infra.llm_factory import create_llm_client  # noqa: E402
+from app.infra.llm_utils import call_llm_json, vector_store_ids  # noqa: E402
+from app.infra.mock_llm import MockLLMClient  # noqa: E402
 from app.domains.lupademo.services.application import deterministic_suggestion  # noqa: E402
 from app.domains.lupademo.services.intake import azure_vector_store_ids, build_retrieval_context  # noqa: E402
 from app.main import app  # noqa: E402
@@ -290,7 +290,7 @@ class ProviderContracts(unittest.TestCase):
             "test-model",
             timeout_s=12.0,
         )
-        with patch("app.core.azure_client.httpx.Client", side_effect=lambda **kwargs: real_client(transport=transport, **kwargs)):
+        with patch("app.infra.azure_client.httpx.Client", side_effect=lambda **kwargs: real_client(transport=transport, **kwargs)):
             azure.responses(input_text="test", response_format="json_object", max_output_tokens=50)
 
         request = captured["request"]
@@ -307,7 +307,7 @@ class ProviderContracts(unittest.TestCase):
         real_client = httpx.Client
         azure = AzureOpenAIClient("https://example.services.ai.azure.com", "preview", "key", "model")
 
-        with patch("app.core.azure_client.httpx.Client", side_effect=lambda **kwargs: real_client(transport=transport, **kwargs)):
+        with patch("app.infra.azure_client.httpx.Client", side_effect=lambda **kwargs: real_client(transport=transport, **kwargs)):
             with self.assertRaisesRegex(RuntimeError, "HTTP 429: rate limited"):
                 azure.responses(input_text="test")
 
@@ -855,9 +855,9 @@ class Pages(unittest.TestCase):
         self.assertNotIn("system-badge", page.text)
 
     def test_specs_resolve_to_runtime_paths(self) -> None:
-        ui = json.loads(Path("docs/specs/ui.json").read_text(encoding="utf-8"))
-        roles = json.loads(Path("docs/specs/roles.json").read_text(encoding="utf-8"))
-        workflow = json.loads(Path("docs/specs/workflow.json").read_text(encoding="utf-8"))
+        ui = json.loads(Path("docs/archive/v5-specs/ui.json").read_text(encoding="utf-8"))
+        roles = json.loads(Path("docs/archive/v5-specs/roles.json").read_text(encoding="utf-8"))
+        workflow = json.loads(Path("docs/archive/v5-specs/workflow.json").read_text(encoding="utf-8"))
         self.assertIn("material_package_workbench", workflow["workflows"])
         self.assertIn("deterministic_checks", workflow["workflows"]["applicant_application_check"])
         self.assertIn("use_package_workbench", next(role for role in roles["roles"] if role["key"] == "applicant")["capabilities"])

@@ -24,8 +24,8 @@ from docx import Document as DocxDocument
 from fastapi import HTTPException
 from jinja2 import Template
 
-from app.core.llm_factory import create_llm_client
-from app.core.llm_utils import call_llm_json, vector_store_ids
+from app.infra.llm_factory import create_llm_client
+from app.infra.llm_utils import call_llm_json, vector_store_ids
 
 from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
 from .jobs import complete_ai_job, start_ai_job
