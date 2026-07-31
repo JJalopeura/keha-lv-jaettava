@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -133,6 +134,7 @@ def create_case_from_scenario(db: Any, scenario_id: str) -> dict[str, Any]:
         "name": common["project_name"],
         "created_from": "lv",
         "applicant_role": "company",
+        "presenter_mode": True,
         "common_data": common.copy(),
         "location": f"{common.get('municipality', '')}, {common.get('address', '')}".strip(", "),
         "tenant_id": scenario.get("tenant_id", "vantaa_demo"),
@@ -192,7 +194,15 @@ def create_generic_project(
         created_from = "direct_demo"
     if not tenant_id:
         tenant_id = "avi_demo" if permit == "environmental_industrial" else "vantaa_demo"
-    common = ({key: "" for key in svc.DEFAULT_COMMON_DATA} if created_from == "package_workbench" else dict(svc.DEFAULT_COMMON_DATA))
+    # Skip hardcoded demo defaults when real LLM (Azure) is active.
+    _real_llm = str(os.getenv("KEHA_LV_LLM_PROVIDER", "mock") or "mock").strip().lower() != "mock"
+    if _real_llm:
+        _real_llm = str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
+    common = (
+        {key: "" for key in svc.DEFAULT_COMMON_DATA}
+        if created_from == "package_workbench" or _real_llm
+        else dict(svc.DEFAULT_COMMON_DATA)
+    )
     if project_name:
         common["project_name"] = project_name
     if applicant_name:
@@ -212,6 +222,7 @@ def create_generic_project(
         "name": common["project_name"],
         "created_from": created_from,
         "applicant_role": applicant_role,
+        "presenter_mode": False,
         "common_data": common.copy(),
         "location": f"{common.get('municipality', '')}, {common.get('address', '')}".strip(", "),
         "tenant_id": tenant_id,

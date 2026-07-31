@@ -53,7 +53,7 @@ from jinja2 import Template
 from app.infra.llm_factory import create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
-from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
+from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
 from .criteria import *  # noqa: F401,F403
 from .jobs import complete_ai_job, find_ai_job, list_ai_jobs, start_ai_job
 from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
@@ -287,7 +287,7 @@ def package_analysis_from_current_state(
     question_app = dict(app)
     question_app["form_data"] = effective_form_data
     questions = intake_analysis_questions(schema, question_app, attachments)
-    if _real_llm_enabled(settings):
+    if _real_llm_enabled_for_case(db, case_id, settings):
         criteria = effective_criteria(db, case_id, permit_type)
         retrieval = build_retrieval_context(
             db,
@@ -663,7 +663,7 @@ def contextual_chat_answer(db: Any, case_id: str, permit_type: str, message: str
         f"Konteksti JSON: {json.dumps(context, ensure_ascii=False)}"
     )
     if settings is not None:
-        client = create_llm_client(settings, purpose="chat")
+        client = create_llm_client(settings, purpose="chat", db=db, case_id=case_id)
         resp = client.responses(
             input_text=prompt,
             vector_store_ids=[],
@@ -2288,7 +2288,7 @@ def ingest_source_materials(db: Any, settings: Any, case_id: str, source_dir: st
             vector_store_id = upload_block_reason
         elif uploadable_rows:
             try:
-                _ingest_backend = create_llm_client(settings, purpose="core")
+                _ingest_backend = create_llm_client(settings, purpose="core", db=db, case_id=case_id)
                 vector_store_id = _ingest_backend.create_vector_store(f"lupademo-{case_id[:8]}-source-materials")
                 db.set_research_vector_store(case_id, vector_store_id)
             except Exception as exc:

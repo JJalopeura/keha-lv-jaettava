@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from .azure_client import AzureOpenAIClient
 from .config import Settings
@@ -14,9 +15,20 @@ def create_llm_client(
     model: str | None = None,
     api_key: str | None = None,
     host: str | None = None,
+    force_mock: bool = False,
+    db: Any = None,
+    case_id: str | None = None,
 ) -> AzureOpenAIClient | MockLLMClient:
     provider = (settings.llm_provider or "mock").strip().lower()
-    force_mock = str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
+    force_mock = force_mock or str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
+    # Presenter-mode cases always use mock regardless of provider config.
+    if not force_mock and db is not None and case_id is not None:
+        try:
+            artifact = db.get_artifact(case_id, "lv_project", "main")
+            if artifact and artifact.get("data_json", {}).get("presenter_mode"):
+                force_mock = True
+        except Exception:
+            pass
     if purpose == "chat":
         has_key = bool(api_key or settings.azure_openai_api_key_chat)
     else:

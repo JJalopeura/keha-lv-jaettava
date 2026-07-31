@@ -701,7 +701,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         async def generate():
             full_answer = ""
             try:
-                client = create_llm_client(settings(), purpose="chat")
+                client = create_llm_client(settings(), purpose="chat", db=db(), case_id=case_id)
                 for chunk in client.responses_stream(
                     input_text=prompt,
                     max_output_tokens=900,

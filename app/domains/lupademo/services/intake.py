@@ -27,7 +27,7 @@ from jinja2 import Template
 from app.infra.llm_factory import create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
-from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _list, _plain, _real_llm_enabled, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
+from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
 from .jobs import complete_ai_job, start_ai_job
 
 
@@ -403,7 +403,7 @@ def get_or_create_case_vector_store(db: Any, settings: Any, case_id: str, *, nam
     existing = str(case.get("case_vector_store_id") or "").strip()
     if existing and not existing.startswith("ingest_failed:"):
         return existing
-    _backend = create_llm_client(settings, purpose="core")
+    _backend = create_llm_client(settings, purpose="core", db=db, case_id=case_id)
     vector_store_id = _backend.create_vector_store(f"lupademo-{case_id[:8]}-{name_suffix}")
     db.set_case_vector_store(case_id, vector_store_id)
     return vector_store_id
@@ -421,7 +421,7 @@ def ingest_file_row_to_case_vector_store(db: Any, settings: Any, case_id: str, f
         db.update_file(int(file_row_id), status="error", error=f"Missing local file: {local_path}")
         return {"file_row_id": int(file_row_id), "status": "error", "error": "missing local file"}
     vector_store_id = get_or_create_case_vector_store(db, settings, case_id)
-    _backend = create_llm_client(settings, purpose="core")
+    _backend = create_llm_client(settings, purpose="core", db=db, case_id=case_id)
     try:
         db.update_file(int(file_row_id), status="uploading", error=None)
         upload_id, azure_file_id = _backend.upload_file_from_path(local_path)
@@ -457,7 +457,6 @@ def run_json_agent(
 ) -> Any:
     prompt = render_agent_prompt(agent, prompt_values)
     retrieval_manifest = azure_vector_store_manifest(db, settings, case_id, vector_ids or [])
-    provider = str(getattr(settings, "llm_provider", "mock") or "mock").lower()
     if retrieval_manifest["stores"]:
         prompt += (
             "\n\nHAKUKONTEKSTIN SOPIMUS (pakollinen):\n"
@@ -466,7 +465,9 @@ def run_json_agent(
             "Älä käytä knowledge-aineistoa case-faktana tai case-aineistoa normilähteenä. "
             "Säilytä evidence_refs-viitteissä lähteen scope ja merkitse ristiriita tai puuttuva lähdetuki epävarmaksi."
         )
-    client = create_llm_client(settings, purpose="core")
+    client = create_llm_client(settings, purpose="core", db=db, case_id=case_id)
+    # Log the actual provider used, not just the config setting.
+    provider = "mock" if _is_presenter_case(db, case_id) else str(getattr(settings, "llm_provider", "mock") or "mock").lower()
     try:
         payload = call_llm_json(
             client,
@@ -1424,7 +1425,7 @@ def structure_environmental_application_from_attachments(
                 "evidence_refs": [source_ref(source.get("filename", "Hakemusaineisto"), source.get("id", "local_excerpt"), value, 0.72)] if source else [],
             }
         )
-    if _real_llm_enabled(settings):
+    if _real_llm_enabled_for_case(db, case_id, settings):
         allowed_fields = {str(field.get("id")) for field in load_form_schema(permit_type).get("fields", [])}
         fallback_fields = [
             {

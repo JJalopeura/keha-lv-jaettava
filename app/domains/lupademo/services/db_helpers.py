@@ -56,6 +56,27 @@ def _real_llm_enabled(settings: Any) -> bool:
     return str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
 
 
+def _real_llm_enabled_from_env() -> bool:
+    """Same as _real_llm_enabled but reads config from env vars directly (no settings object needed)."""
+    provider = str(os.getenv("KEHA_LV_LLM_PROVIDER", "mock") or "mock").strip().lower()
+    if provider == "mock":
+        return False
+    return str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
+
+
+def _is_presenter_case(db: Any, case_id: str) -> bool:
+    """True when this case was created via the demo presenter (should always use mock AI)."""
+    project = artifact_json(db, case_id, "lv_project", "main", {})
+    return bool(project.get("presenter_mode"))
+
+
+def _real_llm_enabled_for_case(db: Any, case_id: str, settings: Any) -> bool:
+    """Like _real_llm_enabled but returns False for presenter-mode cases (forces mock)."""
+    if _is_presenter_case(db, case_id):
+        return False
+    return _real_llm_enabled(settings)
+
+
 def _extraction_queue_item(item: dict[str, Any]) -> dict[str, Any]:
     """Build one ExtractionCandidate-shaped dict (docs/specs/v5/application_package_contract.yaml)."""
     field_id = item.get("field_id")
