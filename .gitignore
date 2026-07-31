@@ -29,3 +29,8 @@ Thumbs.db
 # Logs
 *.log
 testiaineisto/
+.agents/skills/
+skills-lock.json
+.audit/
+task.md
+design-system/lupa-apuri/MASTER.md

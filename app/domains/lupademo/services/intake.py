@@ -308,9 +308,13 @@ def validate_zip_archive(zf: zipfile.ZipFile) -> None:
         ext = Path(filename).suffix.lower()
         if ext not in ALLOWED_UPLOAD_EXTENSIONS:
             raise ValueError("unsupported_zip_member_type")
-        if int(member.file_size or 0) > MAX_UPLOAD_FILE_BYTES:
+        try:
+            file_size = int(member.file_size or 0)
+        except (TypeError, ValueError):
+            file_size = 0
+        if file_size > MAX_UPLOAD_FILE_BYTES:
             raise ValueError("zip_member_too_large")
-        total_size += int(member.file_size or 0)
+        total_size += file_size
         if total_size > MAX_UPLOAD_ZIP_TOTAL_BYTES:
             raise ValueError("zip_uncompressed_too_large")
 
@@ -732,7 +736,7 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
     if response_model is FieldSuggestionResponse:
         normalized = dict(payload) if isinstance(payload, dict) else {}
         suggestions = normalized.get("suggestions", [])
-        clean_suggestions: list[dict[str, Any]] = []
+        clean_suggestions: list[Any] = []
         if isinstance(suggestions, list):
             for suggestion in suggestions:
                 if not isinstance(suggestion, dict):
@@ -1189,6 +1193,18 @@ def ingest_application_text(
 
 
 def create_pending_material_package(db: Any, case_id: str, permit_type: str, display_name: str, expected_document_count: int = 0) -> dict[str, Any]:
+    """F017: Create a new material package, canceling any existing pending/running ones first."""
+    # ponytail: single-process archive via artifact store, replace with DB
+    # transaction + idempotency key if multi-worker uploads ever happen.
+    existing = artifact_json(db, case_id, "material_package", permit_type, {})
+    if existing.get("status") in {"pending", "processing", "ready"}:
+        # Cancel existing in-flight package and archive it
+        store = artifact_json(db, case_id, "material_packages", permit_type, {"packages": []})
+        existing["status"] = "cancelled_by_new_upload"
+        existing["cancelled_at"] = time.time()
+        store.setdefault("packages", []).append(existing)
+        store["packages"] = store["packages"][-12:]
+        save_artifact(db, case_id, "material_packages", permit_type, store)
     return save_material_package(
         db,
         case_id,
@@ -1573,6 +1589,7 @@ def structure_environmental_application_from_attachments(
         for schema_field in fields_iter:
             # ponytail: dataclass constructors don't auto-convert dicts —
             # the field may be a dict (from fallback) or an ExtractedField.
+            # Use hasattr+getattr for dataclass attrs, .get() for dict fallback.
             fid = schema_field.field_id if hasattr(schema_field, 'field_id') else schema_field.get('field_id', '')
             val = schema_field.value if hasattr(schema_field, 'value') else schema_field.get('value', '')
             if fid not in allowed_fields or not (val or '').strip():

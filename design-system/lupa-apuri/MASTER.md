@@ -40,6 +40,30 @@ curated guidance to existing pages without changing their workspace identity.
 The product does not use marketing heroes, oversized display typography, nested
 cards, purple AI styling, glass effects, decorative orbs, or ornamental animation.
 
+## Design dials
+
+These three numbers encode the product's visual posture. Every page, component,
+and interaction decision flows from them. They are not defaults to override
+conversationally — they are the product's fixed posture.
+
+| Dial | Value | Meaning |
+|---|---:|---|
+| `DESIGN_VARIANCE` | **3** | Predictable, symmetric layouts. Equal-column grids, consistent padding, centered alignment where it aids scanability. Asymmetric and offset layouts are not used. |
+| `MOTION_INTENSITY` | **2** | Static. CSS `:hover`, `:focus-visible`, and `:active` transitions only (120–180ms). No scroll reveals, no staggered entry, no parallax, no looping animation. Respect `prefers-reduced-motion: reduce`. |
+| `VISUAL_DENSITY` | **6** | Between daily-app and cockpit. Dense enough for repeated professional work — compact tables, form grids, and data lists — but with breathing room between major sections. Information-dense, not crammed. |
+
+### How the dials drive decisions
+
+* `DESIGN_VARIANCE: 3` means centered page headers are acceptable, two-column
+  workbenches are the standard split, and a three-column layout appears only when
+  all three columns carry equal-weight content.
+* `MOTION_INTENSITY: 2` means no JavaScript-driven animation. CSS transitions on
+  interactive elements only. The `.ai-orbit` spinner and `.job-progress` bar use
+  CSS `@keyframes` because they communicate processing state, not decoration.
+* `VISUAL_DENSITY: 6` means cards have standard padding (`1rem`–`1.25rem`), table
+  rows use compact height (`2.75rem`), and section gaps use `1.5rem`–`2rem`.
+  Gallery-level whitespace (`py-32` and above) is not used.
+
 ## Semantic color system
 
 Use semantic variables in templates and components. Do not use primitive colors
@@ -164,6 +188,16 @@ Stable shell dimensions:
 | `--radius-panel` | `6px` | Standalone panels and repeated cards |
 | `--radius-dialog` | `8px` | Dialogs only |
 | `--border-default` | `1px solid var(--color-border)` | Standard boundary |
+
+**Radius discipline:** the three-radius scale above is the only allowed scale.
+Every component must use exactly one of these three tokens for its outer corner
+radius. A component that mixes radii (e.g. a `6px` card containing a `4px` button)
+is acceptable when the inner element uses a documented token. A component that
+uses an ad-hoc radius value not in the scale is a defect. Audit all components
+against this scale before shipping a page.
+
+Do not use fully-rounded pill shapes (`border-radius: 999px`) for structural
+containers. Pills are restricted to inline status badges and small labels.
 | `--shadow-raised` | `0 1px 3px rgb(15 23 42 / 0.12)` | Menus and sticky regions |
 | `--shadow-dialog` | `0 12px 30px rgb(15 23 42 / 0.18)` | Dialogs only |
 
@@ -194,6 +228,11 @@ Layout rules:
 * Preserve a hint of surrounding context when a sticky action region is present
 * Do not use floating page-section cards
 * Do not repeat the page title inside the work area
+* **Layout-family repetition:** a layout family (two-column workbench, full-width
+  table, split readout + evidence panel, form-wizard stepper) may appear at most
+  once per workspace. A new page in the same workspace must not copy the previous
+  page's layout structure unless the job is identical. When in doubt, default to
+  the workspace's canonical layout rather than inventing a variant.
 
 ## Responsive behavior
 
@@ -226,6 +265,15 @@ Motion communicates state; it does not decorate the interface.
 Every component and page must meet these rules:
 
 * Meet WCAG 2.2 AA contrast for text, controls, states, and focus indicators
+* **Button contrast audit (mechanical):** every button's label must achieve
+  WCAG AA contrast (4.5:1 for body text, 3:1 for text ≥18px or bold ≥14px)
+  against its own background. White-on-white, transparent-on-page-background,
+  and ghost buttons over photographic backgrounds without a scrim are defects.
+  Audit every CTA and form button before shipping a page.
+* **Form contrast audit (mechanical):** inputs, placeholder text, focus rings,
+  helper text, and error text must all pass WCAG AA against the section
+  background. Light placeholders on near-white fields, form labels below 4.5:1
+  contrast, and error text that blends into the surrounding surface are defects.
 * Provide a skip link to the main content
 * Keep keyboard order equal to visual order
 * Use semantic landmarks and sequential heading levels

@@ -864,7 +864,7 @@ class Pages(unittest.TestCase):
         for page in ui["pages"]:
             route = page["route"].replace("{case_id}", case)
             with self.subTest(page=page["slug"]):
-                self.assertIn(client.get(route).status_code, (200, 303))
+                self.assertIn(client.get(route).status_code, (200, 301, 303))
 
     def test_every_demo_page_renders(self) -> None:
         paths = [
@@ -906,12 +906,12 @@ class Pages(unittest.TestCase):
         response = client.get("/demo-lab")
         self.assertEqual(response.status_code, 200)
         paths = [
-            f"/cases/{case}/lupademo/metrics",
-            f"/cases/{case}/lupademo/admin/criteria",
-            f"/cases/{case}/lupademo/suggestion-service",
-            f"/cases/{case}/lupademo/admin/benchmark-lab",
-            f"/cases/{case}/lupademo/admin/audit-trail",
-            f"/cases/{case}/lupademo/admin/production-hardening",
+            "/metrics",
+            "/admin/criteria",
+            "/admin/suggestion-service",
+            "/admin/benchmarks",
+            "/admin/audit-trail",
+            "/admin/production-hardening",
             "/demo/scenarios",
             "/demo-lab/presenter",
         ]
@@ -922,29 +922,35 @@ class Pages(unittest.TestCase):
 
     def test_navigation_is_scoped_to_active_workspace(self) -> None:
         applicant = client.get(f"{base}/wizard/1").text
-        authority = client.get(f"/cases/{case}/lupademo/authority/queue").text
+        authority = client.get("/authority/queue").text
         demo_lab = client.get("/demo-lab").text
 
-        self.assertIn(">Hanke</a>", applicant)
-        self.assertIn(">Hakemus</a>", applicant)
-        self.assertNotIn(">Viranomainen</a>", applicant.split("</header>", 1)[0])
-        self.assertNotIn(">Demo Lab</a>", applicant.split("</header>", 1)[0])
+        # Applicant: LV project nav (Hanke + Kevytasiointi), no authority/demo links
+        applicant_header = applicant.split("</header>", 1)[0]
+        self.assertIn(">Hanke</a>", applicant_header)
+        self.assertIn(">Hakemus</a>", applicant_header)
+        self.assertNotIn("Viranomainen", applicant_header)
+        self.assertNotIn("Demo Lab", applicant_header)
 
+        # Authority: Työjono nav only, no applicant links
         authority_header = authority.split("</header>", 1)[0]
         self.assertIn(">Työjono</a>", authority_header)
         self.assertNotIn(">Hanke</a>", authority_header)
         self.assertNotIn(">Hakemus</a>", authority_header)
+        self.assertNotIn(">Kevytasiointi</a>", authority_header)
 
+        # Demo Lab: Yleiskuva + Integraatiot, no applicant links
         demo_header = demo_lab.split("</header>", 1)[0]
         self.assertIn(">Yleiskuva</a>", demo_header)
         self.assertIn(">Integraatiot</a>", demo_header)
         self.assertNotIn(">Hanke</a>", demo_header)
         self.assertNotIn(">Hakemus</a>", demo_header)
 
+        # Footer: all three workspace links present on every page
         for page in (applicant, authority, demo_lab):
             footer = page.split('<footer class="service-footer">', 1)[1]
-            self.assertIn('href="/">Hakija ja LV</a>', footer)
-            self.assertIn(">Käsittelijä</a>", footer)
+            self.assertIn('href="/">Hakija</a>', footer)
+            self.assertIn(">Viranomainen</a>", footer)
             self.assertIn(">Demo Lab ja alusta</a>", footer)
             self.assertEqual(page.count('<footer class="service-footer">'), 1)
 

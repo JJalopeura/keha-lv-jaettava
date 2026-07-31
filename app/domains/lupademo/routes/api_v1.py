@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
+from .common import job_eta_seconds
 
 DOMAIN_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
@@ -93,8 +94,8 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
         if found["job"].get("tenant_id") != client["tenant_id"]:
             raise HTTPException(status_code=403, detail="job_tenant_forbidden")
 
-    @router.post("/api/ai/jobs")
-    async def api_ai_jobs(request: Request):
+    @router.post("/api/v1/ai/jobs")
+    async def api_v1_ai_jobs(request: Request):
         payload = await request.json()
         case_id = str(payload.get("project_id") or payload.get("case_id") or _demo_case_for_api())
         application_id = svc.application_id_for(str(payload.get("application_id") or payload.get("permit_type") or "building_residential"))
@@ -105,18 +106,16 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
             str(payload.get("job_type") or "intake_analysis"),
             str(payload.get("title") or "AI job"),
             ["request_router"],
-            eta_seconds=10,
+            eta_seconds=job_eta_seconds("intake_analysis"),
         )
         return svc.ai_job_status_payload(job, case_id=case_id, application_id=application_id)
 
-    @router.get("/api/ai/jobs/{job_id}")
     @router.get("/api/v1/jobs/{job_id}")
     def api_v1_job_status(job_id: str, request: Request):
         found = _find_or_404(job_id)
         _authorize_job_request(request, found)
         return svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
 
-    @router.get("/api/ai/jobs/{job_id}/stream")
     @router.get("/api/v1/jobs/{job_id}/stream")
     def api_v1_job_stream(job_id: str, request: Request):
         found = _find_or_404(job_id)
@@ -124,7 +123,6 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
         payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
         return Response("event: status\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n", media_type="text/event-stream")
 
-    @router.get("/api/ai/jobs/{job_id}/events")
     @router.get("/api/v1/jobs/{job_id}/events")
     def api_v1_job_events(job_id: str, request: Request):
         found = _find_or_404(job_id)
@@ -132,7 +130,6 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
         payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
         return {"job_id": job_id, "status": payload["status"], "events": payload["events"]}
 
-    @router.get("/api/ai/jobs/{job_id}/result")
     @router.get("/api/v1/jobs/{job_id}/result")
     def api_v1_job_result(job_id: str, request: Request):
         found = _find_or_404(job_id)
@@ -142,7 +139,6 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
             raise HTTPException(status_code=404, detail="result_not_ready")
         return result
 
-    @router.post("/api/ai/jobs/{job_id}/cancel")
     @router.post("/api/v1/jobs/{job_id}/cancel")
     def api_v1_job_cancel(job_id: str, request: Request):
         try:
@@ -155,7 +151,6 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
             raise HTTPException(status_code=404, detail="job_not_found")
         return svc.ai_job_status_payload(job, case_id=found["case_id"], application_id=found["application_id"])
 
-    @router.post("/api/ai/jobs/{job_id}/retry")
     @router.post("/api/v1/jobs/{job_id}/retry")
     def api_v1_job_retry(job_id: str, request: Request):
         try:
@@ -178,7 +173,7 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
         case_id = _case_for_api_client(client)
         application_id = svc.application_id_for(str(payload.get("permit_type") or "building_residential"))
         request_id = str(payload.get("request_id") or f"field_{uuid.uuid4().hex[:8]}")
-        job = svc.start_ai_job(db(), case_id, application_id, "field_suggestion", "Field suggestion API", ["field_suggestion_agent"], eta_seconds=8, tenant_id=client["tenant_id"])
+        job = svc.start_ai_job(db(), case_id, application_id, "field_suggestion", "Field suggestion API", ["field_suggestion_agent"], eta_seconds=job_eta_seconds("field_suggestion"), tenant_id=client["tenant_id"])
         result = security.annotate_api_response(client, svc.suggestion_service_field(_service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
         completed = _complete_api_job(case_id, application_id, job, result)
         return _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
@@ -190,7 +185,7 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
         case_id = _case_for_api_client(client)
         application_id = svc.application_id_for(str(payload.get("permit_type") or "building_residential"))
         request_id = str(payload.get("request_id") or f"precheck_{uuid.uuid4().hex[:8]}")
-        job = svc.start_ai_job(db(), case_id, application_id, "precheck", "Application precheck API", ["precheck_agent"], eta_seconds=10, tenant_id=client["tenant_id"])
+        job = svc.start_ai_job(db(), case_id, application_id, "precheck", "Application precheck API", ["precheck_agent"], eta_seconds=job_eta_seconds("precheck"), tenant_id=client["tenant_id"])
         result = security.annotate_api_response(client, svc.suggestion_service_check(_service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
         completed = _complete_api_job(case_id, application_id, job, result)
         return _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
@@ -234,7 +229,7 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
             "api_package_analysis",
             "Application package analysis API",
             ["request_validator", "document_classifier", "structure_extractor", "gap_analyzer"],
-            eta_seconds=15,
+            eta_seconds=job_eta_seconds("package_analysis"),
             tenant_id=client["tenant_id"],
         )
         result = security.annotate_api_response(
@@ -280,7 +275,7 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
         request_id = str(payload.get("request_id") or f"questions_{uuid.uuid4().hex[:8]}")
         app_payload = {"form_data": payload.get("form_data") or {}}
         questions = svc.intake_analysis_questions(svc.load_form_schema(application_id), app_payload, payload.get("attachments") or [])
-        job = svc.start_ai_job(db(), case_id, application_id, "question_plan", "Question plan API", ["gap_analyzer"], eta_seconds=5, tenant_id=client["tenant_id"])
+        job = svc.start_ai_job(db(), case_id, application_id, "question_plan", "Question plan API", ["gap_analyzer"], eta_seconds=job_eta_seconds("question_plan"), tenant_id=client["tenant_id"])
         completed = _complete_api_job(case_id, application_id, job, {"questions": questions})
         return _api_response(client, request_id, completed, {"questions": questions}, case_id=case_id, application_id=application_id)
 
@@ -291,35 +286,14 @@ def create_api_v1_router(db_getter: Callable[[], Any], settings_getter: Callable
         case_id = _case_for_api_client(client)
         application_id = svc.application_id_for(str(payload.get("permit_type") or payload.get("application_id") or "building_residential"))
         request_id = str(payload.get("request_id") or f"authority_{uuid.uuid4().hex[:8]}")
-        job = svc.start_ai_job(db(), case_id, application_id, "authority_summary", "Authority summary API", ["authority_summary_agent"], eta_seconds=8, tenant_id=client["tenant_id"])
+        job = svc.start_ai_job(db(), case_id, application_id, "authority_summary", "Authority summary API", ["authority_summary_agent"], eta_seconds=job_eta_seconds("authority_summary"), tenant_id=client["tenant_id"])
         result = svc.authority_summary(db(), case_id, application_id, settings=settings())
         completed = _complete_api_job(case_id, application_id, job, result)
         return _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
 
-    @router.post("/api/projects/{project_id}/chat/messages")
-    async def api_project_chat(project_id: str, request: Request):
-        payload = await request.json()
-        application_id = svc.application_id_for(str(payload.get("application_id") or payload.get("permit_type") or "building_residential"))
-        message = str(payload.get("message") or "")
-        return svc.contextual_chat_answer(db(), project_id, application_id, message, settings=settings())
 
-    @router.post("/api/projects/{project_id}/chat/actions/{action_id}/accept")
-    async def api_project_chat_accept(project_id: str, action_id: str, request: Request):
-        payload = await request.json()
-        application_id = svc.application_id_for(str(payload.get("application_id") or payload.get("permit_type") or "building_residential"))
-        edited_value = str(payload.get("edited_value") or "")
-        try:
-            application = svc.accept_suggestion(db(), project_id, application_id, action_id, edited_value)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="action_not_found")
-        return {"ok": True, "application": application}
 
-    @router.post("/api/realtime/session")
-    async def api_realtime_session(request: Request):
-        state = svc.voice_feature_state(settings())
-        if state.get("status") == "mock":
-            return {"enabled": True, "status": "mock", "mode": "mock", "client_secret": "mock-disabled-for-tests", "reason": state["reason"]}
-        return JSONResponse(status_code=503, content={"enabled": False, "status": "disabled", "mode": state.get("mode", "disabled"), "reason": state["reason"]})
+
 
     @router.post("/api/v1/suggestions/field")
     async def api_suggest_field(request: Request):

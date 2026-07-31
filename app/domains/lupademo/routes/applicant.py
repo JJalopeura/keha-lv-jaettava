@@ -16,18 +16,13 @@ from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
 from .template_filters import finnish_datetime
+from .common import FINDING_CATEGORY_LABELS, context_app_with_material, job_eta_seconds
 from app.core.llm_factory import create_llm_client
 
 DOMAIN_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
 templates.env.filters["finnish_datetime"] = finnish_datetime
-templates.env.globals["FINDING_CATEGORY_LABELS"] = {
-    "missing_required_info": "Puuttuva tieto",
-    "contradiction": "Ristiriita",
-    "weak_description": "Puutteellinen kuvaus",
-    "attachment_scope": "Liitteen käyttötarkoitus",
-    "criteria_gap": "Kriteeripuute",
-}
+templates.env.globals["FINDING_CATEGORY_LABELS"] = FINDING_CATEGORY_LABELS
 
 def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Callable[[], Any]) -> APIRouter:
     router = APIRouter()
@@ -85,19 +80,6 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
                 )
         return options
 
-    def _dedup_suggestions(items: list[dict]) -> list[dict]:
-        """Keep only the last suggestion per field_id (list order = oldest first)."""
-        seen: set[str] = set()
-        result: list[dict] = []
-        for item in reversed(items):
-            fid = str(item.get("field_id") or "")
-            if fid in seen:
-                continue
-            seen.add(fid)
-            result.append(item)
-        result.reverse()
-        return result
-
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
         svc.ensure_seed_state(db(), case_id)
         sync = svc.detect_common_data_changes(db(), case_id)
@@ -111,45 +93,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
 
 
     def _context_app(app: dict, case_id: str, permit_type: str, db_obj: Any, settings_obj: Any) -> dict:
-        def aj(type_: str, default: Any) -> Any:
-            return svc.artifact_json(db_obj, case_id, type_, permit_type, default)
-        ai_jobs = svc.list_ai_jobs(db_obj, case_id, app["permit_type"])
-        ai_job_views = [
-            {**job, **svc.ai_job_status_payload(job, case_id=case_id, application_id=app["permit_type"])}
-            for job in ai_jobs
-        ]
-        material_jobs = [job for job in ai_jobs if job.get("kind") in {"material_ingest", "intake_analysis"}]
-        material_job = next(
-            (job for job in material_jobs if job.get("status") in {"pending", "running"}),
-            material_jobs[0] if material_jobs else None,
-        )
-        return {
-            "application": app,
-            "schema": svc.load_form_schema(app["permit_type"]),
-            "criteria": svc.load_criteria(app["permit_type"]),
-            "attachments": svc.list_attachments(db_obj, case_id, app["permit_type"]),
-            "suggestions": _dedup_suggestions(aj("ai_suggestions", {"suggestions": []}).get("suggestions", [])),
-            "check_report": aj("check_report", {}),
-            "precheck_gate": svc.precheck_gate_status(db_obj, case_id, app["permit_type"]),
-            "package": aj("submission_package", {}),
-            "receipt": aj("receipt", {}),
-            "wizard": svc.wizard_step_status(db_obj, case_id, app["permit_type"]),
-            "structure_extraction": aj("structure_extraction_result", {}),
-            "intake_analysis": aj("intake_analysis", {}),
-            "material_package": svc.current_material_package(db_obj, case_id, app["permit_type"]),
-            "package_analysis": aj("package_analysis_result", {}),
-            "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
-            "ai_jobs": ai_job_views,
-            "material_job": material_job,
-            "material_job_view": next(
-                (job for job in ai_job_views if material_job and job.get("id") == material_job.get("id")),
-                None,
-            ),
-            "contextual_chat": aj("contextual_chat", {"messages": []}),
-            "voice_state": svc.voice_feature_state(settings_obj),
-            "voice_chat": aj("voice_chat", {"turns": []}),
-            "environmental_story": svc.artifact_json(db_obj, case_id, "environmental_material_story", "main", {}),
-        }
+        return context_app_with_material(app, case_id, permit_type, db_obj, settings_obj)
 
     @router.get("/", response_class=HTMLResponse)
     def landing(request: Request):
@@ -713,7 +657,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field")
     def suggest_field(case_id: str, application_id: str, field_id: str = Form(...), background_tasks: BackgroundTasks = BackgroundTasks()):
         permit_type = svc.application_id_for(application_id)
-        job = svc.start_ai_job(db(), case_id, permit_type, "field_suggestion", f"Kenttäehdotus: {field_id}", ["retrieval_context", "field_suggestion_agent"], eta_seconds=15)
+        job = svc.start_ai_job(db(), case_id, permit_type, "field_suggestion", f"Kenttäehdotus: {field_id}", ["retrieval_context", "field_suggestion_agent"], eta_seconds=job_eta_seconds("field_suggestion_retrieval"))
         background_tasks.add_task(svc.create_field_suggestion, db(), case_id, application_id, field_id, settings=settings(), job_id=job["id"])
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestions", status_code=303)
 
@@ -819,7 +763,7 @@ def create_applicant_router(db_getter: Callable[[], Any], settings_getter: Calla
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/check")
     def run_check(case_id: str, application_id: str, background_tasks: BackgroundTasks):
         permit_type = svc.application_id_for(application_id)
-        job = svc.start_ai_job(db(), case_id, permit_type, "application_check", "AI- ja sääntötarkistus", ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"], eta_seconds=35)
+        job = svc.start_ai_job(db(), case_id, permit_type, "application_check", "AI- ja sääntötarkistus", ["deterministic_checks", "completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report"], eta_seconds=job_eta_seconds("application_check"))
         background_tasks.add_task(svc.run_application_check, db(), case_id, application_id, settings=settings(), job_id=job["id"])
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#check", status_code=303)
 

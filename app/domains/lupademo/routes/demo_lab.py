@@ -15,17 +15,12 @@ from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
 from .template_filters import finnish_datetime
+from .common import FINDING_CATEGORY_LABELS, context_app
 
 DOMAIN_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(DOMAIN_DIR / "templates"), undefined=StrictUndefined)
 templates.env.filters["finnish_datetime"] = finnish_datetime
-templates.env.globals["FINDING_CATEGORY_LABELS"] = {
-    "missing_required_info": "Puuttuva tieto",
-    "contradiction": "Ristiriita",
-    "weak_description": "Puutteellinen kuvaus",
-    "attachment_scope": "Liitteen käyttötarkoitus",
-    "criteria_gap": "Kriteeripuute",
-}
+templates.env.globals["FINDING_CATEGORY_LABELS"] = FINDING_CATEGORY_LABELS
 
 def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callable[[], Any]) -> APIRouter:
     
@@ -50,30 +45,7 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
 
 
     def _context_app(app: dict, case_id: str, permit_type: str, db_obj: Any, settings_obj: Any) -> dict:
-        def aj(type_: str, default: Any) -> Any:
-            return svc.artifact_json(db_obj, case_id, type_, permit_type, default)
-        return {
-            "application": app,
-            "schema": svc.load_form_schema(app["permit_type"]),
-            "criteria": svc.load_criteria(app["permit_type"]),
-            "attachments": svc.list_attachments(db_obj, case_id, app["permit_type"]),
-            "suggestions": aj("ai_suggestions", {"suggestions": []}).get("suggestions", []),
-            "check_report": aj("check_report", {}),
-            "precheck_gate": svc.precheck_gate_status(db_obj, case_id, app["permit_type"]),
-            "package": aj("submission_package", {}),
-            "receipt": aj("receipt", {}),
-            "wizard": svc.wizard_step_status(db_obj, case_id, app["permit_type"]),
-            "structure_extraction": aj("structure_extraction_result", {}),
-            "intake_analysis": aj("intake_analysis", {}),
-            "material_package": svc.current_material_package(db_obj, case_id, app["permit_type"]),
-            "package_analysis": aj("package_analysis_result", {}),
-            "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
-            "ai_jobs": svc.list_ai_jobs(db_obj, case_id, app["permit_type"]),
-            "contextual_chat": aj("contextual_chat", {"messages": []}),
-            "voice_state": svc.voice_feature_state(settings_obj),
-            "voice_chat": aj("voice_chat", {"turns": []}),
-            "environmental_story": svc.artifact_json(db_obj, case_id, "environmental_material_story", "main", {}),
-        }
+        return context_app(app, case_id, permit_type, db_obj, settings_obj)
 
     @router.get("/cases/{case_id}/lupademo/suggestion-service/ui-only", response_class=HTMLResponse)
     def ui_only(request: Request, case_id: str):
@@ -260,11 +232,20 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
                      "contextual_chat_suggestions", "fallback_count"]
         scores: list[float] = []
         for c in db().list_cases():
-            m = svc.metrics_snapshot(db(), c["id"])
+            try:
+                m = svc.metrics_snapshot(db(), c["id"])
+            except Exception:
+                continue
             for key in counters:
-                aggregated[key] = aggregated.get(key, 0) + int(m.get(key, 0) or 0)
+                try:
+                    aggregated[key] = aggregated.get(key, 0) + int(m.get(key, 0) or 0)
+                except (TypeError, ValueError):
+                    pass
             if m.get("average_quality_score"):
-                scores.append(float(m["average_quality_score"]))
+                try:
+                    scores.append(float(m["average_quality_score"]))
+                except (TypeError, ValueError):
+                    pass
         if scores:
             m = svc.metrics_snapshot(db(), case_id)
             m.update(aggregated)
@@ -320,7 +301,7 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
     def demo_lab_index(request: Request):
         case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
         # Aggregate key metrics across all cases
-        all_metrics = {"application_count": 0, "submitted_count": 0, "average_quality_score": 0, "fallback_count": 0}
+        all_metrics: dict[str, Any] = {"application_count": 0, "submitted_count": 0, "average_quality_score": 0.0, "fallback_count": 0}
         all_eval = {"authority_example_count": 0, "target_count": 0}
         all_readiness = {"ready_count": 0, "total_count": 0}
         quality_scores: list[float] = []
@@ -330,7 +311,10 @@ def create_demo_lab_router(db_getter: Callable[[], Any], settings_getter: Callab
             all_metrics["submitted_count"] += m.get("submitted_count", 0)
             all_metrics["fallback_count"] += m.get("fallback_count", 0)
             if m.get("average_quality_score"):
-                quality_scores.append(float(m["average_quality_score"]))
+                try:
+                    quality_scores.append(float(m["average_quality_score"]))
+                except (TypeError, ValueError):
+                    pass
             e = svc.benchmark_lab_snapshot(db(), c["id"])
             all_eval["authority_example_count"] += e.get("authority_example_count", 0)
             all_eval["target_count"] += e.get("target_count", 0)
