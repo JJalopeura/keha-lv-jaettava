@@ -136,11 +136,38 @@ def cancel_ai_job(db: Any, job_id: str) -> dict[str, Any]:
 
 
 def retry_ai_job(db: Any, job_id: str) -> dict[str, Any]:
+    """Reset a job back to 'running' so it can be re-executed.
+
+    Accepts failed/cancelled jobs (explicit API retry) and pending/running
+    jobs (startup orphan recovery after a crash). Returns the reset job.
+    """
     found = find_ai_job(db, job_id)
-    original = found["job"]
-    if original.get("status") not in {"failed", "cancelled"}:
-        raise ValueError("job_not_retryable")
-    raise ValueError("job_retry_not_supported")
+    case_id = found["case_id"]
+    permit_type = found["application_id"]
+    store = _job_store(db, case_id, permit_type)
+    now = time.time()
+    selected: dict[str, Any] = {}
+    for job in store.get("jobs", []):
+        if job.get("id") != job_id:
+            continue
+        selected = job
+        job["status"] = "running"
+        job["progress_current"] = 0
+        job["progress_pct"] = 0
+        job["eta_seconds"] = job.get("estimated_seconds_total") or job.get("eta_seconds") or 20
+        job["updated_at"] = now
+        job["finished_at"] = None
+        job["summary"] = ""
+        for agent in job.get("agents") or []:
+            if isinstance(agent, dict):
+                agent["status"] = "pending"
+                agent["started_at"] = None
+                agent["finished_at"] = None
+                agent["summary"] = ""
+        break
+    save_artifact(db, case_id, "ai_jobs", permit_type, store)
+    event(db, case_id, "ai.job.retried", "AI job retried", {"job_id": job_id, "permit_type": permit_type})
+    return selected
 
 
 def _job_agent_steps(agent_names: list[str], status: str = "pending") -> list[dict[str, Any]]:

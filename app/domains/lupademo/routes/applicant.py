@@ -389,8 +389,6 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     def application_wizard(request: Request, case_id: str, application_id: str, step: int):
         step = min(max(int(step), 1), 6)
         ctx = context(case_id, application_id)
-        if step in (5, 6):
-            ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
         return templates.TemplateResponse(request, "applicant/wizard.html", {**ctx, "step": step})
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/package")

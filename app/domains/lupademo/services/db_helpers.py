@@ -12,7 +12,9 @@ __all__ = [
     "_plain",
     "save_artifact",
     "event",
-    "_real_llm_enabled",
+    "_real_llm_enabled_from_env",
+    "_real_llm_enabled_for_case",
+    "_is_presenter_case",
     "_extraction_queue_item",
     "source_ref",
 ]
@@ -48,16 +50,8 @@ def event(db: Any, case_id: str, action: str, detail: str, data: Optional[dict[s
     save_artifact(db, case_id, "lupademo_events", "main", events)
 
 
-def _real_llm_enabled(settings: Any) -> bool:
-    if settings is None:
-        return False
-    if str(getattr(settings, "llm_provider", "mock") or "mock").lower() == "mock":
-        return False
-    return str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
-
-
 def _real_llm_enabled_from_env() -> bool:
-    """Same as _real_llm_enabled but reads config from env vars directly (no settings object needed)."""
+    """Reads config from env vars directly (no settings object needed)."""
     provider = str(os.getenv("KEHA_LV_LLM_PROVIDER", "mock") or "mock").strip().lower()
     if provider == "mock":
         return False
@@ -71,10 +65,14 @@ def _is_presenter_case(db: Any, case_id: str) -> bool:
 
 
 def _real_llm_enabled_for_case(db: Any, case_id: str, settings: Any) -> bool:
-    """Like _real_llm_enabled but returns False for presenter-mode cases (forces mock)."""
+    """True when a real LLM is configured and not forced to mock, and the case is not presenter-mode."""
     if _is_presenter_case(db, case_id):
         return False
-    return _real_llm_enabled(settings)
+    if settings is None:
+        return False
+    if str(getattr(settings, "llm_provider", "mock") or "mock").lower() == "mock":
+        return False
+    return str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
 
 
 def _extraction_queue_item(item: dict[str, Any]) -> dict[str, Any]:

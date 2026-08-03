@@ -78,6 +78,36 @@ def _ai_job_view(job: dict, case_id: str, application_id: str) -> dict:
     return {**job, **svc.ai_job_status_payload(job, case_id=case_id, application_id=application_id)}
 
 
+def service_payload(payload: dict[str, Any], request_id: str, application_id: str) -> dict[str, Any]:
+    """Fill in the request fields the route already resolved, so the service layer never sees them missing."""
+    return {
+        **payload,
+        "request_id": request_id,
+        "permit_type": application_id,
+        "form_schema": payload.get("form_schema") or svc.load_form_schema(application_id),
+        "form_data": payload.get("form_data") or {},
+    }
+
+
+def api_response(client: dict[str, Any], request_id: str, job: dict[str, Any], result: dict[str, Any], *, case_id: str, application_id: str) -> dict[str, Any]:
+    evidence_refs: list[dict[str, Any]] = []
+    for key in ("suggestions", "issues", "extracted_fields", "questions"):
+        rows = result.get(key) or []
+        for row in rows:
+            if isinstance(row, dict) and isinstance(row.get("evidence_refs"), list):
+                evidence_refs.extend([ref for ref in row["evidence_refs"] if isinstance(ref, dict)])
+    status_payload = svc.ai_job_status_payload(job, case_id=case_id, application_id=application_id)
+    return {
+        "request_id": request_id,
+        "job_id": job.get("id"),
+        "status": status_payload["status"],
+        "evidence_refs": evidence_refs,
+        "agent_trace": status_payload["events"],
+        "tenant_id": client["tenant_id"],
+        "result": result,
+    }
+
+
 def context_app(
     app: dict,
     case_id: str,
@@ -124,11 +154,8 @@ def context_app_with_material(
     settings_obj: Any,
 ) -> dict:
     """Context helper for applicant route — includes material ingest job info."""
-
-    def aj(type_: str, default: Any) -> Any:
-        return svc.artifact_json(db_obj, case_id, type_, permit_type, default)
-
-    ai_jobs = svc.list_ai_jobs(db_obj, case_id, app["permit_type"])
+    ctx = context_app(app, case_id, permit_type, db_obj, settings_obj)
+    ai_jobs = ctx["ai_jobs"]
     ai_job_views = [
         _ai_job_view(job, case_id=case_id, application_id=app["permit_type"])
         for job in ai_jobs
@@ -144,32 +171,13 @@ def context_app_with_material(
         (job for job in ai_job_views if material_job and job.get("id") == material_job.get("id")),
         None,
     )
-    return {
-        "application": app,
-        "schema": svc.load_form_schema(app["permit_type"]),
-        "criteria": svc.load_criteria(app["permit_type"]),
-        "attachments": svc.list_attachments(db_obj, case_id, app["permit_type"]),
-        "suggestions": _dedup_suggestions(aj("ai_suggestions", {"suggestions": []}).get("suggestions", [])),
-        "check_report": aj("check_report", {}),
-        "precheck_gate": svc.precheck_gate_status(db_obj, case_id, app["permit_type"]),
-        "package": aj("submission_package", {}),
-        "receipt": aj("receipt", {}),
-        "wizard": svc.wizard_step_status(db_obj, case_id, app["permit_type"]),
-        "structure_extraction": aj("structure_extraction_result", {}),
-        "intake_analysis": aj("intake_analysis", {}),
-        "material_package": svc.current_material_package(db_obj, case_id, app["permit_type"]),
-        "package_analysis": aj("package_analysis_result", {}),
-        "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
+    ctx.update({
+        "suggestions": _dedup_suggestions(ctx["suggestions"]),
         "ai_jobs": ai_job_views,
         "material_job": material_job,
         "material_job_view": material_job_view,
-        "contextual_chat": aj("contextual_chat", {"messages": []}),
-        "voice_state": svc.voice_feature_state(settings_obj),
-        "voice_chat": aj("voice_chat", {"turns": []}),
-        "environmental_story": svc.artifact_json(
-            db_obj, case_id, "environmental_material_story", "main", {}
-        ),
-    }
+    })
+    return ctx
 
 
 # ── RouteContext: single factory for shared route infrastructure ──

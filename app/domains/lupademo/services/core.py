@@ -8,7 +8,7 @@ from .db_helpers import *  # noqa: F401,F403
 from .domain import *  # noqa: F401,F403
 
 # Ensure underscore-prefixed helpers survive the re-export chain.
-from .db_helpers import _dict, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled, _real_llm_enabled_for_case, _real_llm_enabled_from_env
+from .db_helpers import _dict, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, _real_llm_enabled_from_env
 
 from .db_helpers import artifact_json, event, save_artifact
 from .domain import COMMON_FIELDS, DEFAULT_COMMON_DATA, PERMIT_SCHEMAS, load_form_schema

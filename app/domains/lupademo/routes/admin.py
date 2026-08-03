@@ -210,32 +210,4 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
         svc.ingest_source_materials(db(), app_settings, case_id, source_dir=getattr(app_settings, "source_material_dir", "source_materials"))
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria", status_code=303)
 
-    def _service_payload(payload: dict[str, Any], request_id: str, application_id: str) -> dict[str, Any]:
-        """Fill in the request fields the route already resolved, so the service layer never sees them missing."""
-        return {
-            **payload,
-            "request_id": request_id,
-            "permit_type": application_id,
-            "form_schema": payload.get("form_schema") or svc.load_form_schema(application_id),
-            "form_data": payload.get("form_data") or {},
-        }
-
-    def _api_response(client: dict[str, Any], request_id: str, job: dict[str, Any], result: dict[str, Any], *, case_id: str, application_id: str) -> dict[str, Any]:
-        evidence_refs: list[dict[str, Any]] = []
-        for key in ("suggestions", "issues", "extracted_fields", "questions"):
-            rows = result.get(key) or []
-            for row in rows:
-                if isinstance(row, dict) and isinstance(row.get("evidence_refs"), list):
-                    evidence_refs.extend([ref for ref in row["evidence_refs"] if isinstance(ref, dict)])
-        status_payload = svc.ai_job_status_payload(job, case_id=case_id, application_id=application_id)
-        return {
-            "request_id": request_id,
-            "job_id": job.get("id"),
-            "status": status_payload["status"],
-            "evidence_refs": evidence_refs,
-            "agent_trace": status_payload["events"],
-            "tenant_id": client["tenant_id"],
-            "result": result,
-        }
-
     return router

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
-from .common import RouteContext, job_eta_seconds, FINDING_CATEGORY_LABELS
+from .common import RouteContext, api_response, job_eta_seconds, service_payload, FINDING_CATEGORY_LABELS
 
 def create_api_v1_router(ctx: RouteContext) -> APIRouter:
     router = APIRouter()
@@ -30,34 +30,6 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         svc.ensure_seed_state(db(), case_id)
         db().set_app_setting(setting_key, case_id)
         return case_id
-
-    def _service_payload(payload: dict[str, Any], request_id: str, application_id: str) -> dict[str, Any]:
-        """Fill in the request fields the route already resolved, so the service layer never sees them missing."""
-        return {
-            **payload,
-            "request_id": request_id,
-            "permit_type": application_id,
-            "form_schema": payload.get("form_schema") or svc.load_form_schema(application_id),
-            "form_data": payload.get("form_data") or {},
-        }
-
-    def _api_response(client: dict[str, Any], request_id: str, job: dict[str, Any], result: dict[str, Any], *, case_id: str, application_id: str) -> dict[str, Any]:
-        evidence_refs: list[dict[str, Any]] = []
-        for key in ("suggestions", "issues", "extracted_fields", "questions"):
-            rows = result.get(key) or []
-            for row in rows:
-                if isinstance(row, dict) and isinstance(row.get("evidence_refs"), list):
-                    evidence_refs.extend([ref for ref in row["evidence_refs"] if isinstance(ref, dict)])
-        status_payload = svc.ai_job_status_payload(job, case_id=case_id, application_id=application_id)
-        return {
-            "request_id": request_id,
-            "job_id": job.get("id"),
-            "status": status_payload["status"],
-            "evidence_refs": evidence_refs,
-            "agent_trace": status_payload["events"],
-            "tenant_id": client["tenant_id"],
-            "result": result,
-        }
 
     def _complete_api_job(case_id: str, application_id: str, job: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
         svc.save_artifact(db(), case_id, "api_job_result", job["id"], result)
@@ -158,9 +130,9 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         application_id = svc.application_id_for(str(payload.get("permit_type") or "building_residential"))
         request_id = str(payload.get("request_id") or f"field_{uuid.uuid4().hex[:8]}")
         job = svc.start_ai_job(db(), case_id, application_id, "field_suggestion", "Field suggestion API", ["field_suggestion_agent"], eta_seconds=job_eta_seconds("field_suggestion"), tenant_id=client["tenant_id"])
-        result = security.annotate_api_response(client, svc.suggestion_service_field(_service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
+        result = security.annotate_api_response(client, svc.suggestion_service_field(service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
         completed = _complete_api_job(case_id, application_id, job, result)
-        return _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
+        return api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
 
     @router.post("/api/v1/applications:precheck")
     async def api_v1_applications_precheck(request: Request):
@@ -170,9 +142,9 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         application_id = svc.application_id_for(str(payload.get("permit_type") or "building_residential"))
         request_id = str(payload.get("request_id") or f"precheck_{uuid.uuid4().hex[:8]}")
         job = svc.start_ai_job(db(), case_id, application_id, "precheck", "Application precheck API", ["precheck_agent"], eta_seconds=job_eta_seconds("precheck"), tenant_id=client["tenant_id"])
-        result = security.annotate_api_response(client, svc.suggestion_service_check(_service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
+        result = security.annotate_api_response(client, svc.suggestion_service_check(service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
         completed = _complete_api_job(case_id, application_id, job, result)
-        return _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
+        return api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
 
     @router.post("/api/v1/application-packages:analyze")
     async def api_v1_application_packages_analyze(request: Request):
@@ -233,7 +205,7 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         )
         result["document_inventory"] = document_inventory
         completed = _complete_api_job(case_id, application_id, job, result)
-        final_response = _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
+        final_response = api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
         svc.save_artifact(db(), case_id, "api_job_result", completed["id"], final_response)
         status_payload = svc.ai_job_status_payload(completed, case_id=case_id, application_id=application_id)
         return JSONResponse(
@@ -261,7 +233,7 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         questions = svc.intake_analysis_questions(svc.load_form_schema(application_id), app_payload, payload.get("attachments") or [])
         job = svc.start_ai_job(db(), case_id, application_id, "question_plan", "Question plan API", ["gap_analyzer"], eta_seconds=job_eta_seconds("question_plan"), tenant_id=client["tenant_id"])
         completed = _complete_api_job(case_id, application_id, job, {"questions": questions})
-        return _api_response(client, request_id, completed, {"questions": questions}, case_id=case_id, application_id=application_id)
+        return api_response(client, request_id, completed, {"questions": questions}, case_id=case_id, application_id=application_id)
 
     @router.post("/api/v1/authority:summarize")
     async def api_v1_authority_summarize(request: Request):
@@ -273,7 +245,7 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         job = svc.start_ai_job(db(), case_id, application_id, "authority_summary", "Authority summary API", ["authority_summary_agent"], eta_seconds=job_eta_seconds("authority_summary"), tenant_id=client["tenant_id"])
         result = svc.authority_summary(db(), case_id, application_id, settings=settings())
         completed = _complete_api_job(case_id, application_id, job, result)
-        return _api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
+        return api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
 
 
 

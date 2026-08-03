@@ -203,8 +203,9 @@ class AgentPipeline(unittest.TestCase):
         late_completion = svc.complete_ai_job(db, case, PERMIT, job["id"], summary="Late result")
         self.assertEqual(late_completion["status"], "cancelled")
 
-        with self.assertRaisesRegex(ValueError, "job_retry_not_supported"):
-            svc.retry_ai_job(db, job["id"])
+        retried = svc.retry_ai_job(db, job["id"])
+        self.assertEqual(retried["status"], "running")
+        self.assertEqual(retried["progress_pct"], 0)
 
 
 class AzureFileUpload(unittest.TestCase):
