@@ -389,6 +389,13 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     def application_wizard(request: Request, case_id: str, application_id: str, step: int):
         step = min(max(int(step), 1), 6)
         ctx = context(case_id, application_id)
+        # Step 5/6 shows the submission package preview. Compose it on demand if
+        # it doesn't exist yet and there are attachments to package, so the
+        # "Asiakirjaesitys" document list renders. Leave the empty state when
+        # there is nothing to package yet.
+        if step in (5, 6) and not ctx.get("package"):
+            if svc.list_attachments(db(), case_id, application_id):
+                ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
         return templates.TemplateResponse(request, "applicant/wizard.html", {**ctx, "step": step})
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/package")
@@ -581,13 +588,6 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         svc.delete_attachment(db(), case_id, application_id, attachment_id)
         return RedirectResponse(url=material_return_url(case_id, application_id, return_package_id, "#documents"), status_code=303)
 
-    @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/structure-from-attachments")
-    def structure_from_attachments(case_id: str, application_id: str):
-        if svc.application_id_for(application_id) != "environmental_industrial":
-            raise HTTPException(status_code=400, detail="Structure extraction demo is available for environmental permits")
-        svc.structure_environmental_application_from_attachments(db(), case_id, settings=settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#structure-extraction", status_code=303)
-
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/intake-analysis")
     def intake_analysis(case_id: str, application_id: str, background_tasks: BackgroundTasks):
         if any(
@@ -596,8 +596,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         ):
             raise HTTPException(status_code=409, detail="analysis_already_running")
         job = svc.start_intake_analysis_job(
-            db(), case_id, application_id, settings=settings(), managed_background=True,
-            agent_names=["structure_extractor", "field_extraction_agent", "gap_analyzer", "field_suggestion_agent"],
+            db(), case_id, application_id, settings=settings(), managed_background=True, full_check=False,
         )
         background_tasks.add_task(
             svc.execute_intake_analysis_job,

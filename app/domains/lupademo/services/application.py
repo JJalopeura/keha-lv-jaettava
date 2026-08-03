@@ -6,7 +6,7 @@ Quick index (by section):
                                   intake_analysis_questions, _run_check_agents,
                                   package_analysis_from_current_state
   Intake analysis jobs    ~420    _build_intake_analysis_result, start_intake_analysis_job,
-                                  execute_intake_analysis_job, execute_material_ingest_and_analysis_job
+                                  execute_intake_analysis_job
   Chat & voice            ~570    contextual_chat_answer, voice_feature_state, voice_mock_turn
   Field suggestions       ~780    deterministic_suggestion, create_field_suggestion,
                                   start_form_suggestions_job, accept_suggestion, reject_suggestion
@@ -55,7 +55,7 @@ from app.infra.llm_utils import call_llm_json, vector_store_ids
 
 from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
 from .criteria import *  # noqa: F401,F403
-from .jobs import complete_ai_job, find_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
+from .jobs import complete_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
 from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
@@ -555,11 +555,17 @@ def start_intake_analysis_job(
     settings: Any = None,
     *,
     managed_background: bool = False,
-    agent_names: list[str] | None = None,
+    full_check: bool = True,
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
-    if agent_names is None:
-        agent_names = ["material_classifier", "structure_extractor", "gap_analyzer", "question_generator"]
+    # Light path (wizard/2 "Analysoi") only classifies, structures and asks
+    # questions — no gap analysis. Full path adds gap_analyzer. Keep the
+    # agent list in sync with what _build_intake_analysis_result marks.
+    agent_names = (
+        ["material_classifier", "structure_extractor", "gap_analyzer", "question_generator"]
+        if full_check
+        else ["material_classifier", "structure_extractor", "question_generator"]
+    )
     return start_ai_job(
         db,
         case_id,
@@ -598,39 +604,6 @@ def execute_intake_analysis_job(db: Any, case_id: str, permit_type: str, job_id:
             result_artifact=f"intake_analysis:{permit_type}",
             failed=True,
         )
-
-
-def execute_material_ingest_and_analysis_job(
-    db: Any,
-    settings: Any,
-    case_id: str,
-    permit_type: str,
-    package_id: str,
-    ingest_job_id: str,
-    display_name: str,
-    *,
-    zip_payload: tuple[str, bytes],
-) -> None:
-    execute_material_ingest_job(
-        db,
-        settings,
-        case_id,
-        permit_type,
-        package_id,
-        ingest_job_id,
-        display_name,
-        zip_payload=zip_payload,
-    )
-    if find_ai_job(db, ingest_job_id)["job"].get("status") != "completed":
-        return
-    analysis_job = start_intake_analysis_job(
-        db,
-        case_id,
-        permit_type,
-        settings=settings,
-        managed_background=True,
-    )
-    execute_intake_analysis_job(db, case_id, permit_type, analysis_job["id"], settings)
 
 
 def contextual_chat_context(db: Any, case_id: str, permit_type: str) -> dict[str, Any]:
@@ -884,7 +857,7 @@ def deterministic_suggestion(permit_type: str, field_id: str, form_data: dict[st
     return suggestion
 
 
-def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: str, settings: Any = None, *, job_id: str = "") -> Suggestion:
+def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: str, settings: Any = None, *, job_id: str = "", complete_job: bool = True) -> Suggestion:
     app = ensure_application(db, case_id, permit_type)
     if not job_id:
         job = start_ai_job(
@@ -940,11 +913,11 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
         suggestion.diff_summary = "Korvaa tyhjän kentän ehdotuksella." if not current_value else "Täydentää nykyistä arvoa AI-ehdotuksella."
     FieldSuggestionResponse(request_id=f"ui_{uuid.uuid4().hex[:8]}", criteria_version=criteria_version(app["permit_type"], db, case_id), suggestions=[suggestion])
     pending = artifact_json(db, case_id, "ai_suggestions", app["permit_type"], {"suggestions": []})
-    # ponytail: replace existing suggestion for same field instead of appending duplicate
     pending["suggestions"] = [s for s in pending.get("suggestions", []) if s.get("field_id") != field_id]
     pending.setdefault("suggestions", []).append(suggestion)
     save_artifact(db, case_id, "ai_suggestions", app["permit_type"], pending)
-    complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Ehdotus luotu kentälle {field_id}.", result_artifact=f"ai_suggestions:{app['permit_type']}")
+    if complete_job:
+        complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Ehdotus luotu kentälle {field_id}.", result_artifact=f"ai_suggestions:{app['permit_type']}")
     event(db, case_id, "ai.suggestion.created", "AI field suggestion created", {"application_id": app["permit_type"], "field_id": field_id, "suggestion_id": suggestion.id})
     return suggestion
 
@@ -969,7 +942,8 @@ def execute_form_suggestions_job(db: Any, case_id: str, permit_type: str, job_id
     fields = [field["id"] for field in load_form_schema(permit_type).get("fields", []) if field.get("ai_suggest")]
     try:
         for field_id in fields:
-            create_field_suggestion(db, case_id, permit_type, field_id, settings=settings)
+            create_field_suggestion(db, case_id, permit_type, field_id, settings=settings, job_id=job_id, complete_job=False)
+            mark_agent_complete(db, case_id, permit_type, job_id, field_id, f"Ehdotus luotu kentälle {field_id}.")
         complete_ai_job(
             db,
             case_id,
@@ -2933,7 +2907,7 @@ def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: A
 def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
     req = _request_from_payload(ApplicationCheckRequest, payload)
     issues = deterministic_issues(req.permit_type, req.form_data, req.attachments)
-    api_case: str = ""  # ponytail: avoids "possibly unbound" false-positive from type checker
+    api_case: str = ""
     if db is not None and settings is not None:
         api_case = _api_case_id(db, case_id)
         criteria = effective_criteria(db, api_case, req.permit_type)

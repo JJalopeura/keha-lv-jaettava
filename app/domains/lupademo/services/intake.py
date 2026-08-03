@@ -28,7 +28,7 @@ from app.infra.llm_factory import create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
 from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
-from .jobs import complete_ai_job, start_ai_job
+from .jobs import complete_ai_job, mark_agent_complete, start_ai_job
 
 
 ENVIRONMENTAL_MATERIAL_STORIES_PATH = Path(__file__).resolve().parent.parent / "specs" / "scenarios" / "environmental_material_stories.json"
@@ -1064,8 +1064,6 @@ def ingest_application_text(
 
 def create_pending_material_package(db: Any, case_id: str, permit_type: str, display_name: str, expected_document_count: int = 0) -> dict[str, Any]:
     """F017: Create a new material package, canceling any existing pending/running ones first."""
-    # ponytail: single-process archive via artifact store, replace with DB
-    # transaction + idempotency key if multi-worker uploads ever happen.
     existing = artifact_json(db, case_id, "material_package", permit_type, {})
     if existing.get("status") in {"pending", "processing", "ready"}:
         # Cancel existing in-flight package and archive it
@@ -1104,7 +1102,7 @@ def start_material_ingest_job(
         permit_type,
         "material_ingest",
         "Aineiston vastaanotto ja valmistelu",
-        ["archive_validator", "text_extractor", "material_classifier", "vector_indexer"],
+        ["archive_validator", "text_extractor", "attachment_classifier", "vector_indexer"],
         eta_seconds=eta_seconds,
         managed_background=True,
     )
@@ -1167,6 +1165,12 @@ def execute_material_ingest_job(
                 package_id=package_id,
                 display_name=display_name,
             )
+        # Mark the ingest pipeline agents complete as their work finishes so the
+        # wizard banner reflects real progress instead of sitting at 1%.
+        mark_agent_complete(db, case_id, permit_type, job_id, "archive_validator", "Paketin tarkistus valmis.")
+        mark_agent_complete(db, case_id, permit_type, job_id, "text_extractor", "Tekstin poiminta valmis.")
+        mark_agent_complete(db, case_id, permit_type, job_id, "attachment_classifier", "Aineiston luokittelu valmis.")
+        mark_agent_complete(db, case_id, permit_type, job_id, "vector_indexer", "Hakukontekstin valmistelu valmis.")
         attachments = list_attachments(db, case_id, permit_type)
         save_material_package(
             db,
@@ -1457,9 +1461,6 @@ def structure_environmental_application_from_attachments(
         else:
             fields_iter = []
         for schema_field in fields_iter:
-            # ponytail: dataclass constructors don't auto-convert dicts —
-            # the field may be a dict (from fallback) or an ExtractedField.
-            # Use hasattr+getattr for dataclass attrs, .get() for dict fallback.
             fid = schema_field.field_id if hasattr(schema_field, 'field_id') else schema_field.get('field_id', '')
             val = schema_field.value if hasattr(schema_field, 'value') else schema_field.get('value', '')
             if fid not in allowed_fields or not (val or '').strip():

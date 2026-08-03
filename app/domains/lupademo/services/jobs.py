@@ -37,6 +37,7 @@ AI_JOB_AGENT_LABELS = {
     "applicant_precheck_report": "Esitarkistusraportti",
     "document_classifier": "Asiakirjojen luokittelu",
     "request_validator": "Pyynnön tarkistus",
+    "attachment_classifier": "Aineiston luokittelu",
 }
 
 
@@ -291,7 +292,8 @@ def _advance_ai_job_in_store(db: Any, case_id: str, permit_type: str, job: dict[
             1 for a in (job.get("agents") or []) if isinstance(a, dict) and a.get("status") == "completed"
         )
         progress = max(1, min(99, int((completed_agents / agent_count) * 100)))
-        active_index = min(agent_count - 1, completed_agents)
+        # When every agent is done, none should be shown as "running".
+        active_index = agent_count if completed_agents >= agent_count else min(agent_count - 1, completed_agents)
         job["progress_pct"] = progress
         job["progress_current"] = min(agent_count, completed_agents + 1)
         job["eta_seconds"] = max(1, int(round(total_seconds - elapsed))) if progress < 99 else 1

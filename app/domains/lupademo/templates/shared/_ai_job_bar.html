@@ -49,6 +49,12 @@
   </form>
   {% endif %}
 
+  {% if state != 'running' and step is defined and step == 4 %}
+  <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/check">
+    <button class="primary-cta">{{ 'Aja tarkistus uudelleen' if check_report is defined and check_report else 'Aja tarkistus' }} <span aria-hidden="true">→</span></button>
+  </form>
+  {% endif %}
+
   {% if state == 'running' %}
   {% for job in active_jobs %}
   <article class="job-progress" data-ai-job
@@ -82,7 +88,7 @@
   var rows = document.querySelectorAll("[data-ai-job]");
   if (!rows.length) return;
   var terminal = new Set(["succeeded", "failed", "cancelled"]);
-  var allDone = false;
+  var reloaded = false;
 
   function apply(row, payload) {
     var p = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
@@ -99,11 +105,19 @@
     return terminal.has(payload.status);
   }
 
-  function allTerminal() {
+  function reloadIfDone() {
+    if (reloaded) return;
+    var done = true;
     for (var i = 0; i < rows.length; i++) {
-      if (!rows[i].dataset._terminal) return false;
+      if (!rows[i].dataset._terminal) { done = false; break; }
     }
-    return true;
+    if (done) {
+      reloaded = true;
+      setTimeout(function () {
+        var url = location.href.split("#")[0] + "?t=" + Date.now() + location.hash;
+        location.replace(url);
+      }, 400);
+    }
   }
 
   async function pollRow(row) {
@@ -111,23 +125,18 @@
       var r = await fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } });
       if (!r.ok) return;
       var payload = await r.json();
-      if (apply(row, payload)) {
-        row.dataset._terminal = "1";
-      }
+      if (apply(row, payload)) row.dataset._terminal = "1";
     } catch (_) {}
   }
 
   async function pollAll() {
-    if (allDone) return;
+    if (reloaded) return;
     var promises = [];
     for (var i = 0; i < rows.length; i++) {
       if (!rows[i].dataset._terminal) promises.push(pollRow(rows[i]));
     }
     await Promise.all(promises);
-    if (allTerminal()) {
-      allDone = true;
-      setTimeout(function () { location.replace(location.href); }, 400);
-    }
+    reloadIfDone();
   }
 
   // SSE streaming for the first row (primary job)
@@ -138,14 +147,14 @@
       if (apply(rows[0], payload)) {
         rows[0].dataset._terminal = "1";
         src.close();
+        reloadIfDone();
       }
     });
     src.onerror = function () { src.close(); };
   }
 
-  pollAll().then(function () {
-    if (!allDone) window.setInterval(pollAll, 4000);
-  });
+  pollAll();
+  window.setInterval(pollAll, 4000);
 })();
 </script>
 {% endif %}

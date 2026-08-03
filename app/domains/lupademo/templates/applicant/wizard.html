@@ -453,9 +453,6 @@
       <p>Blocking-puutteet {{ precheck_gate.blocking_count }} · Tuore tarkistus: {{ "kyllä" if precheck_gate.is_fresh else "ei" }}</p>
       {% if precheck_gate.stale_reasons %}<small>{{ precheck_gate.stale_reasons|join(", ") }}</small>{% endif %}
     </div>
-    <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/check">
-      <button class="{% if present %}next-action{% endif %}">Aja tarkistus</button>
-    </form>
   </div>
   <div id="check-results">
     <h2>Tulokset</h2>

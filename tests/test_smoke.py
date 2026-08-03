@@ -57,7 +57,7 @@ def setUpModule() -> None:
         data={"delivery_scope": "official_submission"},
     )
     client.post(f"{base}/ai/check", data={})
-    client.post(f"{base}/ai/structure-from-attachments", data={})
+    client.post(f"{base}/ai/intake-analysis", data={})
 
 
 class AgentPipeline(unittest.TestCase):
