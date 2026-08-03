@@ -46,8 +46,10 @@
       {% endif %}
       <a href="/admin/suggestion-service"{% if '/suggestion-service' in current_path or '/integrations/' in current_path %} aria-current="page"{% endif %}>Integraatiot</a>
       {% elif case_id is defined %}
+      {% set nav_permits = project.get('permits', []) if project is defined and project else [] %}
+      {% set nav_application_id = application.application_id if application is defined and application else (nav_permits|first if nav_permits else 'building_residential') %}
       <a href="/lv/projects/{{ case_id }}"{% if current_path.startswith('/lv/projects/') %} aria-current="page"{% endif %}>Hanke</a>
-      <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id if application is defined and application else 'building_residential' }}/wizard/1"{% if '/application/' in current_path or '/package' in current_path %} aria-current="page"{% endif %}>Hakemus</a>
+      <a href="/cases/{{ case_id }}/lupademo/application/{{ nav_application_id }}/wizard/1"{% if '/application/' in current_path or '/package' in current_path %} aria-current="page"{% endif %}>Hakemus</a>
       {% else %}
       <a href="/applicant"{% if current_path == '/applicant' %} aria-current="page"{% endif %}>Uusi hakemus</a>
       <a href="/applicant/packages/new"{% if current_path.startswith('/applicant/packages') %} aria-current="page"{% endif %}>Tarkista aineisto</a>

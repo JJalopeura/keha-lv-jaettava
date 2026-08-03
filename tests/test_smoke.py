@@ -33,7 +33,7 @@ from app.infra.llm_utils import call_llm_json, vector_store_ids  # noqa: E402
 from app.infra.mock_llm import MockLLMClient  # noqa: E402
 from app.domains.lupademo.services.application import deterministic_suggestion  # noqa: E402
 from app.domains.lupademo.services.intake import azure_vector_store_ids, build_retrieval_context  # noqa: E402
-from app.main import app  # noqa: E402
+from app.main import app, db as app_db  # noqa: E402
 
 PERMIT = "environmental_industrial"
 KEY = {"X-Lupademo-Api-Key": "demo-avi-key"}
@@ -48,7 +48,7 @@ base: str
 def setUpModule() -> None:
     """Run the applicant flow once; the agent tests all read its artifacts."""
     global db, case, base
-    db = DB(os.environ["KEHA_LV_DB_PATH"])
+    db = app_db
     case = svc.ensure_demo_case(db)
     base = f"/cases/{case}/lupademo/application/{PERMIT}"
     client.post(

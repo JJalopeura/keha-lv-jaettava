@@ -44,7 +44,7 @@ from typing import Any, Literal, Optional
 
 import openpyxl
 import pdfplumber
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import fields as dataclass_fields
 from docx import Document as DocxDocument
 from fastapi import HTTPException

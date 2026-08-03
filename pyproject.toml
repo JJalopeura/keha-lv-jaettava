@@ -1,0 +1,28 @@
+[tool.ruff]
+# Focused lint config for the KEHA LV demo.
+#
+# Deliberately minimal: enables only high-value correctness/cleanliness rules
+# (unused imports, undefined names, dead code) and leaves the noisy style rules
+# (line length, import sorting, nested-with style, etc.) off, so `ruff check`
+# is useful without requiring a large pre-existing cleanup.
+#
+# Run:  ruff check app tests
+# Fix:  ruff check app tests --fix
+
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes: unused imports, undefined names, unused variables, dead code
+    "E9",   # syntax errors / runtime errors only (not full pycodestyle)
+]
+ignore = [
+    "F401",  # unused imports (many are intentional re-exports via `import *`)
+    "F403",  # star imports (intentional: services/__init__.py re-exports via `import *`)
+    "F405",  # star-import usage (intentional: modules rely on the svc.* re-exports)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files may use broad imports and re-exports freely.
+"tests/*.py" = ["F403", "F405"]

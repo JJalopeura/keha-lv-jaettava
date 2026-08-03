@@ -18,6 +18,8 @@ Runs fully offline with a mock LLM (rule-based, instant) by default. Swap to Azu
 
 ## Architecture
 
+> **New here?** Read [`docs/agent-onboarding.md`](docs/agent-onboarding.md) first — a short ramp-up (files to read, commands to run, mental model, where to look).
+>
 > **See `ARCHITECTURE.md` for the full module map, dependency graph (Mermaid), and data flow diagram.** This section summarizes key navigation points.
 
 ```
@@ -106,6 +108,37 @@ A case can hold multiple applications (one per permit type). Each is an artifact
 4. **Tarkistus** — AI permit check (blocking/major/minor issues), submit gate
 5. **Paketointi** — Submission package preview (official attachments vs AI context)
 6. **Vastaanotto** — Receipt / confirmation
+
+### Two entry paths (do NOT mix-match)
+
+There are **two distinct ways to fill in an application**. They share the same
+underlying application state (`permit_application:<permit_type>`) and both
+converge on the wizard, but they are separate user journeys with separate
+routes, templates, and handlers. Keep them independent — do not merge, alias,
+or cross-wire them.
+
+| | **A. Package workbench** (material-first) | **B. Wizard** (form-first) |
+|---|---|---|
+| Entry URL | `/applicant/packages/new` | `/projects/new` (with `start_at=wizard`) |
+| Template | `applicant/package_new.html` → `applicant/package_workbench.html` | `applicant/applicant_start.html` → `applicant/wizard.html` |
+| POST handler | `applicant_package_create` | `create_project` |
+| Starts with | Raw material (files / zip / text) | Project basics + permit type |
+| First step | AI ingest & analysis | Wizard step 1 (common data) |
+| Landing | `/applicant/packages/{package_id}` | `/cases/{case_id}/lupademo/application/{application_id}/wizard/1` |
+| Nav label | "Tarkista aineisto" | "Uusi hakemus" |
+
+- **Path A** (`/applicant/packages/*`) is the **package workbench** — upload raw
+  material first, AI ingests/analyzes it, then review the extraction queue and
+  findings. Routes live in `routes/applicant.py` under the `applicant_package_*`
+  handlers.
+- **Path B** (`/projects/new` → wizard) is the **6-step wizard** — fill the form
+  first, add materials in step 2. Routes live in `routes/applicant.py` under the
+  `create_project` / `application_wizard` handlers.
+
+The workbench intentionally links **into** the wizard for review/fix (e.g.
+"Korjaa" → `wizard/2`, "Katso kaikki tarkistukset" → `wizard/4`), but the two
+entry flows must never be conflated. When adding a feature, decide which path it
+belongs to and keep it there.
 
 ### Artifacts
 

@@ -12,7 +12,6 @@ from .common import RouteContext, api_response, job_eta_seconds, service_payload
 
 def create_api_v1_router(ctx: RouteContext) -> APIRouter:
     router = APIRouter()
-    templates = ctx.templates
     db = ctx.db
     settings = ctx.settings
 

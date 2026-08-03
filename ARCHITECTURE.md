@@ -23,8 +23,9 @@ keha-lv-jaettava/
         api_v1.py                      7 handlers — external suggestion-service API
         admin.py                      22 handlers — criteria admin, playground, jobs
         demo_lab.py                   14 handlers — benchmark, metrics, audit
-        common.py                     Shared route helpers
-        template_filters.py           Jinja2 filters
+        common.py                     Shared route helpers + Jinja2 filters
+                                        (finnish_datetime, FINDING_CATEGORY_LABELS,
+                                        job_eta_seconds, RouteContext)
       services/                      Business logic (no HTTP)
         domain.py                     Dataclasses, schemas, path constants, prompts (~350L)
         db_helpers.py                 artifact_json, save_artifact, event (~80L)
@@ -207,6 +208,13 @@ The package workbench (`/applicant/packages/*`) is a **separate path** from the
 wizard. It starts from raw material (no pre-seeded case) and runs the **full**
 analysis pipeline in sequence. Routes live in `routes/applicant.py`.
 
+> **Do not mix-match.** The workbench (Path A, material-first) and the wizard
+> (Path B, form-first) are two distinct entry flows into the same application
+> state. They share `permit_application:<permit_type>` and converge on the
+> wizard, but their routes, templates, and handlers are separate. Keep them
+> independent — do not merge, alias, or cross-wire them. See `AGENTS.md` →
+> "Two entry paths (do NOT mix-match)" for the full comparison.
+
 ### Create + ingest
 
 | Method | Path | Purpose | AI job |
@@ -285,4 +293,9 @@ Same endpoints as the wizard banner: `GET /api/v1/jobs/{job_id}` (+ `/stream`,
 3. **`svc.*` pattern.** All services re-exported through `__init__.py`. Routes never import from individual service modules — they use `import services as svc; svc.xxx()`.
 4. **Routes are thin.** Route handlers validate input, call a service function, return a template/redirect. No business logic in routes.
 5. **`app/infra/` not `app/core/`.** Named "infra" to avoid collision with `services/core.py`. Infrastructure code has zero business logic.
-6. **Specs live in `app/`.** Runtime specs (schemas, criteria, prompts) live next to the code that loads them. Design archives live in `docs/specs/`.
+6. **Specs live in `app/`.** Runtime specs (schemas, criteria, prompts) live next to the code that loads them. Design archives live in `docs/archive/v5-specs/`.
+
+## Route inventory
+
+For a complete, machine-checkable table of every HTTP route (method, path,
+handler, module, template), see [`docs/route-inventory.md`](docs/route-inventory.md).
