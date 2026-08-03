@@ -55,7 +55,7 @@ from app.infra.llm_utils import call_llm_json, vector_store_ids
 
 from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
 from .criteria import *  # noqa: F401,F403
-from .jobs import complete_ai_job, find_ai_job, list_ai_jobs, start_ai_job
+from .jobs import complete_ai_job, find_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
 from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
@@ -450,11 +450,16 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
         structure = structure_environmental_application_from_attachments(db, case_id, settings=settings, track_job=False)
     else:
         structure = artifact_json(db, case_id, "structure_extraction_result", permit_type, {"field_extractions": [], "updated_field_count": 0})
+    if job_id:
+        mark_agent_complete(db, case_id, permit_type, job_id, "material_classifier", "Aineiston luokittelu valmis.")
+        mark_agent_complete(db, case_id, permit_type, job_id, "structure_extractor", "Rakenteistus valmis.")
     app = ensure_application(db, case_id, permit_type)
     schema = load_form_schema(permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     wizard = wizard_step_status(db, case_id, permit_type)
     questions = intake_analysis_questions(schema, app, attachments) if full_check else []
+    if job_id:
+        mark_agent_complete(db, case_id, permit_type, job_id, "question_generator", "Kysymysten muodostus valmis.")
     field_extractions = list(structure.get("field_extractions", []))
     result: dict[str, Any] = {
         "permit_type": permit_type,
@@ -481,6 +486,8 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
 
     if full_check:
         package_result = package_analysis_from_current_state(db, case_id, permit_type, job_id=job_id, structure=structure, settings=settings)
+        if job_id:
+            mark_agent_complete(db, case_id, permit_type, job_id, "gap_analyzer", "Puutteiden tunnistus valmis.")
         result["readiness"] = package_result["readiness"]
         result["readiness_score"] = package_result["readiness_score"]
         result["summary"] = package_result["summary"]
@@ -1060,15 +1067,46 @@ def deterministic_issues(permit_type: str, form_data: dict[str, Any], attachment
     return issues
 
 
+def _issue_id(issue: Issue | dict[str, Any]) -> str:
+    return issue.id if isinstance(issue, Issue) else str(issue.get("id", ""))
+
+
+def _issue_severity(issue: Issue | dict[str, Any]) -> str:
+    return issue.severity if isinstance(issue, Issue) else str(issue.get("severity", "major"))
+
+
+def _as_issue(issue: Issue | dict[str, Any]) -> Issue:
+    """Normalize an Issue dataclass or a fallback dict into an Issue."""
+    if isinstance(issue, Issue):
+        return issue
+    return Issue(
+        id=str(issue.get("id", "")),
+        type=str(issue.get("type", "unknown")),
+        severity=str(issue.get("severity", "major")),
+        title=str(issue.get("title", "")),
+        detail=str(issue.get("detail", "")),
+        confidence=float(issue.get("confidence", 0.5)),
+        field_id=issue.get("field_id"),
+        attachment_id=issue.get("attachment_id"),
+        suggested_fix=issue.get("suggested_fix"),
+        evidence_refs=issue.get("evidence_refs", []),
+        resolved=bool(issue.get("resolved", False)),
+    )
+
+
 def merge_issues(*groups: list[Issue]) -> list[Issue]:
-    seen: dict[str, Any] = {}
+    """Merge issue groups, keeping the highest-severity entry per id.
+
+    Groups may contain ``Issue`` dataclasses (from agents) or plain dicts
+    (from fallback payloads); both are normalized to ``Issue``.
+    """
+    seen: dict[str, Issue] = {}
     for group in groups:
         for issue in group:
-            # ponytail: issue may be a dict (from fallback) or an Issue dataclass
-            iid = issue.id if hasattr(issue, 'id') else issue.get('id', '')
-            isev = issue.severity if hasattr(issue, 'severity') else issue.get('severity', 'major')
-            if iid not in seen or SEVERITY_ORDER.get(isev, 1) > SEVERITY_ORDER.get(seen[iid].severity if hasattr(seen[iid], 'severity') else seen[iid].get('severity', 'major'), 1):
-                seen[iid] = issue
+            iid = _issue_id(issue)
+            isev = _issue_severity(issue)
+            if iid not in seen or SEVERITY_ORDER.get(isev, 1) > SEVERITY_ORDER.get(_issue_severity(seen[iid]), 1):
+                seen[iid] = _as_issue(issue)
     return list(seen.values())
 
 
@@ -1088,6 +1126,8 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
     attachments = list_attachments(db, case_id, app["permit_type"])
     schema = load_form_schema(app["permit_type"])
     deterministic = deterministic_issues(app["permit_type"], app.get("form_data", {}), attachments)
+    if job_id:
+        mark_agent_complete(db, case_id, app["permit_type"], job_id, "deterministic_checks", "Sääntöpohjainen tarkistus valmis.")
     agent_issues: list[Issue] = []
     criteria_results: list[dict[str, Any]] = []
     if settings is not None:
@@ -1107,6 +1147,9 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         }
         vector_ids = azure_vector_store_ids(db, settings, case_id)
         agent_issues = _run_check_agents(db, settings, case_id, base_values, vector_ids=vector_ids, max_output_tokens=5000)
+        if job_id:
+            mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")
+            mark_agent_complete(db, case_id, app["permit_type"], job_id, "consistency_validator", "Ristiriitatarkistus valmis.")
         criteria_response = run_json_agent(
             db,
             settings,
@@ -1118,6 +1161,8 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             fallback={"criteria_results": []},
             max_output_tokens=6000,
         )
+        if job_id:
+            mark_agent_complete(db, case_id, app["permit_type"], job_id, "criteria_assessor", "Kriteeriarviointi valmis.")
         if isinstance(criteria_response, CriteriaAssessmentResponse):
             criteria_results = _plain(criteria_response.criteria_results)
         elif isinstance(criteria_response, dict):
@@ -1173,6 +1218,8 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             reasoning_effort="low",
         )
         save_artifact(db, case_id, "applicant_precheck_report", app["permit_type"], precheck)
+        if job_id:
+            mark_agent_complete(db, case_id, app["permit_type"], job_id, "applicant_precheck_report", "Esitarkistusraportti valmis.")
     event(db, case_id, "ai.check.completed", "Application check completed", {"application_id": app["permit_type"], "issues": len(issues), "blocking": blockers, "major": major, "score": response.score})
     save_artifact(db, case_id, "precheck_gate", app["permit_type"], precheck_gate_status(db, case_id, app["permit_type"]))
     complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Tarkistus valmis: {len(issues)} havaintoa, pisteet {response.score}.", result_artifact=f"check_report:{app['permit_type']}")

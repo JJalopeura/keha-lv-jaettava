@@ -28,6 +28,15 @@ AI_JOB_AGENT_LABELS = {
     "caseworker_summary_agent": "Käsittelijän yhteenvetoagentti",
     "additional_info_request_agent": "Täydennyspyyntöagentti",
     "authority_memo_draft_agent": "Valmistelumuistioagentti",
+    # Wizard / applicant-flow agents (technical names → Finnish labels)
+    "field_extraction_agent": "Kenttätietojen poiminta",
+    "retrieval_context": "Hakukontekstin kokoaminen",
+    "validate_suggestion": "Ehdotuksen tarkistus",
+    "persist_pending_suggestion": "Ehdotuksen tallennus",
+    "deterministic_checks": "Sääntöpohjainen tarkistus",
+    "applicant_precheck_report": "Esitarkistusraportti",
+    "document_classifier": "Asiakirjojen luokittelu",
+    "request_validator": "Pyynnön tarkistus",
 }
 
 
@@ -272,12 +281,27 @@ def _advance_ai_job_in_store(db: Any, case_id: str, permit_type: str, job: dict[
     created_at = float(job.get("created_at") or now)
     total_seconds = float(job.get("estimated_seconds_total") or 20) if job.get("managed_background") else _job_simulation_seconds()
     elapsed = max(0.0, now - created_at)
-    progress = max(1, min(99, int((elapsed / total_seconds) * 100)))
     agent_count = max(1, len(job.get("agents") or []))
-    active_index = min(agent_count - 1, int((progress / 100) * agent_count))
-    job["progress_pct"] = progress
-    job["progress_current"] = min(agent_count, active_index + 1)
-    job["eta_seconds"] = max(1, int(round(total_seconds - elapsed))) if progress < 99 else 1
+
+    # For managed_background jobs the real agents complete in a background task,
+    # so base progress on how many agents have actually finished rather than on
+    # elapsed wall-clock time. This keeps the bar honest while Azure calls run.
+    if job.get("managed_background"):
+        completed_agents = sum(
+            1 for a in (job.get("agents") or []) if isinstance(a, dict) and a.get("status") == "completed"
+        )
+        progress = max(1, min(99, int((completed_agents / agent_count) * 100)))
+        active_index = min(agent_count - 1, completed_agents)
+        job["progress_pct"] = progress
+        job["progress_current"] = min(agent_count, completed_agents + 1)
+        job["eta_seconds"] = max(1, int(round(total_seconds - elapsed))) if progress < 99 else 1
+    else:
+        progress = max(1, min(99, int((elapsed / total_seconds) * 100)))
+        active_index = min(agent_count - 1, int((progress / 100) * agent_count))
+        job["progress_pct"] = progress
+        job["progress_current"] = min(agent_count, active_index + 1)
+        job["eta_seconds"] = max(1, int(round(total_seconds - elapsed))) if progress < 99 else 1
+
     job["updated_at"] = now
     for index, agent in enumerate(job.get("agents") or []):
         if not isinstance(agent, dict):
@@ -320,6 +344,33 @@ def _advance_ai_job_in_store(db: Any, case_id: str, permit_type: str, job: dict[
                     agent["started_at"] = agent.get("started_at") or created_at
                     agent["finished_at"] = now
                     agent["summary"] = agent.get("summary") or "Valmis."
+
+
+def mark_agent_complete(db: Any, case_id: str, permit_type: str, job_id: str, agent_name: str, summary: str = "") -> None:
+    """Mark a single agent step as completed so the progress bar reflects real work.
+
+    Called by background job runners as each real agent finishes. Persists the
+    updated job so the wizard banner's polling sees the new progress.
+    """
+    permit_type = application_id_for(permit_type)
+    store = _job_store(db, case_id, permit_type)
+    now = time.time()
+    changed = False
+    for job in store.get("jobs", []):
+        if not (isinstance(job, dict) and job.get("id") == job_id):
+            continue
+        for agent in job.get("agents") or []:
+            if isinstance(agent, dict) and agent.get("name") == agent_name and agent.get("status") != "completed":
+                agent["status"] = "completed"
+                agent["finished_at"] = agent.get("finished_at") or now
+                if summary:
+                    agent["summary"] = summary
+                changed = True
+        if changed:
+            job["updated_at"] = now
+        break
+    if changed:
+        save_artifact(db, case_id, "ai_jobs", permit_type, store)
 
 
 def complete_ai_job(

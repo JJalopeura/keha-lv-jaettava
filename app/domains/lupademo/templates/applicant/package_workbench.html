@@ -61,7 +61,7 @@
           <strong data-job-summary>{{ active_job.summary or active_job.title }}</strong>
           <span><b data-job-progress>{{ active_job.progress_percent }}</b>% · <span data-job-eta>{{ active_job.estimated_seconds_remaining }}</span> s</span>
         </div>
-        <div class="progress-track"><span data-job-progress-bar style="width: {{ active_job.progress_percent }}%"></span></div>
+        <div class="progress-track"><span data-job-progress-bar style="--p: {{ active_job.progress_percent }}"></span></div>
       </article>
       {% endif %}
     </section>
@@ -126,7 +126,6 @@
     {% endif %}
     <div class="inspector-note"><strong>Aineistorajat pidetään erillään</strong><p>Hakemusta arvioidaan hakijan aineiston ja voimassa olevan ohje- ja sääntötiedon perusteella.</p></div>
     <a class="button secondary full-button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa aineistoa</a>
-    <a class="button full-button" href="/cases/{{ case_id }}/chat?scope=case&application_id={{ application.application_id }}&parent_path=/applicant/packages/{{ package_id }}">Kysy Lupa-apurilta</a>
   </aside>
 </div>
 
@@ -140,7 +139,7 @@
     const progress = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
     row.querySelector("[data-job-progress]").textContent = progress;
     row.querySelector("[data-job-eta]").textContent = payload.estimated_seconds_remaining ?? 0;
-    row.querySelector("[data-job-progress-bar]").style.width = `${progress}%`;
+    row.querySelector("[data-job-progress-bar]").style.setProperty("--p", progress);
     if (payload.events?.length) row.querySelector("[data-job-summary]").textContent = payload.events.at(-1).message;
     if (terminal.has(payload.status)) {
       if (pollingId) window.clearInterval(pollingId);

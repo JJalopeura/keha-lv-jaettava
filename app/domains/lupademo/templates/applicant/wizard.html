@@ -430,6 +430,21 @@
 {% endif %}
 
 {% if step == 4 %}
+{% if check_report %}
+<section class="readiness-summary" id="check-readiness">
+  <div class="score-ring" style="--score: {{ check_report.score }}"><strong>{{ check_report.score }}</strong><span>/ 100</span></div>
+  <div>
+    <p class="section-kicker">Valmius</p>
+    <h2>{% if check_report.score >= 80 %}Hakemus on lähes valmis{% elif check_report.score >= 50 %}Hakemus tarvitsee vielä täydennyksiä{% else %}Aloita estävistä puutteista{% endif %}</h2>
+    <p>{{ check_report.issues|length }} havaintoa · {{ precheck_gate.blocking_count }} estävää puutetta.</p>
+  </div>
+  <div class="readiness-actions">
+    {% if check_report.issues %}
+    <a class="button secondary" href="#check-results">Katso tarkistukset</a>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
 <section class="grid two" id="check">
   <div>
     <h2>AI- ja sääntötarkistus</h2>
@@ -442,7 +457,7 @@
       <button class="{% if present %}next-action{% endif %}">Aja tarkistus</button>
     </form>
   </div>
-  <div>
+  <div id="check-results">
     <h2>Tulokset</h2>
     {% if check_report %}
     <p>Laatupisteet {{ check_report.score }} · {{ check_report.get('summary', '') }}</p>
@@ -450,7 +465,17 @@
     <div class="issue {{ issue.severity }}" id="{% if issue.severity == 'blocking' %}check-blocking{% endif %}">
       <strong>{{ issue.severity }} · {{ issue.title }}</strong>
       <p>{{ issue.detail }}</p>
-      <small>{{ issue.suggested_fix }}</small>
+      {% if issue.suggested_fix %}<small>Ehdotus: {{ issue.suggested_fix }}</small>{% endif %}
+      {% if issue.evidence_refs %}
+      <details class="evidence-disclosure"><summary>Perusteet ja lähteet · luottamus {{ (issue.confidence * 100)|round|int }} %</summary>
+        {% for ref in issue.evidence_refs[:3] %}
+        <div class="evidence-line"><strong>{{ ref.title }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>
+        {% endfor %}
+      </details>
+      {% endif %}
+      {% if issue.field_id %}
+      <a class="button secondary compact" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#field-{{ issue.field_id }}">Korjaa</a>
+      {% endif %}
     </div>
     {% endfor %}
     {% else %}

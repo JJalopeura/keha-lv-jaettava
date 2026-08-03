@@ -2441,6 +2441,7 @@ button:disabled {
 .progress-track > span {
   display: block;
   height: 100%;
+  width: calc(var(--p, 0) * 1%);
   background: #72ccb6;
   border-radius: 99px;
   transition: width 400ms ease; /* functional progress bar — communicates loading state, exempt from MOTION_INTENSITY cap */
