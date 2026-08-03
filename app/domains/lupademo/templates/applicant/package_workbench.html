@@ -149,8 +149,12 @@
     return false;
   }
   async function poll() {
-    const response = await fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } });
-    return response.ok && apply(await response.json());
+    try {
+      const response = await fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } });
+      return response.ok && apply(await response.json());
+    } catch (_) {
+      return false;
+    }
   }
   if (row.dataset.streamUrl && "EventSource" in window) {
     const source = new EventSource(row.dataset.streamUrl);

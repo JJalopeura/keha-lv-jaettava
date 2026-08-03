@@ -213,6 +213,16 @@
   }
 
   /* ── Markdown renderer ── */
+  // Only allow safe URL schemes in rendered links (blocks javascript:, data:, vbscript:).
+  function safeHref(url) {
+    var trimmed = String(url || "").trim();
+    var scheme = trimmed.split(":", 1)[0].toLowerCase();
+    if (scheme === "http" || scheme === "https" || scheme === "mailto") {
+      return trimmed;
+    }
+    return "#";
+  }
+
   function renderMD(text) {
     if (!text) return "";
     var html = text
@@ -223,8 +233,10 @@
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
       // Inline code
       .replace(/`([^`]+)`/g, "<code>$1</code>")
-      // Links
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      // Links (scheme-sanitized to prevent javascript:/data: XSS)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (m, label, url) {
+        return '<a href="' + safeHref(url) + '" target="_blank" rel="noopener">' + label + "</a>";
+      })
       // Unordered lists
       .replace(/^- (.+)$/gm, "<li>$1</li>")
       .replace(/(<li>.*<\/li>)/s, function (m) { return "<ul>" + m + "</ul>"; })
