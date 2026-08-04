@@ -302,6 +302,14 @@ class MockLLMClient:
         if "suositus" in low:
             return "## Suositus\nEtene ehdolliseen hyväksyntään. Edellytä lisäselvitykset ennen lopullista päätöstä."
 
+        if "contextual chat" in low or "lupahakemuksen contextual" in low:
+            return (
+                "Hei! Olen AI-apuri ja autan hakemuksen tietojen tarkistamisessa. "
+                "Kerro mitä haluaisit tietää — voin esimerkiksi auttaa puuttuvien kenttien "
+                "tunnistamisessa, liitteiden tarkistuksessa tai kriteerien läpikäynnissä. "
+                "En muuta lomakkeen tietoja automaattisesti; ehdotukset pitää hyväksyä erikseen."
+            )
+
         return f"[Demo mode] Realistic mock response.\n\nPrompt preview:\n{preview}"
 
     def responses(

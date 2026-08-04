@@ -248,6 +248,18 @@
     return "<p>" + html + "</p>";
   }
 
+  /* ── Render any server-rendered chat history on page load ── */
+  (function initHistory() {
+    var els = document.querySelectorAll("[data-md]");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (!el.dataset.rendered) {
+        el.innerHTML = renderMD(el.textContent.trim());
+        el.dataset.rendered = "1";
+      }
+    }
+  })();
+
   /* ── Message builder ── */
   function buildMessage(role, html) {
     var div = document.createElement("div");
