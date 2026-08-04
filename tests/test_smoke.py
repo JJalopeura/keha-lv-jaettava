@@ -834,9 +834,10 @@ class Pages(unittest.TestCase):
 
         page = client.get("/")
         self.assertEqual(page.status_code, 200)
-        self.assertIn("Asiakas ja paketti", page.text)
+        self.assertIn("Hakija", page.text)
         self.assertIn(common["data"]["applicant_name"], page.text)
-        self.assertIn(package["display_name"], page.text)
+        # The picker shows only the customer, not the package name
+        self.assertNotIn(package["display_name"], page.text)
 
         switched = client.post("/workspace/select", data={"workspace": f"{case}:{package['package_id']}"})
         self.assertEqual(switched.status_code, 303)
@@ -926,10 +927,12 @@ class Pages(unittest.TestCase):
         authority = client.get("/authority/queue").text
         demo_lab = client.get("/demo-lab").text
 
-        # Applicant: LV project nav (Hanke + Kevytasiointi), no authority/demo links
+        # Case Workbench (wizard): focused task nav (Hakemus + Palaa hankkeeseen),
+        # no authority/demo links, and no workspace-level "Hanke" nav
         applicant_header = applicant.split("</header>", 1)[0]
-        self.assertIn(">Hanke</a>", applicant_header)
         self.assertIn(">Hakemus</a>", applicant_header)
+        self.assertIn(">Palaa hankkeeseen</a>", applicant_header)
+        self.assertNotIn(">Hanke</a>", applicant_header)
         self.assertNotIn("Viranomainen", applicant_header)
         self.assertNotIn("Demo Lab", applicant_header)
 

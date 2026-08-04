@@ -1,6 +1,7 @@
 {
   "criteria_set_id": "vantaa_event_public_demo_v1",
   "tenant_id": "vantaa_demo",
+  "municipality": "Vantaa",
   "permit_type": "event_public",
   "version": "2026-06-demo-1",
   "status": "active",

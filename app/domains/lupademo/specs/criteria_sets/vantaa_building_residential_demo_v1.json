@@ -1,6 +1,7 @@
 {
   "criteria_set_id": "vantaa_building_residential_demo_v1",
   "tenant_id": "vantaa_demo",
+  "municipality": "Vantaa",
   "permit_type": "building_residential",
   "version": "2026-06-demo-1",
   "status": "active",

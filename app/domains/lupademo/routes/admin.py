@@ -139,28 +139,39 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/cases/{case_id}/lupademo/admin/criteria", response_class=HTMLResponse)
     def criteria_admin(request: Request, case_id: str):
+        municipality = str(request.query_params.get("municipality") or "").strip()
         return templates.TemplateResponse(
             "admin/criteria.html",
             {
                 "request": request,
                 **context(case_id),
-                "criteria_sets": [svc.effective_criteria(db(), case_id, permit_type) for permit_type in svc.PERMIT_SCHEMAS],
-                "criteria_histories": {permit_type: svc.criteria_history(db(), case_id, permit_type) for permit_type in svc.PERMIT_SCHEMAS},
-                "criteria_history_rows": {permit_type: svc.criteria_history_rows(svc.criteria_history(db(), case_id, permit_type)) for permit_type in svc.PERMIT_SCHEMAS},
-                "criteria_rule_rows": {permit_type: svc.criteria_rule_rows(svc.effective_criteria(db(), case_id, permit_type)) for permit_type in svc.PERMIT_SCHEMAS},
+                "selected_municipality": municipality,
+                "municipalities": svc.list_municipalities(db(), case_id),
+                "criteria_sets": [svc.effective_criteria(db(), case_id, permit_type, municipality) for permit_type in svc.PERMIT_SCHEMAS],
+                "criteria_histories": {permit_type: svc.criteria_history(db(), case_id, permit_type, municipality) for permit_type in svc.PERMIT_SCHEMAS},
+                "criteria_history_rows": {permit_type: svc.criteria_history_rows(svc.criteria_history(db(), case_id, permit_type, municipality)) for permit_type in svc.PERMIT_SCHEMAS},
+                "criteria_rule_rows": {permit_type: svc.criteria_rule_rows(svc.effective_criteria(db(), case_id, permit_type, municipality)) for permit_type in svc.PERMIT_SCHEMAS},
                 "criteria_test_results": {permit_type: svc.artifact_json(db(), case_id, "criteria_test_result", permit_type, {}) for permit_type in svc.PERMIT_SCHEMAS},
                 "source_ingest": svc.artifact_json(db(), case_id, "source_material_ingest", "main", {}),
             },
         )
 
+    @router.post("/cases/{case_id}/lupademo/admin/criteria/city")
+    def criteria_city_post(case_id: str, municipality: str = Form(...)):
+        try:
+            svc.create_city_criteria(db(), case_id, municipality)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
+
     @router.post("/cases/{case_id}/lupademo/admin/criteria")
-    def criteria_admin_post(case_id: str, permit_type: str = Form(...), criteria_json: str = Form(...)):
+    def criteria_admin_post(case_id: str, permit_type: str = Form(...), criteria_json: str = Form(...), municipality: str = Form("")):
         try:
             payload = json.loads(criteria_json)
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Invalid JSON: {exc}")
-        svc.save_criteria_version(db(), case_id, permit_type, payload)
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria", status_code=303)
+        svc.save_criteria_version(db(), case_id, permit_type, payload, municipality=municipality)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/admin/criteria/rule")
     def criteria_rule_post(
@@ -171,6 +182,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
         attachment_type: str = Form(""),
         severity: str = Form("major"),
         instruction: str = Form(...),
+        municipality: str = Form(""),
     ):
         try:
             svc.upsert_criteria_rule(
@@ -178,31 +190,32 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
                 case_id,
                 permit_type,
                 {"id": rule_id, "field_id": field_id, "attachment_type": attachment_type, "severity": severity, "instruction": instruction},
+                municipality=municipality,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/admin/criteria/rule/delete")
-    def criteria_rule_delete_post(case_id: str, permit_type: str = Form(...), rule_id: str = Form(...)):
+    def criteria_rule_delete_post(case_id: str, permit_type: str = Form(...), rule_id: str = Form(...), municipality: str = Form("")):
         try:
-            svc.delete_criteria_rule(db(), case_id, permit_type, rule_id)
+            svc.delete_criteria_rule(db(), case_id, permit_type, rule_id, municipality=municipality)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/admin/criteria/restore")
-    def criteria_restore_post(case_id: str, permit_type: str = Form(...), history_index: int = Form(...)):
+    def criteria_restore_post(case_id: str, permit_type: str = Form(...), history_index: int = Form(...), municipality: str = Form("")):
         try:
-            svc.restore_criteria_version(db(), case_id, permit_type, history_index)
+            svc.restore_criteria_version(db(), case_id, permit_type, history_index, municipality=municipality)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/admin/criteria/test")
-    def criteria_test_post(case_id: str, permit_type: str = Form(...)):
-        svc.run_criteria_test(db(), settings(), case_id, permit_type)
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria", status_code=303)
+    def criteria_test_post(case_id: str, permit_type: str = Form(...), municipality: str = Form("")):
+        svc.run_criteria_test(db(), settings(), case_id, permit_type, municipality=municipality)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/admin/source-materials/ingest")
     def source_materials_ingest(case_id: str):

@@ -284,14 +284,19 @@ def _advance_ai_job_in_store(db: Any, case_id: str, permit_type: str, job: dict[
     elapsed = max(0.0, now - created_at)
     agent_count = max(1, len(job.get("agents") or []))
 
-    # For managed_background jobs the real agents complete in a background task,
-    # so base progress on how many agents have actually finished rather than on
-    # elapsed wall-clock time. This keeps the bar honest while Azure calls run.
+    # For managed_background jobs the real agents complete in a background task.
+    # Blend agent-completion progress with elapsed wall-clock time so the bar
+    # visibly advances even before the first agent finishes (otherwise it sits
+    # at 1% for the whole run). Agent completion still dominates the final
+    # stretch so the bar stays honest when Azure calls actually finish.
     if job.get("managed_background"):
         completed_agents = sum(
             1 for a in (job.get("agents") or []) if isinstance(a, dict) and a.get("status") == "completed"
         )
-        progress = max(1, min(99, int((completed_agents / agent_count) * 100)))
+        agent_progress = (completed_agents / agent_count) * 100
+        time_progress = min(100.0, (elapsed / total_seconds) * 100) if total_seconds > 0 else 0.0
+        # Weighted blend: 60% agent completion, 40% elapsed time. Never regress.
+        progress = max(1, min(99, int(agent_progress * 0.6 + time_progress * 0.4)))
         # When every agent is done, none should be shown as "running".
         active_index = agent_count if completed_agents >= agent_count else min(agent_count - 1, completed_agents)
         job["progress_pct"] = progress

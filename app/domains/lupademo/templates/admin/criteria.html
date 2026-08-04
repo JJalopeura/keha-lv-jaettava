@@ -3,6 +3,8 @@
 {% block title %}Kriteeristöt{% endblock %}
 {% block content %}
 {% set permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
+{% set selected_municipality = selected_municipality|default('') %}
+{% set municipalities = municipalities|default([]) %}
 {% set total_rules = namespace(value=0) %}
 {% for criteria in criteria_sets %}{% set total_rules.value = total_rules.value + (criteria.rules|length if criteria.rules else 0) %}{% endfor %}
 {{ page_header(
@@ -27,28 +29,50 @@
 </div>
 
 <section id="criteria-sets" aria-labelledby="criteria-sets-heading">
-  <h2 id="criteria-sets-heading">Aktiiviset kriteeristöt</h2>
-  <p>Jokainen tallennus luo uuden version ja säilyttää aiemman version palautettavana.</p>
+  <div class="section-heading-row">
+    <div>
+      <h2 id="criteria-sets-heading">Aktiiviset kriteeristöt</h2>
+      <p>Jokainen tallennus luo uuden version ja säilyttää aiemman version palautettavana.</p>
+    </div>
+    <div class="criteria-city-controls">
+      <form method="get" class="criteria-city-picker">
+        <label for="municipality">Kunta</label>
+        <select id="municipality" name="municipality" onchange="this.form.submit()">
+          <option value="" {% if not selected_municipality %}selected{% endif %}>Oletus (kansallinen)</option>
+          {% for city in municipalities %}
+          <option value="{{ city }}" {% if selected_municipality == city %}selected{% endif %}>{{ city }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/city" class="criteria-city-add">
+        <label for="new-municipality">Lisää kunta</label>
+        <div>
+          <input id="new-municipality" name="municipality" placeholder="Esim. Helsinki" required>
+          <button class="secondary">Lisää</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </section>
 
 {% for criteria in criteria_sets %}
-<section class="admin-workspace" aria-labelledby="criteria-{{ criteria.permit_type }}">
-  <div class="section-heading-row">
+<details class="admin-workspace criteria-card" aria-labelledby="criteria-{{ criteria.permit_type }}">
+  <summary class="section-heading-row">
     <div>
       <p class="section-kicker">{{ permit_labels.get(criteria.permit_type, criteria.permit_type) }}</p>
-      <h2 id="criteria-{{ criteria.permit_type }}">Versio {{ criteria.version }}</h2>
+      <h2 id="criteria-{{ criteria.permit_type }}">{{ criteria.rules|length if criteria.rules else 0 }} sääntöä · versio {{ criteria.version }}</h2>
     </div>
     <span class="status good">{{ "Aktiivinen" if (criteria.status or "active") == "active" else criteria.status }}</span>
-  </div>
+  </summary>
   <div class="grid two-wide">
     <div>
       <dl class="data-list">
-        <div class="data-row"><dt>Sääntöjä</dt><dd>{{ criteria.rules|length if criteria.rules else 0 }}</dd></div>
         <div class="data-row"><dt>Päivitetty</dt><dd>{{ criteria.get('updated_at')|finnish_datetime if criteria.get('updated_at') else "Alkuperäinen versio" }}</dd></div>
         <div class="data-row"><dt>Päivittäjä</dt><dd>{{ criteria.get('updated_by') or "Demon lähtöaineisto" }}</dd></div>
       </dl>
       <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/test">
         <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+        <input type="hidden" name="municipality" value="{{ selected_municipality }}">
         <button class="secondary">Aja testipyyntö</button>
       </form>
       {% set test_result = criteria_test_results.get(criteria.permit_type, {}) %}
@@ -62,16 +86,20 @@
       {% endif %}
 
       {% set history_rows = criteria_history_rows.get(criteria.permit_type, []) %}
-      <h3>Versiohistoria</h3>
-      {% if history_rows %}
-      <div class="table-wrap"><table>
-        <caption>{{ permit_labels.get(criteria.permit_type, criteria.permit_type) }}: aiemmat versiot</caption>
-        <tr><th>Aika</th><th>Muokkaaja</th><th>Versio</th><th>Sääntöjä</th><th>Toiminto</th></tr>
-        {% for item in history_rows %}
-        <tr><td>{{ item.ts|finnish_datetime }}</td><td>{{ item.editor }}</td><td>{{ item.version }}</td><td>{{ item.rule_count }}</td><td><form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/restore"><input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="history_index" value="{{ item.history_index }}"><button class="secondary">Palauta</button></form></td></tr>
-        {% endfor %}
-      </table></div>
-      {% else %}<p class="muted">Ei aiempia versioita.</p>{% endif %}
+      <details class="technical-details">
+        <summary>Versiohistoria ({{ history_rows|length }})</summary>
+        <div class="technical-details__content">
+        {% if history_rows %}
+        <div class="table-wrap"><table>
+          <caption>{{ permit_labels.get(criteria.permit_type, criteria.permit_type) }}: aiemmat versiot</caption>
+          <tr><th>Aika</th><th>Muokkaaja</th><th>Versio</th><th>Sääntöjä</th><th>Toiminto</th></tr>
+          {% for item in history_rows %}
+          <tr><td>{{ item.ts|finnish_datetime }}</td><td>{{ item.editor }}</td><td>{{ item.version }}</td><td>{{ item.rule_count }}</td><td><form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/restore"><input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="municipality" value="{{ selected_municipality }}"><input type="hidden" name="history_index" value="{{ item.history_index }}"><button class="secondary">Palauta</button></form></td></tr>
+          {% endfor %}
+        </table></div>
+        {% else %}<p class="muted">Ei aiempia versioita.</p>{% endif %}
+        </div>
+      </details>
     </div>
 
     <div>
@@ -82,6 +110,7 @@
         <div class="result-item">
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule">
             <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+            <input type="hidden" name="municipality" value="{{ selected_municipality }}">
             <input type="hidden" name="rule_id" value="{{ rule.id }}">
             <div class="form-grid">
               <label>Kenttä<input name="field_id" value="{{ rule.field_id }}"></label>
@@ -92,9 +121,8 @@
             <button>Tallenna sääntö</button>
           </form>
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule/delete" class="inline-action">
-            <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="rule_id" value="{{ rule.id }}"><button class="secondary">Poista</button>
+            <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="municipality" value="{{ selected_municipality }}"><input type="hidden" name="rule_id" value="{{ rule.id }}"><button class="secondary">Poista</button>
           </form>
-          {% call technical_details("Säännön tekninen tunnus") %}<code>{{ rule.id }}</code>{% endcall %}
         </div>
         {% else %}<p class="muted">Ei sääntöjä.</p>{% endfor %}
       </div>
@@ -104,17 +132,18 @@
         <div class="technical-details__content">
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule">
             <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
+            <input type="hidden" name="municipality" value="{{ selected_municipality }}">
             <div class="form-grid"><label>Sääntötunnus<input name="rule_id" required></label><label>Kenttä<input name="field_id"></label><label>Liitetyyppi<input name="attachment_type"></label><label>Vakavuus<select name="severity"><option value="major">Merkittävä</option><option value="blocking">Estävä</option><option value="minor">Vähäinen</option><option value="recommendation">Suositus</option></select></label></div>
             <label>Arviointiohje<textarea name="instruction" required></textarea></label><button>Lisää sääntö</button>
           </form>
         </div>
       </details>
       {% call technical_details("Koko kriteeristön JSON-muokkaus") %}
-      <form method="post"><input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><textarea name="criteria_json" class="json-editor">{{ criteria | tojson(indent=2) }}</textarea><button>Tallenna uusi kriteeriversio</button></form>
+      <form method="post"><input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="municipality" value="{{ selected_municipality }}"><textarea name="criteria_json" class="json-editor">{{ criteria | tojson(indent=2) }}</textarea><button>Tallenna uusi kriteeriversio</button></form>
       {% endcall %}
     </div>
   </div>
-</section>
+</details>
 {% endfor %}
 
 {% call technical_details("Lähdeaineiston ylläpito") %}

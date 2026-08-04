@@ -65,6 +65,8 @@ __all__ = [
     "restore_criteria_version",
     "upsert_criteria_rule",
     "delete_criteria_rule",
+    "list_municipalities",
+    "create_city_criteria",
     # --- jobs.py (AI job lifecycle) ---
     "list_ai_jobs",
     "find_ai_job",

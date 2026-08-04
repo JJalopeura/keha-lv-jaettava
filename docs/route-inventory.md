@@ -121,6 +121,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | POST | `/cases/{case_id}/lupademo/admin/criteria/rule/delete` | `criteria_rule_delete_post` | — (redirect) |
 | POST | `/cases/{case_id}/lupademo/admin/criteria/restore` | `criteria_restore_post` | — (redirect) |
 | POST | `/cases/{case_id}/lupademo/admin/criteria/test` | `criteria_test_post` | — (redirect) |
+| POST | `/cases/{case_id}/lupademo/admin/criteria/city` | `criteria_city_post` | — (redirect) |
 | POST | `/cases/{case_id}/lupademo/admin/source-materials/ingest` | `source_materials_ingest` | — (redirect) |
 
 ## `routes/demo_lab.py` — benchmark, metrics, audit, UI-only demo

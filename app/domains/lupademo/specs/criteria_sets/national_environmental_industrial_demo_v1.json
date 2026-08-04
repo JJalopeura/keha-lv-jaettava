@@ -1,6 +1,7 @@
 {
   "criteria_set_id": "national_environmental_industrial_demo_v1",
   "tenant_id": "avi_demo",
+  "municipality": "",
   "permit_type": "environmental_industrial",
   "version": "2026-06-demo-1",
   "status": "active",

@@ -133,12 +133,19 @@ def detect_common_data_changes(db: Any, case_id: str) -> dict[str, Any]:
     common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})["data"]
     sync = artifact_json(db, case_id, "common_data_sync_state", "main", {"base": DEFAULT_COMMON_DATA.copy(), "changes": []})
     base = sync.get("base") or DEFAULT_COMMON_DATA.copy()
+    project = artifact_json(db, case_id, "lv_project", "main", {})
+    statuses = project.get("statuses") or {}
     changes: list[dict[str, Any]] = []
     for schema_field in COMMON_FIELDS:
         lv_value = common.get(schema_field, "")
         base_value = base.get(schema_field, "")
         app_entries = []
         for permit_type in PERMIT_SCHEMAS:
+            # Only consider applications the user has actually started. Seeded
+            # "not_started" applications carry common-data defaults and would
+            # otherwise pollute the change list with values the user never set.
+            if statuses.get(permit_type, "not_started") == "not_started":
+                continue
             app = artifact_json(db, case_id, "permit_application", permit_type, {})
             if not app:
                 continue

@@ -62,7 +62,7 @@ from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPL
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
-def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str) -> dict[str, Any]:
+def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str, municipality: Any = None) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     schema = load_form_schema(permit_type)
     field = next((f for f in schema.get("fields", []) if f.get("ai_suggest")), {"id": "project_description", "label": "Hankkeen kuvaus"})
@@ -73,6 +73,7 @@ def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str) ->
         "form_schema": schema,
         "field_id": field["id"],
         "form_data": {
+            "municipality": str(municipality or ""),
             "project_description": "Testipyyntö kriteeristön toimivuuden arviointiin.",
             "activity_description": "Teollinen testihanke, jossa tarkistetaan kriteeriversion vaikutus.",
             "event_description": "Julkinen testitapahtuma kaupunkitilassa.",
@@ -81,7 +82,7 @@ def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str) ->
     }
     result = suggestion_service_field(payload, db=db, settings=settings, case_id=case_id)
     save_artifact(db, case_id, "criteria_test_result", permit_type, {"permit_type": permit_type, "result": result, "tested_at": time.time()})
-    event(db, case_id, "criteria.tested", "Criteria test request completed", {"permit_type": permit_type, "criteria_version": result.get("criteria_version")})
+    event(db, case_id, "criteria.tested", "Criteria test request completed", {"permit_type": permit_type, "municipality": str(municipality or ""), "criteria_version": result.get("criteria_version")})
     return result
 
 
@@ -276,9 +277,11 @@ def package_analysis_from_current_state(
     for item in field_extractions:
         if item.get("field_id") and _extraction_has_substantive_value(item) and not effective_form_data.get(item["field_id"]):
             effective_form_data[item["field_id"]] = item["extracted_value"]
+    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
+    municipality = effective_form_data.get("municipality") or common.get("data", {}).get("municipality", "")
     issues = [
         issue
-        for issue in deterministic_issues(permit_type, effective_form_data, attachments)
+        for issue in deterministic_issues(permit_type, effective_form_data, attachments, municipality=municipality)
         if not (
             issue.id.startswith("missing_attachment_")
             and attachment_requirement_covered(str(issue.attachment_id or issue.id.removeprefix("missing_attachment_")), attachments)
@@ -288,7 +291,7 @@ def package_analysis_from_current_state(
     question_app["form_data"] = effective_form_data
     questions = intake_analysis_questions(schema, question_app, attachments)
     if _real_llm_enabled_for_case(db, case_id, settings):
-        criteria = effective_criteria(db, case_id, permit_type)
+        criteria = effective_criteria(db, case_id, permit_type, municipality)
         retrieval = build_retrieval_context(
             db,
             case_id,
@@ -1009,9 +1012,9 @@ def criteria_version(permit_type: str, db: Any = None, case_id: str = "") -> str
     return str(criteria.get("version") or "demo")
 
 
-def deterministic_issues(permit_type: str, form_data: dict[str, Any], attachments: list[dict[str, Any]]) -> list[Issue]:
+def deterministic_issues(permit_type: str, form_data: dict[str, Any], attachments: list[dict[str, Any]], municipality: Any = None) -> list[Issue]:
     schema = load_form_schema(permit_type)
-    criteria = load_criteria(permit_type)
+    criteria = load_criteria(permit_type, municipality)
     criteria_source = EvidenceRef(source_id=criteria.get("criteria_set_id", "demo"), title=(criteria.get("sources") or ["Demokriteeristö"])[0], locator="criteria", confidence=0.75)
     issues: list[Issue] = []
     for schema_field in schema.get("fields", []):
@@ -1099,15 +1102,16 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         job_id = job["id"]
     attachments = list_attachments(db, case_id, app["permit_type"])
     schema = load_form_schema(app["permit_type"])
-    deterministic = deterministic_issues(app["permit_type"], app.get("form_data", {}), attachments)
+    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
+    municipality = app.get("form_data", {}).get("municipality") or common.get("data", {}).get("municipality", "")
+    deterministic = deterministic_issues(app["permit_type"], app.get("form_data", {}), attachments, municipality=municipality)
     if job_id:
         mark_agent_complete(db, case_id, app["permit_type"], job_id, "deterministic_checks", "Sääntöpohjainen tarkistus valmis.")
     agent_issues: list[Issue] = []
     criteria_results: list[dict[str, Any]] = []
     if settings is not None:
-        criteria = effective_criteria(db, case_id, app["permit_type"])
+        criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
         context = retrieval_context(db, case_id, app["permit_type"])
-        common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
         base_values = {
             "form_schema": json.dumps(schema, ensure_ascii=False),
             "form_data": json.dumps(app.get("form_data", {}), ensure_ascii=False),
@@ -2906,11 +2910,12 @@ def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: A
 
 def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
     req = _request_from_payload(ApplicationCheckRequest, payload)
-    issues = deterministic_issues(req.permit_type, req.form_data, req.attachments)
+    municipality = req.form_data.get("municipality") or (req.common_data or {}).get("municipality", "")
+    issues = deterministic_issues(req.permit_type, req.form_data, req.attachments, municipality=municipality)
     api_case: str = ""
     if db is not None and settings is not None:
         api_case = _api_case_id(db, case_id)
-        criteria = effective_criteria(db, api_case, req.permit_type)
+        criteria = effective_criteria(db, api_case, req.permit_type, municipality)
         base_values = {
             "form_schema": json.dumps(req.form_schema, ensure_ascii=False),
             "form_data": json.dumps(req.form_data, ensure_ascii=False),

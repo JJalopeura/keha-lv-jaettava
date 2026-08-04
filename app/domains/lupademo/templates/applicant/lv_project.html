@@ -35,6 +35,20 @@
 {{ recommended_action('Jatka hakemusta', 'Täydennä lupahakemus ja tarkista sen aineisto ennen lähettämistä.', '/cases/' ~ case_id ~ '/lupademo/application/' ~ next_permit ~ '/wizard/1', 'Jatka hakemusta') }}
 {% endif %}
 
+<div class="project-data-details">
+  <h2>Yhteiset tiedot</h2>
+  <div class="project-data-details__content">
+    <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="form-grid">
+      {% for key, value in common.data.items() %}
+      <label>{{ labels.get(key, key) }}
+        <input name="{{ key }}" value="{{ value }}">
+      </label>
+      {% endfor %}
+      <button>Tallenna yhteiset tiedot</button>
+    </form>
+  </div>
+</div>
+
 <section id="common-data-changes">
   <h2>Lupahakemukset</h2>
   <div class="cards">
@@ -84,19 +98,5 @@
       <p class="muted">Ei avoimia yhteisten tietojen muutoksia.</p>
     {% endif %}
  </section>
-
-<div class="project-data-details">
-  <h2>Projektin tiedot</h2>
-  <div class="project-data-details__content">
-    <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="form-grid">
-      {% for key, value in common.data.items() %}
-      <label>{{ labels.get(key, key) }}
-        <input name="{{ key }}" value="{{ value }}">
-      </label>
-      {% endfor %}
-      <button>Tallenna yhteiset tiedot</button>
-    </form>
-  </div>
-</div>
 
 {% endblock %}
