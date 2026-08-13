@@ -3,6 +3,7 @@
 {% block content %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
+{% macro evidence_source_title(title, all_attachments) %}{% set label = namespace(value=title) %}{% for attachment in all_attachments %}{% if label.value.endswith(attachment.filename) %}{% set label.value = attachment.filename %}{% endif %}{% endfor %}{{ label.value }}{% endmacro %}
 
 <nav class="flow-progress" aria-label="Hakemuspaketin tarkistuksen vaiheet">
   <span class="complete"><b>1</b> Tuo aineisto</span>
@@ -116,7 +117,7 @@
         {% for finding in package_analysis.findings[:6] %}
         <article class="task-row {{ finding.severity }}">
           <span class="task-state" aria-hidden="true">{% if finding.severity == 'blocking' %}!{% else %}i{% endif %}</span>
-          <div><strong>{{ finding.title }}</strong><p>{{ finding.detail }}</p>{% if finding.suggested_fix %}<small>Ehdotus: {{ finding.suggested_fix }}</small>{% endif %}{% if finding.evidence_refs %}<details class="evidence-disclosure"><summary>Perusteet ja lähteet · luottamus {{ (finding.confidence * 100)|round|int }} %</summary>{% for ref in finding.evidence_refs %}<div class="evidence-line"><strong>{{ ref.title }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
+          <div><strong>{{ finding.title }}</strong><p>{{ finding.detail }}</p>{% if finding.suggested_fix %}<small>Ehdotus: {{ finding.suggested_fix }}</small>{% endif %}{% if finding.evidence_refs %}<details class="evidence-disclosure"><summary>Perusteet ja lähteet · luottamus {{ (finding.confidence * 100)|round|int }} %</summary>{% for ref in finding.evidence_refs %}<div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
           <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2">Korjaa</a>
         </article>
         {% else %}<div class="empty-success"><span>✓</span><div><strong>Ei avoimia puutteita</strong><p>Siirry tarkistamaan viranomaiselle lähtevä paketti.</p></div></div>{% endfor %}
@@ -129,8 +130,10 @@
       <div class="extraction-list">
         {% for item in field_extraction_queue.get('items', [])[:10] %}
         <article class="extraction-row">
-          <div class="extraction-label"><strong>{{ field_labels.get(item.field_id, item.field_id|replace('_', ' ')|capitalize) }}</strong><small>{{ item.source_document }} · luottamus {{ (item.confidence * 100)|round|int if item.confidence <= 1 else item.confidence }} %</small></div>
-          <div class="extraction-value">{{ item.get('accepted_value') or item.get('suggested_value') or item.get('extracted_value', '') }}{% if item.get('evidence_refs') %}<details class="evidence-disclosure compact"><summary>Näytä lähde</summary>{% for ref in item.get('evidence_refs', [])[:2] %}<div class="evidence-line"><strong>{{ ref.title }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
+          {% set source_label = namespace(value=item.source_document or "Hakemusaineisto") %}
+          {% for attachment in attachments %}{% if source_label.value.endswith(attachment.filename) %}{% set source_label.value = attachment.filename %}{% endif %}{% endfor %}
+          <div class="extraction-label"><strong>{{ field_labels.get(item.field_id, item.field_id|replace('_', ' ')|capitalize) }}</strong><small>{{ source_label.value }} · luottamus {{ (item.confidence * 100)|round|int if item.confidence <= 1 else item.confidence }} %</small></div>
+          <div class="extraction-value">{{ item.get('accepted_value') or item.get('suggested_value') or item.get('extracted_value', '') }}{% if item.get('evidence_refs') %}<details class="evidence-disclosure compact"><summary>Näytä lähde</summary>{% for ref in item.get('evidence_refs', [])[:2] %}<div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
           {% if item.status == 'accepted' %}<span class="status good">Hyväksytty</span>{% else %}<form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept"><input type="hidden" name="field_id" value="{{ item.field_id }}"><input type="hidden" name="edited_value" value="{{ item.suggested_value }}"><button class="secondary compact">Hyväksy</button></form>{% endif %}
         </article>
         {% else %}<p class="empty-copy">AI ei löytänyt vielä hyväksyttäviä lomaketietoja.</p>{% endfor %}

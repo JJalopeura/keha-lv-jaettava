@@ -9,6 +9,7 @@
 } %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
+{% macro evidence_source_title(title, all_attachments) %}{% set label = namespace(value=title) %}{% for attachment in all_attachments %}{% if label.value.endswith(attachment.filename) %}{% set label.value = attachment.filename %}{% endif %}{% endfor %}{{ label.value }}{% endmacro %}
 {% set common_labels = {"applicant_name": "Hakija", "business_id": "Y-tunnus", "contact_person": "Yhteyshenkilö", "phone": "Puhelin", "email": "Sähköposti", "municipality": "Kunta", "address": "Osoite", "property_id": "Kiinteistötunnus", "project_name": "Hankkeen nimi"} %}
 {% set pending_extraction_count = wizard.get('pending_extraction_count', field_extraction_queue.get('items', [])|selectattr('status', 'equalto', 'pending')|list|length) %}
 {% set pending_field_suggestion_count = wizard.get('pending_field_suggestion_count', suggestions|selectattr('status', 'equalto', 'pending')|list|length) %}
@@ -31,7 +32,7 @@
   {% elif step == 3 %}
   <p>AI ei kirjoita lomaketta suoraan, vaan ehdottaa lähteistettyjä muutoksia käyttäjän hyväksyttäväksi.</p>
   {% elif step == 4 %}
-  <p>Sääntö- ja AI-tarkistus muodostavat lähetysportin. Blocking-puutteet pysäyttävät lähetyksen.</p>
+  <p>Sääntö- ja AI-tarkistus muodostavat lähetysportin. Estävät puutteet pysäyttävät lähetyksen.</p>
   {% elif step == 5 %}
   <p>Viranomaiselle lähtevä paketti on tarkistettavissa ja AI-only-aineisto jää pois.</p>
   {% else %}
@@ -63,7 +64,7 @@
     {% elif step == 3 %}
     <p>Käy AI-ehdotukset läpi lähteineen ja hyväksy vain tarkistamasi muutokset.</p>
     {% elif step == 4 %}
-    <p>Aja AI- ja sääntötarkistus. Blocking-puutteet estävät lähetyksen.</p>
+    <p>Aja AI- ja sääntötarkistus. Estävät puutteet estävät lähetyksen.</p>
     {% elif step == 5 %}
     <p>Tarkista viranomaiselle lähtevä asiakirjapaketti ennen lähetystä.</p>
     {% else %}
@@ -331,9 +332,11 @@
   <div class="extraction-list">
     {% for item in field_extraction_queue.get('items', []) if item.status == 'pending' %}
     <article class="extraction-row">
+      {% set source_label = namespace(value=item.source_document or "Hakemusaineisto") %}
+      {% for attachment in attachments %}{% if source_label.value.endswith(attachment.filename) %}{% set source_label.value = attachment.filename %}{% endif %}{% endfor %}
       <div class="extraction-label">
         <strong>{{ field_labels.get(item.field_id, item.field_id|replace('_', ' ')|capitalize) }}</strong>
-        <small>{{ item.source_document }} · luottamus {{ ((item.confidence * 100) if item.confidence <= 1 else item.confidence)|round|int }} %</small>
+        <small>{{ source_label.value }} · luottamus {{ ((item.confidence * 100) if item.confidence <= 1 else item.confidence)|round|int }} %</small>
       </div>
       <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept" class="inline">
         <input type="hidden" name="field_id" value="{{ item.field_id }}">
@@ -345,7 +348,7 @@
       <details class="evidence-disclosure compact extraction-evidence">
         <summary>Mihin tämä perustuu?</summary>
         {% for ref in item.evidence_refs[:3] %}
-        <div class="evidence-line"><strong>{{ ref.title }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>
+        <div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>
         {% endfor %}
       </details>
       {% endif %}
@@ -433,7 +436,7 @@
         {% else %}
         {% for ref in suggestion.evidence_refs %}
         <div class="evidence-item">
-          <strong>{{ ref.title }}</strong>
+          <strong>{{ evidence_source_title(ref.title, attachments) }}</strong>
           <p>{{ ref.locator }} · arvioitu lähdetuki {{ (ref.confidence * 100)|round|int }} %</p>
           <small>{{ ref.quote }}</small>
         </div>
@@ -485,13 +488,13 @@
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); })
       .then(function () {
         if (isReject && row) {
-          row.querySelector(".status").textContent = "rejected";
+          row.querySelector(".status").textContent = "Hylätty";
           row.querySelector(".status").className = "status warn";
           row.querySelector(".suggestion-review-actions").remove();
           updateCount();
         }
         if (isAccept && row) {
-          row.querySelector(".status").textContent = "accepted";
+          row.querySelector(".status").textContent = "Hyväksytty";
           row.querySelector(".status").className = "status good";
           row.querySelector(".suggestion-review-actions").remove();
           updateCount();
@@ -550,7 +553,7 @@
     </div>
     <div class="issue {% if precheck_gate.can_submit %}minor{% else %}blocking{% endif %}">
       <strong>Tarkistusportti: {% if precheck_gate.can_submit %}lähetys sallittu{% else %}lähetys estetty{% endif %}</strong>
-      <p>Blocking-puutteet {{ precheck_gate.blocking_count }} · Tuore tarkistus: {{ "kyllä" if precheck_gate.is_fresh else "ei" }}</p>
+      <p>Estävät puutteet {{ precheck_gate.blocking_count }} · Tuore tarkistus: {{ "kyllä" if precheck_gate.is_fresh else "ei" }}</p>
       {% if precheck_gate.stale_reasons %}
       {% set stale_reason_labels = {
         "missing_report": "Tarkistusta ei ole vielä ajettu",
@@ -568,20 +571,26 @@
     <h2>Tulokset</h2>
     {% if check_report %}
     <p>Laatupisteet {{ check_report.score }} · {{ check_report.get('summary', '') }}</p>
+    {% set severity_labels = {"blocking": "Estävä", "major": "Merkittävä", "minor": "Vähäinen", "recommendation": "Suositus"} %}
+    {% set check_attachment_labels = {"site_plan": "Asemapiirros / sijaintikartta", "main_drawings": "Pääpiirustukset", "facade_drawings": "Julkisivupiirustukset", "stormwater_plan": "Hulevesisuunnitelma", "environmental_application": "Ympäristölupahakemus"} %}
     {% for issue in check_report.issues %}
     <div class="issue {{ issue.severity }}" id="{% if issue.severity == 'blocking' %}check-blocking{% endif %}">
-      <strong>{{ issue.severity }} · {{ issue.title }}</strong>
+      {% set issue_fields = schema.fields|selectattr('id', 'equalto', issue.field_id)|list if issue.field_id else [] %}
+      {% set issue_title = issue.title %}
+      {% if issue_fields %}{% set issue_title = issue_title|replace(issue.field_id, issue_fields[0].label) %}{% endif %}
+      {% set issue_attachment_type = issue.get('attachment_id') %}
+      {% if issue_attachment_type %}{% set issue_title = issue_title|replace(issue_attachment_type, check_attachment_labels.get(issue_attachment_type, "liite")) %}{% endif %}
+      <strong>{{ severity_labels.get(issue.severity, "Tarkistettava") }} · {{ issue_title }}</strong>
       <p>{{ issue.detail }}</p>
       {% if issue.suggested_fix %}<small>Ehdotus: {{ issue.suggested_fix }}</small>{% endif %}
       {% if issue.evidence_refs %}
       <details class="evidence-disclosure"><summary>Perusteet ja lähteet · luottamus {{ (issue.confidence * 100)|round|int }} %</summary>
         {% for ref in issue.evidence_refs[:3] %}
-        <div class="evidence-line"><strong>{{ ref.title }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>
+        <div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>
         {% endfor %}
       </details>
       {% endif %}
       {% if issue.field_id %}
-      {% set issue_fields = schema.fields|selectattr('id', 'equalto', issue.field_id)|list %}
       {% set issue_value = application.form_data.get(issue.field_id, '') %}
       <details class="inline-fix" data-inline-fix>
         <summary class="button-compact-summary"><span class="button secondary compact">Korjaa</span></summary>
@@ -640,6 +649,32 @@
 {% endif %}
 
 {% if step == 5 %}
+{% set package_document_type_labels = {
+  "environmental_application": "Ympäristölupahakemus",
+  "public_summary": "Julkinen yhteenveto",
+  "site_map": "Asemapiirros / sijaintikartta",
+  "site_plan": "Asemapiirros / sijaintikartta",
+  "zoning_extract": "Kaavaote",
+  "main_drawings": "Pääpiirustukset",
+  "facade_drawings": "Julkisivupiirustukset",
+  "risk_preparedness_plan": "Ennaltavarautumissuunnitelma",
+  "bat_assessment": "BAT-arviointi",
+  "yva_statement": "YVA-selostus / lausunto",
+  "chemical_inventory": "Kemikaaliluettelo",
+  "air_quality_model": "Ilmapäästöselvitys",
+  "noise_model": "Meluselvitys",
+  "baseline_report": "Perustilaselvitys",
+  "energy_report": "Energiaselvitys",
+  "monitoring_plan": "Tarkkailusuunnitelma",
+  "stormwater_plan": "Hulevesisuunnitelma",
+  "landowner_permission": "Maanomistajan lupa",
+  "event_program": "Tapahtumaohjelma",
+  "rescue_plan": "Pelastussuunnitelma",
+  "traffic_plan": "Liikennesuunnitelma",
+  "waste_plan": "Jätehuoltosuunnitelma",
+  "other": "Muu asiakirja"
+} %}
+{% set package_scope_labels = {"official_submission": "Viranomaiselle toimitettava", "ai_context_only": "Vain AI:n käytössä", "ephemeral": "Tilapäinen aineisto"} %}
 <section class="grid two">
   <div>
     <h2>Asiakirjaesitys</h2>
@@ -648,7 +683,7 @@
     <div class="package-official">
     <h3>Viranomaiselle lähtevät liitteet</h3>
     {% for att in package.official_attachments %}
-    <div class="attachment-card">{{ att.filename }} · {{ att.primary_type }}</div>
+    <div class="attachment-card">{{ att.filename }} · {{ package_document_type_labels.get(att.primary_type, "Muu asiakirja") }}</div>
     {% else %}
     <p class="muted">Ei viranomaiselle lähteviä liitteitä.</p>
     {% endfor %}
@@ -656,7 +691,7 @@
     <div class="package-excluded">
     <h3>Tausta-aineistot, joita ei lähetetä</h3>
     {% for att in package.excluded_ai_context_attachments %}
-    <div class="attachment-card">{{ att.filename }} · {{ att.primary_type }} · {{ att.delivery_scope }}</div>
+    <div class="attachment-card">{{ att.filename }} · {{ package_document_type_labels.get(att.primary_type, "Muu asiakirja") }} · {{ package_scope_labels.get(att.delivery_scope, "Vain AI:n käytössä") }}</div>
     {% else %}
     <p class="muted">Ei erillisiä AI-tausta-aineistoja.</p>
     {% endfor %}
@@ -669,7 +704,7 @@
     <h2>Lähetys</h2>
     <div class="issue {% if precheck_gate.can_submit %}minor{% else %}blocking{% endif %}">
       <strong>Tuore hyväksytty tarkistus</strong>
-      <p>{% if precheck_gate.can_submit %}Lähetys on mahdollinen.{% else %}Lähetys estyy, kunnes tarkistus on tuore ja blocking-puutteeton.{% endif %}</p>
+      <p>{% if precheck_gate.can_submit %}Lähetys on mahdollinen.{% else %}Lähetys estyy, kunnes tarkistus on tuore ja ilman estäviä puutteita.{% endif %}</p>
     </div>
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/submit">
       <label><input type="checkbox" required> Vahvistan tiedot oikeiksi.</label>

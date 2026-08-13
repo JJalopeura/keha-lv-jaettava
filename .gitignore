@@ -37,3 +37,4 @@ docs/
 .github/
 quality/
 pixie_qa/
+.playwright-mcp/

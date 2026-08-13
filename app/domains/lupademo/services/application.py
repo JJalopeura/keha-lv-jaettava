@@ -948,6 +948,9 @@ def deterministic_suggestion(
 
 def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: str, settings: Any = None, *, job_id: str = "", complete_job: bool = True) -> Suggestion:
     app = ensure_application(db, case_id, permit_type)
+    schema = load_form_schema(app["permit_type"])
+    field_def = next((field for field in schema.get("fields", []) if field.get("id") == field_id), {"id": field_id})
+    field_label = field_def.get("label") or "valittu kenttä"
     common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
     municipality = app.get("form_data", {}).get("municipality") or common.get("data", {}).get("municipality", "")
     active_criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
@@ -957,7 +960,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
             case_id,
             app["permit_type"],
             "field_suggestion",
-            f"Kenttäehdotus: {field_id}",
+            f"Kenttäehdotus: {field_label}",
             ["retrieval_context", "field_suggestion_agent", "validate_suggestion", "persist_pending_suggestion"],
             eta_seconds=15,
         )
@@ -971,8 +974,6 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
         criteria=active_criteria,
     )
     if settings is not None:
-        schema = load_form_schema(app["permit_type"])
-        field_def = next((f for f in schema.get("fields", []) if f.get("id") == field_id), {"id": field_id})
         criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
         context = retrieval_context(db, case_id, app["permit_type"])
         response = run_json_agent(
@@ -1015,7 +1016,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
     pending.setdefault("suggestions", []).append(suggestion)
     save_artifact(db, case_id, "ai_suggestions", app["permit_type"], pending)
     if complete_job:
-        complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Ehdotus luotu kentälle {field_id}.", result_artifact=f"ai_suggestions:{app['permit_type']}")
+        complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Ehdotus luotu kentälle {field_label}.", result_artifact=f"ai_suggestions:{app['permit_type']}")
     event(db, case_id, "ai.suggestion.created", "AI field suggestion created", {"application_id": app["permit_type"], "field_id": field_id, "suggestion_id": suggestion.id})
     return suggestion
 
@@ -1037,11 +1038,13 @@ def start_form_suggestions_job(db: Any, case_id: str, permit_type: str, settings
 
 def execute_form_suggestions_job(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None) -> None:
     permit_type = application_id_for(permit_type)
-    fields = [field["id"] for field in load_form_schema(permit_type).get("fields", []) if field.get("ai_suggest")]
+    schema = load_form_schema(permit_type)
+    fields = [field["id"] for field in schema.get("fields", []) if field.get("ai_suggest")]
     try:
         for field_id in fields:
             create_field_suggestion(db, case_id, permit_type, field_id, settings=settings, job_id=job_id, complete_job=False)
-            mark_agent_complete(db, case_id, permit_type, job_id, field_id, f"Ehdotus luotu kentälle {field_id}.")
+            field_label = next((field.get("label") for field in schema.get("fields", []) if field.get("id") == field_id), None) or "valittu kenttä"
+            mark_agent_complete(db, case_id, permit_type, job_id, field_id, f"Ehdotus luotu kentälle {field_label}.")
         complete_ai_job(
             db,
             case_id,
@@ -2788,6 +2791,8 @@ def caseworker_observation_panel(db: Any, case_id: str, permit_type: str) -> dic
                 "source": "AI-tarkistus",
                 "confidence": issue.get("confidence", 0.5),
                 "evidence_refs": issue.get("evidence_refs", []),
+                "field_id": issue.get("field_id"),
+                "attachment_id": issue.get("attachment_id"),
             }
         )
     for index, question in enumerate((authority_summary_data.get("open_questions") or [])[:3], start=1):
@@ -2838,9 +2843,9 @@ def caseworker_observation_panel(db: Any, case_id: str, permit_type: str) -> dic
             "Liitteiden scope",
         ),
         checklist_item(
-            "Blocking-puutteet",
+            "Estävät puutteet",
             not blocking_issues,
-            "Ei avoimia blocking-puutteita." if not blocking_issues else f"Avoimia blocking-puutteita: {len(blocking_issues)}.",
+            "Ei avoimia estäviä puutteita." if not blocking_issues else f"Avoimia estäviä puutteita: {len(blocking_issues)}.",
             "AI-tarkistus",
             needs_action=bool(blocking_issues),
         ),

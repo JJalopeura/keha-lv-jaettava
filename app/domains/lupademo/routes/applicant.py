@@ -675,7 +675,9 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field")
     def suggest_field(case_id: str, application_id: str, field_id: str = Form(...), background_tasks: BackgroundTasks = BackgroundTasks()):
         permit_type = svc.application_id_for(application_id)
-        job = svc.start_ai_job(db(), case_id, permit_type, "field_suggestion", f"Kenttäehdotus: {field_id}", ["retrieval_context", "field_suggestion_agent"], eta_seconds=job_eta_seconds("field_suggestion_retrieval"), managed_background=True)
+        schema = svc.load_form_schema(permit_type)
+        field_label = next((field.get("label") for field in schema.get("fields", []) if field.get("id") == field_id), None) or "valittu kenttä"
+        job = svc.start_ai_job(db(), case_id, permit_type, "field_suggestion", f"Kenttäehdotus: {field_label}", ["retrieval_context", "field_suggestion_agent"], eta_seconds=job_eta_seconds("field_suggestion_retrieval"), managed_background=True)
         background_tasks.add_task(svc.create_field_suggestion, db(), case_id, application_id, field_id, settings=settings(), job_id=job["id"])
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestions", status_code=303)
 
