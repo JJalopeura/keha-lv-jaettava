@@ -142,6 +142,23 @@
           {% for change in sync.changes if change.field_id == field.id %}
           <span class="field-note attention"><i aria-hidden="true"></i>{{ "Muuttunut LV:ssä" if change.direction == "lv_to_app" else ("Ehdotettu LV:hen" if change.direction == "app_to_lv" else "Konflikti") }}</span>
           {% endfor %}
+          {% set inline_suggestions = suggestions|selectattr('field_id', 'equalto', field.id)|selectattr('status', 'equalto', 'pending')|selectattr('suggested_value')|list %}
+          {% if inline_suggestions %}
+          {% set inline_suggestion = inline_suggestions[0] %}
+          <span class="field-suggestion-inline" data-inline-suggestion>
+            <span class="field-suggestion-badge">AI-ehdotus · luottamus {{ inline_suggestion.confidence }}</span>
+            <span class="field-suggestion-text">{{ inline_suggestion.suggested_value }}</span>
+            <span class="field-suggestion-actions">
+              <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ inline_suggestion.id }}/accept" class="inline-suggestion-accept" data-inline-accept>
+                <textarea name="edited_value" rows="2" aria-label="Muokattu ehdotus kentälle {{ field.label }}">{{ inline_suggestion.suggested_value }}</textarea>
+                <button class="button compact">Hyväksy</button>
+              </form>
+              <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ inline_suggestion.id }}/reject" class="inline-suggestion-reject" data-inline-reject>
+                <button class="button compact secondary">Hylkää</button>
+              </form>
+            </span>
+          </span>
+          {% endif %}
         </label>
         {% endfor %}
       </div>
@@ -235,6 +252,36 @@
     </div>
   </details>
 </section>
+<script>
+(function () {
+  var root = document.querySelector(".application-form-workspace");
+  if (!root) return;
+
+  function postForm(form) {
+    var body = new URLSearchParams(new FormData(form));
+    return fetch(form.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body });
+  }
+
+  root.addEventListener("submit", function (e) {
+    var form = e.target.closest("form[data-inline-accept], form[data-inline-reject]");
+    if (!form) return;
+    e.preventDefault();
+    var suggestion = form.closest("[data-inline-suggestion]");
+    var isReject = form.hasAttribute("data-inline-reject");
+
+    postForm(form)
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); })
+      .then(function () {
+        if (suggestion) {
+          suggestion.classList.add("is-resolved");
+          suggestion.setAttribute("aria-hidden", "true");
+          suggestion.style.display = "none";
+        }
+      })
+      .catch(function () {});
+  });
+})();
+</script>
 {% endif %}
 
 {% if step == 3 %}
@@ -305,7 +352,8 @@
   </div>
   <div class="suggestion-toolbar">
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-field" class="inline">
-      <select name="field_id">
+      <label class="visually-hidden" for="suggest-field-select">Kenttä, jolle pyydetään AI-ehdotus</label>
+      <select name="field_id" id="suggest-field-select">
         {% for field in schema.get('fields', []) if field.get('ai_suggest') %}
         <option value="{{ field.id }}">{{ field.label }}</option>
         {% endfor %}
@@ -478,7 +526,20 @@
       </details>
       {% endif %}
       {% if issue.field_id %}
-      <a class="button secondary compact" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#field-{{ issue.field_id }}">Korjaa</a>
+      {% set issue_fields = schema.fields|selectattr('id', 'equalto', issue.field_id)|list %}
+      {% set issue_value = application.form_data.get(issue.field_id, '') %}
+      <details class="inline-fix" data-inline-fix>
+        <summary class="button-compact-summary"><span class="button secondary compact">Korjaa</span></summary>
+        <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/save" class="inline-fix-form" data-inline-fix-form data-return-step="4">
+          <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/4#check-results">
+          {% if issue_fields and issue_fields[0].type == "textarea" %}
+          <textarea name="{{ issue.field_id }}" aria-label="{{ issue_fields[0].label }}">{{ issue_value }}</textarea>
+          {% else %}
+          <input type="text" name="{{ issue.field_id }}" value="{{ issue_value }}" aria-label="{{ issue_fields[0].label if issue_fields else issue.field_id }}">
+          {% endif %}
+          <button class="button compact">Tallenna ja tarkista uudelleen</button>
+        </form>
+      </details>
       {% endif %}
     </div>
     {% endfor %}
@@ -487,6 +548,40 @@
     {% endif %}
   </div>
 </section>
+<script>
+(function () {
+  var root = document.getElementById("check-results");
+  if (!root) return;
+
+  function postForm(form) {
+    var body = new URLSearchParams(new FormData(form));
+    return fetch(form.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body });
+  }
+
+  root.addEventListener("submit", function (e) {
+    var form = e.target.closest("form[data-inline-fix-form]");
+    if (!form) return;
+    e.preventDefault();
+    var details = form.closest("[data-inline-fix]");
+    var btn = form.querySelector("button");
+    if (btn) { btn.disabled = true; btn.textContent = "Tallennetaan…"; }
+
+    postForm(form)
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); })
+      .then(function () {
+        // Re-run the check, then reload step 4 to show fresh results.
+        var checkUrl = form.action.replace("/save", "/ai/check");
+        return fetch(checkUrl, { method: "POST", headers: { "Accept": "application/json" } });
+      })
+      .then(function () {
+        window.location.reload();
+      })
+      .catch(function () {
+        if (btn) { btn.disabled = false; btn.textContent = "Tallenna ja tarkista uudelleen"; }
+      });
+  });
+})();
+</script>
 {% endif %}
 
 {% if step == 5 %}

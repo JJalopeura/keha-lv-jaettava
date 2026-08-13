@@ -1937,7 +1937,7 @@ body.service-light {
 }
 
 .workspace-identity > span {
-  color: #98a2b3;
+  color: #667085;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -2104,7 +2104,7 @@ body.service-light {
 }
 
 .path-number {
-  color: #8ecabd;
+  color: #1f6f5f;
   font-size: 13px;
   font-weight: 800;
 }
@@ -2113,6 +2113,7 @@ body.service-light {
   align-self: start;
   padding-top: 5px;
   font-size: 18px;
+  color: #8ecabd;
 }
 
 .primary-path h2 {
@@ -2127,9 +2128,14 @@ body.service-light {
 }
 
 .status-label {
-  color: #a9ddd2;
+  color: #1f6f5f;
   font-size: 12px;
   font-weight: 700;
+}
+
+/* On the dark landing card the label uses a light teal for contrast. */
+.primary-path .status-label {
+  color: #a9ddd2;
 }
 
 .inline-proof {
@@ -3567,6 +3573,103 @@ button:disabled {
   background: #d68a11;
 }
 
+.field-suggestion-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid #b7e0d6;
+  border-left: 3px solid #2b8a78;
+  border-radius: 6px;
+  background: #f2faf8;
+  min-width: 0;
+}
+
+.field-suggestion-badge {
+  align-self: flex-start;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #2b8a78;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.field-suggestion-text {
+  color: #1f2937;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.field-suggestion-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.field-suggestion-actions .button.compact {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+.field-suggestion-actions textarea {
+  min-height: 52px;
+  resize: vertical;
+  font-size: 11px;
+}
+
+.field-suggestion-actions form {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.field-suggestion-actions form.inline-suggestion-reject {
+  justify-content: flex-end;
+}
+
+.field-suggestion-inline.is-resolved {
+  display: none;
+}
+
+/* Inline "Korjaa" editor on the check step */
+.inline-fix {
+  margin-top: 8px;
+}
+
+.inline-fix summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.inline-fix summary::-webkit-details-marker {
+  display: none;
+}
+
+.inline-fix-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.inline-fix-form textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.inline-fix-form .button.compact {
+  align-self: flex-end;
+}
+
 .application-form-actions {
   display: flex;
   justify-content: flex-end;
@@ -4627,7 +4730,8 @@ button:disabled {
   opacity: 0;
   transform: translateY(12px) scale(0.98);
   pointer-events: none;
-  transition: opacity 180ms ease, transform 180ms ease;
+  visibility: hidden;
+  transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
   will-change: transform, opacity;
   overflow: hidden;
 }
@@ -4636,6 +4740,7 @@ button:disabled {
   opacity: 1;
   transform: translateY(0) scale(1);
   pointer-events: auto;
+  visibility: visible;
 }
 
 .copilot-header {

@@ -979,7 +979,7 @@ class Pages(unittest.TestCase):
     def test_project_page_uses_shared_branding_without_mock_metadata(self) -> None:
         page = client.get(f"/lv/projects/{case}")
         self.assertEqual(page.status_code, 200)
-        self.assertIn("Lupa-apurin etusivu", page.text)
+        self.assertIn("Luvat ja valvonta", page.text)
         self.assertNotIn("LV-mock", page.text)
         self.assertNotIn("system-badge", page.text)
 

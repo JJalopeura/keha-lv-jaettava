@@ -401,6 +401,32 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                 ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
         return templates.TemplateResponse(request, "applicant/wizard.html", {**ctx, "step": step})
 
+    def _case_scoped_job(case_id: str, application_id: str, job_id: str) -> dict[str, Any]:
+        """Resolve a job that belongs to this case/application (browser session, no API key)."""
+        permit_type = svc.application_id_for(application_id)
+        job = next(
+            (
+                item
+                for item in svc.list_ai_jobs(db(), case_id, permit_type)
+                if item.get("id") == job_id
+            ),
+            None,
+        )
+        if job is None:
+            raise HTTPException(status_code=404, detail="job_not_found")
+        return job
+
+    @router.get("/cases/{case_id}/lupademo/application/{application_id}/jobs/{job_id}")
+    def application_job_status(case_id: str, application_id: str, job_id: str):
+        job = _case_scoped_job(case_id, application_id, job_id)
+        return svc.ai_job_status_payload(job, case_id=case_id, application_id=svc.application_id_for(application_id))
+
+    @router.get("/cases/{case_id}/lupademo/application/{application_id}/jobs/{job_id}/stream")
+    def application_job_stream(case_id: str, application_id: str, job_id: str):
+        job = _case_scoped_job(case_id, application_id, job_id)
+        payload = svc.ai_job_status_payload(job, case_id=case_id, application_id=svc.application_id_for(application_id))
+        return Response("event: status\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n", media_type="text/event-stream")
+
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/package")
     def create_application_material_package(case_id: str, application_id: str):
         permit_type = svc.application_id_for(application_id)

@@ -68,6 +68,8 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/voice/mock` | `voice_mock` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/ai/check` | `run_check` | — (redirect) | **B** |
 | GET | `/cases/{case_id}/lupademo/application/{application_id}/package` | `package` | — (redirect) | **B** |
+| GET | `/cases/{case_id}/lupademo/application/{application_id}/jobs/{job_id}` | `application_job_status` | JSON | **B** |
+| GET | `/cases/{case_id}/lupademo/application/{application_id}/jobs/{job_id}/stream` | `application_job_stream` | SSE | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/submit` | `submit` | — (redirect) | **B** |
 | GET | `/cases/{case_id}/lupademo/application/{application_id}/receipt` | `receipt` | `applicant/receipt.html` | **B** |
 

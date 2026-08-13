@@ -62,7 +62,7 @@
       {% endif %}
 
       {% if active_job %}
-      <article class="job-progress" data-ai-job data-status-url="/api/v1/jobs/{{ active_job.id }}" data-stream-url="/api/v1/jobs/{{ active_job.id }}/stream">
+      <article class="job-progress" data-ai-job data-status-url="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ active_job.id }}" data-stream-url="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ active_job.id }}/stream">
         <div class="job-progress-meta">
           <strong data-job-summary>{{ active_job.summary or active_job.title }}</strong>
           <span><b data-job-progress>{{ active_job.progress_percent }}</b>% · <span data-job-eta>{{ active_job.estimated_seconds_remaining }}</span> s</span>

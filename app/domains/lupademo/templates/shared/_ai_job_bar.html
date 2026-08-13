@@ -58,8 +58,8 @@
   {% if state == 'running' %}
   {% for job in active_jobs %}
   <article class="job-progress" data-ai-job
-    data-status-url="/api/v1/jobs/{{ job.id }}"
-    data-stream-url="/api/v1/jobs/{{ job.id }}/stream"
+    data-status-url="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ job.id }}"
+    data-stream-url="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ job.id }}/stream"
     data-job-id="{{ job.id }}">
     <div class="job-progress-meta">
       <strong data-job-step-label>{{ job.get('current_step_label') or job.get('title') or '' }}</strong>
