@@ -4,11 +4,12 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.infra.config import load_settings
 from app.infra.db import DB
+from app.infra.llm_factory import LLMUnavailableError
 from app.domains.lupademo import services as svc
 from app.domains.lupademo.routes import create_lupademo_router
 
@@ -48,6 +49,21 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
+    )
+
+
+@app.exception_handler(LLMUnavailableError)
+async def llm_unavailable_handler(request: Request, exc: LLMUnavailableError) -> HTMLResponse | JSONResponse:
+    detail = "Azure AI ei ole käytettävissä. Mock-AI on sallittu vain esittäjätilassa."
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=503, content={"detail": detail})
+    return HTMLResponse(
+        status_code=503,
+        content=(
+            "<!doctype html><html lang='fi'><head><meta charset='utf-8'><title>AI-palvelu ei ole käytettävissä</title>"
+            "<meta name='viewport' content='width=device-width, initial-scale=1'></head><body>"
+            f"<main><h1>AI-palvelu ei ole käytettävissä</h1><p>{detail}</p></main></body></html>"
+        ),
     )
 
 

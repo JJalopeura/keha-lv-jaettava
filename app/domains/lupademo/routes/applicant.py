@@ -24,17 +24,15 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     db = ctx.db
     settings = ctx.settings
 
-    def ai_execution_label() -> str:
+    def ai_execution_label(case_id: str) -> str:
         configured = settings()
         force_mock = os.getenv("KEHA_LV_FORCE_MOCK_LLM", "").strip().lower() in {"1", "true", "yes", "on"}
-        has_key = bool(configured.azure_openai_api_key_core)
-        uses_azure = (
-            str(configured.llm_provider or "mock").strip().lower() == "azure"
-            and not force_mock
-            and (not configured.demo_mode or has_key)
-            and has_key
-        )
-        return "Azure OpenAI ja sääntöpohjaiset tarkistukset" if uses_azure else "Mock-AI ja sääntöpohjaiset tarkistukset"
+        project = svc.artifact_json(db(), case_id, "lv_project", "main", {})
+        if project.get("presenter_mode") or force_mock:
+            return "AI-simulaatio"
+        if str(configured.llm_provider or "mock").strip().lower() == "azure":
+            return "Azure OpenAI ja sääntöpohjaiset tarkistukset"
+        return "Azure OpenAI ei ole käytettävissä"
 
     def material_return_url(case_id: str, application_id: str, package_id: str = "", fragment: str = "") -> str:
         if package_id:
@@ -207,6 +205,11 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             else None
         )
         material_package = svc.find_material_package(db(), package_id)["package"]
+        analysis_jobs = [job for job in ai_jobs if job.get("kind") == "intake_analysis"]
+        failed_analysis_job = next(
+            (job for job in reversed(analysis_jobs) if job.get("status") == "failed"),
+            None,
+        )
         out.update(
             {
                 "package_id": package_id,
@@ -217,10 +220,11 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                 "material_intake": svc.artifact_json(db(), case_id, "material_intake", permit_type, {}),
                 "ai_jobs": ai_jobs,
                 "active_job": active_job_view,
+                "failed_analysis_job": failed_analysis_job,
                 "package_analysis": svc.artifact_json(db(), case_id, "package_analysis_result", permit_type, {}),
                 "field_extraction_queue": svc.artifact_json(db(), case_id, "field_extraction_queue", permit_type, {"items": []}),
                 "can_start_analysis": material_package.get("status") == "ready" and active_job is None,
-                "ai_execution_label": ai_execution_label(),
+                "ai_execution_label": ai_execution_label(case_id),
             }
         )
         return out
@@ -659,6 +663,14 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                 pass
         target = redirect_to if redirect_to.startswith(wizard_prefix) else workbench_target or default_url
         return RedirectResponse(url=target, status_code=303)
+
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/extractions/reject")
+    def reject_extraction(case_id: str, application_id: str, field_id: str = Form(...)):
+        try:
+            svc.reject_extraction_queue_item(db(), case_id, application_id, field_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Extraction not found")
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field")
     def suggest_field(case_id: str, application_id: str, field_id: str = Form(...), background_tasks: BackgroundTasks = BackgroundTasks()):

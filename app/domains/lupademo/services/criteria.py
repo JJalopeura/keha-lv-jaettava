@@ -104,6 +104,8 @@ def load_criteria(permit_type: str, municipality: Any = None) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     filename = CRITERIA_FILES.get(permit_type, CRITERIA_FILES["building_residential"])
     city = _normalize_municipality(municipality)
+    if city in {"__national__", "general"} and permit_type == "building_residential":
+        filename = "national_building_residential_v1.json"
     if city:
         city_file = CRITERIA_BY_MUNICIPALITY.get(permit_type, {}).get(city)
         if city_file:

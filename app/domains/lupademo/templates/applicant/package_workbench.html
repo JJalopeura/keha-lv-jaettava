@@ -39,6 +39,10 @@
           <p class="section-kicker">Aineiston käsittely epäonnistui</p>
           <h2>Pakettia ei voitu valmistella</h2>
           <p>{{ active_job.summary if active_job else 'Tarkista tiedostot ja yritä uudelleen.' }}</p>
+          {% elif failed_analysis_job %}
+          <p class="section-kicker">Analyysi epäonnistui</p>
+          <h2>Tuloksia ei voitu muodostaa</h2>
+          <p>{{ failed_analysis_job.summary or 'Azure AI ei vastannut ajoissa. Yritä analyysiä uudelleen.' }}</p>
           {% elif active_job and active_job.kind == 'material_ingest' %}
           <p class="section-kicker">Aineistoa valmistellaan</p>
           <h2>Dokumentit luetaan ja hakukonteksti muodostetaan</h2>
@@ -76,8 +80,35 @@
     <section class="readiness-summary" id="readiness-dashboard">
       <div class="score-ring" style="--score: {{ package_analysis.readiness_score }}"><strong>{{ package_analysis.readiness_score }}</strong><span>/ 100</span></div>
       <div><p class="section-kicker">Valmius</p><h2>{% if package_analysis.readiness == 'contradictory' %}Tarkista ristiriidat ennen kuin jatkat{% elif package_analysis.readiness_score >= 80 %}Hakemus on lähes valmis{% elif package_analysis.readiness_score >= 50 %}Hakemus tarvitsee vielä täydennyksiä{% else %}Aloita estävistä puutteista{% endif %}</h2><p>{{ package_analysis.findings|length }} havaintoa ja {{ field_extraction_queue.get('items', [])|length }} tarkistettavaa poimintaa.</p></div>
-      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/4">Katso kaikki tarkistukset</a>
+      <div class="readiness-actions">
+        <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#extraction-suggestions">Korjaa ja vahvista</a>
+        <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/4">Katso kaikki tarkistukset</a>
+      </div>
     </section>
+
+    {% if wizard.missing_attachments %}
+    {% set attachment_labels = {
+      "environmental_application": "Ympäristölupahakemus",
+      "site_map": "Asemapiirros / sijaintikartta",
+      "zoning_extract": "Kaavaote",
+      "main_drawings": "Pääpiirustukset",
+      "facade_drawings": "Julkisivupiirustukset",
+      "energy_report": "Energiaselvitys"
+    } %}
+    <section class="missing-attachments-panel" aria-labelledby="missing-attachments-heading">
+      <div>
+        <p class="section-kicker">Täydennettävä aineisto</p>
+        <h2 id="missing-attachments-heading">Puuttuvat liitteet</h2>
+        <p>Lisää nämä asiakirjat tai tarkista, että ne on merkitty viranomaiselle toimitettaviksi.</p>
+      </div>
+      <ul>
+        {% for attachment_type in wizard.missing_attachments %}
+        <li>{{ attachment_labels.get(attachment_type, attachment_type|replace('_', ' ')|capitalize) }}</li>
+        {% endfor %}
+      </ul>
+      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa aineistoa</a>
+    </section>
+    {% endif %}
 
     <section class="task-section" id="findings" aria-labelledby="tasks-heading">
       <div class="section-heading-line"><div><p class="section-kicker">Seuraavaksi</p><h2 id="tasks-heading">Tee nämä ennen lähettämistä</h2></div><span>{{ package_analysis.findings|length }} tehtävää</span></div>
@@ -149,6 +180,7 @@
     if (payload.events?.length) row.querySelector("[data-job-summary]").textContent = payload.events.at(-1).message;
     if (terminal.has(payload.status)) {
       if (pollingId) window.clearInterval(pollingId);
+      window.location.hash = payload.status === "succeeded" ? "readiness-dashboard" : "analysis";
       window.location.reload();
       return true;
     }

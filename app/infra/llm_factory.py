@@ -8,6 +8,10 @@ from .config import Settings
 from .mock_llm import MockLLMClient
 
 
+class LLMUnavailableError(RuntimeError):
+    """Raised when a non-presenter flow cannot use its configured AI provider."""
+
+
 def create_llm_client(
     settings: Settings,
     *,
@@ -18,6 +22,7 @@ def create_llm_client(
     force_mock: bool = False,
     db: Any = None,
     case_id: str | None = None,
+    timeout_s: float | None = None,
 ) -> AzureOpenAIClient | MockLLMClient:
     provider = (settings.llm_provider or "mock").strip().lower()
     force_mock = force_mock or str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
@@ -33,12 +38,14 @@ def create_llm_client(
         has_key = bool(api_key or settings.azure_openai_api_key_chat)
     else:
         has_key = bool(api_key or settings.azure_openai_api_key_core)
-    if provider == "mock" or force_mock or (settings.demo_mode and not has_key):
+    if force_mock:
         return MockLLMClient()
+    if provider == "mock":
+        raise LLMUnavailableError("Mock AI is available only in presenter mode or with an explicit test override.")
     if provider != "azure":
         raise RuntimeError(f"Unsupported LLM provider: {provider}")
     if not has_key:
-        raise RuntimeError("Azure OpenAI is selected but its API key is missing.")
+        raise LLMUnavailableError("Azure OpenAI is selected but its API key is missing.")
 
     host_key = "chat" if purpose == "chat" else "core"
     conf = {
@@ -46,6 +53,6 @@ def create_llm_client(
         "api_version": settings.azure_openai_api_version,
         "api_key": api_key or getattr(settings, f"azure_openai_api_key_{host_key}"),
         "model": model or getattr(settings, f"azure_openai_model_{host_key}"),
-        "timeout_s": getattr(settings, f"azure_openai_timeout_s_{host_key}"),
+        "timeout_s": timeout_s if timeout_s is not None else getattr(settings, f"azure_openai_timeout_s_{host_key}"),
     }
     return AzureOpenAIClient(**conf)

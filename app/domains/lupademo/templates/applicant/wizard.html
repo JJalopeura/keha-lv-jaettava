@@ -4,6 +4,7 @@
 {% set source_labels = {
   "lv_common_data": "LV:stä haettu",
   "accepted_ai_suggestion": "Hyväksytty AI-ehdotus",
+  "accepted_ai_extraction": "Hyväksytty AI-ehdotus",
   "käyttäjän syöttämä": "Käyttäjän syöttämä"
 } %}
 {% set field_labels = {} %}
@@ -135,28 +136,17 @@
           {% else %}
           <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}">
           {% endif %}
+          {% set inline_suggestions = inline_field_suggestions|selectattr('field_id', 'equalto', field.id)|selectattr('status', 'equalto', 'pending')|selectattr('suggested_value')|list %}
+          {% set inline_suggestion = inline_suggestions[0] if inline_suggestions else none %}
           {% set source_key = application.field_sources.get(field.id, "käyttäjän syöttämä") %}
-          <span class="field-note"><i aria-hidden="true"></i>{{ source_labels.get(source_key, source_key) }}</span>
+          <span class="field-note"><i aria-hidden="true"></i>{{ source_labels.get(source_key, source_key) }}{% if inline_suggestion %}
+            <span class="field-suggestion-inline" data-inline-suggestion>
+              <button type="button" class="field-suggestion-trigger" aria-label="Avaa AI-ehdotus kentälle {{ field.label }}" title="Avaa AI-ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.suggested_value, 'confidence': inline_suggestion.confidence, 'rationale': inline_suggestion.rationale, 'evidence_refs': inline_suggestion.evidence_refs, 'accept_url': inline_suggestion.accept_url if inline_suggestion.accept_url is defined else '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.id ~ '/accept', 'reject_url': inline_suggestion.reject_url if inline_suggestion.reject_url is defined else '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.id ~ '/reject', 'accept_field_id': inline_suggestion.field_id if inline_suggestion.source_kind == 'extraction' else ''} | tojson | forceescape }}">AI-ehdotus</button>
+            </span>
+          {% endif %}</span>
           {% for change in sync.changes if change.field_id == field.id %}
           <span class="field-note attention"><i aria-hidden="true"></i>{{ "Muuttunut LV:ssä" if change.direction == "lv_to_app" else ("Ehdotettu LV:hen" if change.direction == "app_to_lv" else "Konflikti") }}</span>
           {% endfor %}
-          {% set inline_suggestions = suggestions|selectattr('field_id', 'equalto', field.id)|selectattr('status', 'equalto', 'pending')|selectattr('suggested_value')|list %}
-          {% if inline_suggestions %}
-          {% set inline_suggestion = inline_suggestions[0] %}
-          <span class="field-suggestion-inline" data-inline-suggestion>
-            <span class="field-suggestion-badge">AI-ehdotus · luottamus {{ inline_suggestion.confidence }}</span>
-            <span class="field-suggestion-text">{{ inline_suggestion.suggested_value }}</span>
-            <span class="field-suggestion-actions">
-              <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ inline_suggestion.id }}/accept" class="inline-suggestion-accept" data-inline-accept>
-                <textarea name="edited_value" rows="2" aria-label="Muokattu ehdotus kentälle {{ field.label }}">{{ inline_suggestion.suggested_value }}</textarea>
-                <button class="button compact">Hyväksy</button>
-              </form>
-              <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ inline_suggestion.id }}/reject" class="inline-suggestion-reject" data-inline-reject>
-                <button class="button compact secondary">Hylkää</button>
-              </form>
-            </span>
-          </span>
-          {% endif %}
         </label>
         {% endfor %}
       </div>
@@ -172,6 +162,20 @@
       <form method="post" enctype="multipart/form-data" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/materials/upload-files" data-upload-form>
         <h3>Lataa liitetietoja hakemukselle</h3>
         <p class="muted">Lisää hakemukseen liittyviä dokumentteja. Tuo useita tiedostoja kerralla tai koko aineisto zip-pakettina.</p>
+        {% if wizard.missing_attachments %}
+        {% set upload_attachment_labels = {
+          "environmental_application": "Ympäristölupahakemus",
+          "site_map": "Asemapiirros / sijaintikartta",
+          "zoning_extract": "Kaavaote",
+          "main_drawings": "Pääpiirustukset",
+          "facade_drawings": "Julkisivupiirustukset",
+          "energy_report": "Energiaselvitys"
+        } %}
+        <div class="upload-missing-list" role="status">
+          <strong>Puuttuvat liitteet</strong>
+          <ul>{% for attachment_type in wizard.missing_attachments %}<li>{{ upload_attachment_labels.get(attachment_type, attachment_type|replace('_', ' ')|capitalize) }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
 
         <section class="upload-zone" data-dropzone>
           <input id="wizard-files" type="file" name="files" multiple accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.tif,.tiff,.webp" data-file-input>
@@ -206,17 +210,48 @@
     <h3 class="document-group-title">{{ title }}</h3>
     <div class="managed-document-list">
     {% for att in attachments if att.delivery_scope == scope %}
+    {% set document_type_labels = {
+      "environmental_application": "Ympäristölupahakemus",
+      "public_summary": "Julkinen yhteenveto",
+      "site_map": "Asemapiirros / sijaintikartta",
+      "zoning_extract": "Kaavaote",
+      "main_drawings": "Pääpiirustukset",
+      "facade_drawings": "Julkisivupiirustukset",
+      "risk_preparedness_plan": "Ennaltavarautumissuunnitelma",
+      "bat_assessment": "BAT-arviointi",
+      "yva_statement": "YVA-selostus / lausunto",
+      "chemical_inventory": "Kemikaaliluettelo",
+      "air_quality_model": "Ilmapäästöselvitys",
+      "noise_model": "Meluselvitys",
+      "baseline_report": "Perustilaselvitys",
+      "energy_report": "Energiaselvitys",
+      "monitoring_plan": "Tarkkailusuunnitelma",
+      "stormwater_plan": "Hulevesisuunnitelma",
+      "landowner_permission": "Maanomistajan lupa",
+      "event_program": "Tapahtumaohjelma",
+      "rescue_plan": "Pelastussuunnitelma",
+      "traffic_plan": "Liikennesuunnitelma",
+      "waste_plan": "Jätehuoltosuunnitelma",
+      "other": "Muu asiakirja"
+    } %}
     <article class="managed-document-row">
       <div class="file-icon" aria-hidden="true">DOC</div>
       <div class="managed-document-copy">
         <strong>{{ att.filename }}</strong>
-        <small>{{ att.size_bytes }} B · {{ att.primary_type }} · {{ att.extraction_status }} · luottamus {{ att.confidence }}</small>
+        <small>{{ att.size_bytes }} B · {{ document_type_labels.get(att.primary_type, "Muu asiakirja") }} · {{ att.extraction_status }} · luottamus {{ att.confidence }}</small>
         {% if att.text_excerpt %}<p>{{ att.text_excerpt[:260] }}</p>{% endif %}
       </div>
       <div class="managed-document-actions">
         <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/attachments/{{ att.id }}/metadata">
-          <input name="primary_type" value="{{ att.primary_type }}" aria-label="Dokumentin tyyppi">
-          <select name="delivery_scope" aria-label="Dokumentin käyttötarkoitus">
+          <label class="attachment-type-control">Asiakirjan tyyppi
+            <select name="primary_type">
+              {% for option, label in document_type_labels.items() %}
+              <option value="{{ option }}" {% if option == att.primary_type %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+              {% if att.primary_type not in document_type_labels %}<option value="{{ att.primary_type }}" selected>{{ att.primary_type|replace('_', ' ')|capitalize }}</option>{% endif %}
+            </select>
+          </label>
+          <select class="attachment-scope-control" name="delivery_scope" aria-label="Dokumentin käyttötarkoitus">
             {% for option, label in [("official_submission", "Viranomaiselle"), ("ai_context_only", "Vain AI:lle")] %}
             <option value="{{ option }}" {% if option == att.delivery_scope %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
@@ -250,6 +285,7 @@
     </div>
   </details>
 </section>
+{% include 'shared/_suggestion_dialog.html' %}
 <script>
 (function () {
   var root = document.querySelector(".application-form-workspace");
@@ -305,6 +341,14 @@
         <textarea name="edited_value" rows="2" aria-label="{{ field_labels.get(item.field_id, item.field_id) }}">{{ item.suggested_value }}</textarea>
         <button>Hyväksy</button>
       </form>
+      {% if item.evidence_refs %}
+      <details class="evidence-disclosure compact extraction-evidence">
+        <summary>Mihin tämä perustuu?</summary>
+        {% for ref in item.evidence_refs[:3] %}
+        <div class="evidence-line"><strong>{{ ref.title }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>
+        {% endfor %}
+      </details>
+      {% endif %}
     </article>
     {% else %}
     <div class="empty-success"><span>✓</span><div><strong>Kaikki aineistosta poimitut ehdotukset on käsitelty</strong><p>Voit pyytää alta uusia kenttäkohtaisia ehdotuksia.</p></div></div>
@@ -495,7 +539,6 @@
   <div>
     <h2>AI- ja sääntötarkistus</h2>
     <div class="criteria-context" aria-label="Tarkistuksessa käytetty kriteeristö">
-      <span class="criteria-context-icon" aria-hidden="true">K</span>
       <div>
         <strong>{{ criteria_municipality }} · {{ criteria_version }}</strong>
         <p>AI tarkistaa hakemuksen tämän kohteen kunnan aktiivisia vaatimuksia vasten.</p>

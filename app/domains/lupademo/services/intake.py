@@ -24,7 +24,7 @@ from docx import Document as DocxDocument
 from fastapi import HTTPException
 from jinja2 import Template
 
-from app.infra.llm_factory import create_llm_client
+from app.infra.llm_factory import LLMUnavailableError, create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
 from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
@@ -454,6 +454,7 @@ def run_json_agent(
     fallback: Any = None,
     max_output_tokens: int = 4000,
     reasoning_effort: str = "medium",
+    timeout_s: float | None = None,
 ) -> Any:
     prompt = render_agent_prompt(agent, prompt_values)
     retrieval_manifest = azure_vector_store_manifest(db, settings, case_id, vector_ids or [])
@@ -465,7 +466,7 @@ def run_json_agent(
             "Älä käytä knowledge-aineistoa case-faktana tai case-aineistoa normilähteenä. "
             "Säilytä evidence_refs-viitteissä lähteen scope ja merkitse ristiriita tai puuttuva lähdetuki epävarmaksi."
         )
-    client = create_llm_client(settings, purpose="core", db=db, case_id=case_id)
+    client = create_llm_client(settings, purpose="core", db=db, case_id=case_id, timeout_s=timeout_s)
     # Log the actual provider used, not just the config setting.
     provider = "mock" if _is_presenter_case(db, case_id) else str(getattr(settings, "llm_provider", "mock") or "mock").lower()
     try:
@@ -486,7 +487,11 @@ def run_json_agent(
         save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "retrieval" if vector_ids else "direct", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": False, "error": None})
         return model
     except Exception as exc:
-        if vector_ids and "vector store" in str(exc).lower():
+        retry_without_retrieval = vector_ids and any(
+            marker in str(exc).lower()
+            for marker in ("vector store", "readtimeout", "read operation timed out", "timed out")
+        )
+        if retry_without_retrieval:
             try:
                 payload = call_llm_json(
                     client,
@@ -522,8 +527,9 @@ def run_json_agent(
                 return model
             except Exception as retry_exc:
                 exc = retry_exc
-        if fallback is None:
-            raise
+        allow_fallback = _is_presenter_case(db, case_id) or str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
+        if fallback is None or not allow_fallback:
+            raise LLMUnavailableError("Azure AI ei ole käytettävissä. Mock-AI on sallittu vain esittäjätilassa.") from exc
         model = fallback if isinstance(fallback, response_model) else response_model(**fallback)
         save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "deterministic_fallback", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(exc)[:500], "error": str(exc)[:500]})
         return model
@@ -1376,13 +1382,17 @@ def structure_environmental_application_from_attachments(
     settings: Any = None,
     *,
     track_job: bool = True,
+    timeout_s: float | None = None,
 ) -> dict[str, Any]:
     permit_type = "environmental_industrial"
     job = start_ai_job(db, case_id, permit_type, "structure_extraction", "Hakemuksen rakenteistus liitteistä", ["structure_extractor", "gap_analyzer"], eta_seconds=20) if track_job else None
     ensure_application(db, case_id, permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     official_or_ai = [a for a in attachments if a.get("delivery_scope") in {"official_submission", "ai_context_only"}]
-    joined = "\n".join(str(a.get("text_excerpt") or a.get("summary") or "") for a in official_or_ai)
+    joined = "\n\n".join(
+        f"[Dokumentti: {a.get('filename') or 'Hakemusaineisto'}]\n{str(a.get('text_excerpt') or a.get('summary') or '')}"
+        for a in official_or_ai
+    )
     low_joined = joined.lower()
     extracted: dict[str, str] = {}
     field_keywords = {
@@ -1431,6 +1441,7 @@ def structure_environmental_application_from_attachments(
         )
     if _real_llm_enabled_for_case(db, case_id, settings):
         allowed_fields = {str(field.get("id")) for field in load_form_schema(permit_type).get("fields", [])}
+        source_fallbacks = {str(item.get("field_id")): item for item in source_by_field}
         fallback_fields = [
             {
                 "field_id": item["field_id"],
@@ -1454,6 +1465,7 @@ def structure_environmental_application_from_attachments(
             vector_ids=azure_vector_store_ids(db, settings, case_id),
             fallback={"request_id": f"structure_{uuid.uuid4().hex[:8]}", "extracted_fields": fallback_fields},
             max_output_tokens=8000,
+            timeout_s=timeout_s,
         )
         source_by_field = []
         if isinstance(response, StructureExtractionResponse):
@@ -1467,6 +1479,9 @@ def structure_environmental_application_from_attachments(
                 continue
             refs_raw = schema_field.evidence_refs if hasattr(schema_field, 'evidence_refs') else schema_field.get('evidence_refs', [])
             refs = [ref for ref in (refs_raw or []) if isinstance(ref, dict)]
+            fallback_source = source_fallbacks.get(str(fid), {})
+            if not refs:
+                refs = [ref for ref in (fallback_source.get("evidence_refs") or []) if isinstance(ref, dict)]
             source_by_field.append(
                 {
                     "field_id": fid,
@@ -1539,6 +1554,27 @@ def accept_extraction_queue_item(
         save_artifact(db, case_id, "package_analysis_result", permit_type, package_result)
     event(db, case_id, "ai.extraction.accepted", "AI extraction accepted", {"field_id": field_id, "permit_type": permit_type})
     return app
+
+
+def reject_extraction_queue_item(db: Any, case_id: str, permit_type: str, field_id: str) -> None:
+    permit_type = application_id_for(permit_type)
+    queue_payload = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []})
+    items = _list(queue_payload.get("items"))
+    selected = next((item for item in items if isinstance(item, dict) and item.get("field_id") == field_id), None)
+    if not selected:
+        raise KeyError(field_id)
+    selected["status"] = "rejected"
+    selected["rejected_at"] = time.time()
+    queue_payload["updated_at"] = time.time()
+    save_artifact(db, case_id, "field_extraction_queue", permit_type, queue_payload)
+    package_result = artifact_json(db, case_id, "package_analysis_result", permit_type, {})
+    for item in package_result.get("extraction_queue", []) if isinstance(package_result.get("extraction_queue"), list) else []:
+        if isinstance(item, dict) and item.get("field_id") == field_id:
+            item["status"] = "rejected"
+            item["rejected_at"] = queue_payload["updated_at"]
+    if package_result:
+        save_artifact(db, case_id, "package_analysis_result", permit_type, package_result)
+    event(db, case_id, "ai.extraction.rejected", "AI extraction rejected", {"field_id": field_id, "permit_type": permit_type})
 
 
 def attachments_updated_at(db: Any, case_id: str, permit_type: str) -> float:

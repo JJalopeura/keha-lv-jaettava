@@ -1,0 +1,26 @@
+{
+  "criteria_set_id": "national_building_residential_v1",
+  "tenant_id": "national",
+  "municipality": "",
+  "permit_type": "building_residential",
+  "version": "2026-08-baseline-1",
+  "status": "active",
+  "sources": [
+    "Kansallinen rakennusluvan peruskriteeristö",
+    "Rakentamislain perusohjeet"
+  ],
+  "rules": [
+    {
+      "id": "height_required_national",
+      "field_id": "building_height_m",
+      "severity": "blocking",
+      "instruction": "Rakennuksen korkeus on ilmoitettava hakemuksessa."
+    },
+    {
+      "id": "official_drawings_national",
+      "attachment_type": "main_drawings",
+      "severity": "blocking",
+      "instruction": "Pääpiirustukset tarvitaan viranomaiselle lähtevänä liitteenä."
+    }
+  ]
+}

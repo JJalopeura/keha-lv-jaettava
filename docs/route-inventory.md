@@ -57,6 +57,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/attachments/{attachment_id}/delete` | `delete_attachment` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/ai/intake-analysis` | `intake_analysis` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/extractions/accept` | `accept_extraction` | — (redirect) | **B** |
+| POST | `/cases/{case_id}/lupademo/application/{application_id}/extractions/reject` | `reject_extraction` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-field` | `suggest_field` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-form` | `suggest_form` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/accept` | `accept_suggestion` | — (redirect) | **B** |
@@ -131,6 +132,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | Method | Path | Handler | Template |
 |--------|------|---------|----------|
 | GET | `/cases/{case_id}/lupademo/demo-cockpit` | `demo_cockpit` | `admin/demo_cockpit.html` |
+| POST | `/cases/{case_id}/lupademo/demo-cockpit/criteria-comparison` | `run_criteria_comparison` | — (redirect) |
 | GET | `/cases/{case_id}/lupademo/suggestion-service/ui-only` | `ui_only` | `admin/ui_only.html` |
 | GET | `/suggestion-service/ui-only` | `ui_only_global` | — (redirect) |
 | POST | `/cases/{case_id}/lupademo/suggestion-service/ui-only` | `ui_only_post` | — (redirect) |

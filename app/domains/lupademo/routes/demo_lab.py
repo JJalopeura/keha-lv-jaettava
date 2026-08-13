@@ -30,10 +30,11 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
         api_demo = svc.artifact_json(db(), case_id, "suggestion_service_demo", "api", {})
         ui_demo = svc.artifact_json(db(), case_id, "suggestion_service_demo", "ui_only", {})
         request_log = svc.artifact_json(db(), case_id, "suggestion_service_request_log", "main", {"items": []})
+        comparison = svc.artifact_json(db(), case_id, "criteria_comparison", "main", {})
         api_result = api_demo.get("result") or (api_demo.get("response") or {}).get("result") or {}
         api_done = bool(api_demo.get("response"))
         ui_done = bool(ui_demo.get("extracted_fields"))
-        tenant_done = api_done and bool(api_result.get("criteria_version"))
+        tenant_done = bool(comparison.get("contexts"))
         audit_done = bool(request_log.get("items"))
         proof_cards = [
             {
@@ -50,8 +51,8 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
             },
             {
                 "label": "Tenant- ja kriteeriversiovalinta",
-                "description": "Vaihda demoasiakasta ja näe, miten tenant määrittää käytettävän kriteeristön.",
-                "href": f"/cases/{case_id}/lupademo/suggestion-service/api-demo#api-request",
+                "description": "Vertaa samaa hakemusta yleiseen, Vantaan ja Keravan kriteerikontekstiin.",
+                "href": f"/cases/{case_id}/lupademo/demo-cockpit#criteria-comparison",
                 "done": tenant_done,
             },
             {
@@ -70,8 +71,19 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
                 "scenario": scenario,
                 "proof_cards": proof_cards,
                 "completed_count": completed_count,
+                "comparison": comparison,
             },
         )
+
+    @router.post("/cases/{case_id}/lupademo/demo-cockpit/criteria-comparison")
+    def run_criteria_comparison(case_id: str):
+        scenario = svc.artifact_json(db(), case_id, "demo_scenario", "main", {}).get("scenario", {})
+        if scenario.get("id") != "national_suggestion_service":
+            return RedirectResponse(url=f"/lv/projects/{case_id}", status_code=303)
+        comparison = svc.criteria_comparison(db(), case_id)
+        svc.save_artifact(db(), case_id, "criteria_comparison", "main", comparison)
+        svc.event(db(), case_id, "criteria.comparison.completed", "Criteria comparison completed", {"contexts": [item["id"] for item in comparison["contexts"]]})
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/demo-cockpit#criteria-comparison", status_code=303)
 
     @router.get("/cases/{case_id}/lupademo/suggestion-service/ui-only", response_class=HTMLResponse)
     def ui_only(request: Request, case_id: str):

@@ -61,6 +61,7 @@ from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPL
 
 
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
+PACKAGE_ANALYSIS_TIMEOUT_SECONDS = 300.0
 
 
 def is_package_analysis_stale(package_analysis: dict[str, Any], active_criteria: dict[str, Any]) -> bool:
@@ -253,6 +254,7 @@ def _run_check_agents(
     *,
     vector_ids: list[str] | None = None,
     max_output_tokens: int = 5000,
+    timeout_s: float | None = None,
 ) -> list[Issue]:
     """Run completeness and consistency validator agents and return merged issues."""
     if vector_ids is None:
@@ -269,6 +271,7 @@ def _run_check_agents(
             vector_ids=vector_ids,
             fallback={"issues": []},
             max_output_tokens=max_output_tokens,
+            timeout_s=timeout_s,
         )
         if isinstance(response, IssueListResponse):
             agent_issues.extend(response.issues)
@@ -485,7 +488,13 @@ def package_analysis_from_current_state(
 def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None, *, full_check: bool = True) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     if permit_type == "environmental_industrial":
-        structure = structure_environmental_application_from_attachments(db, case_id, settings=settings, track_job=False)
+        structure = structure_environmental_application_from_attachments(
+            db,
+            case_id,
+            settings=settings,
+            track_job=False,
+            timeout_s=PACKAGE_ANALYSIS_TIMEOUT_SECONDS,
+        )
     else:
         structure = artifact_json(db, case_id, "structure_extraction_result", permit_type, {"field_extractions": [], "updated_field_count": 0})
     if job_id:
@@ -631,14 +640,19 @@ def execute_intake_analysis_job(db: Any, case_id: str, permit_type: str, job_id:
             result_artifact=f"intake_analysis:{permit_type}",
         )
     except Exception as exc:
-        import traceback
-        tb = traceback.format_exc()
+        error_text = str(exc).lower()
+        if "timeout" in error_text or "timed out" in error_text:
+            summary = "Aineiston analyysi epäonnistui: Azure AI ei vastannut ajoissa. Yritä uudelleen."
+        elif "azure ai ei ole käytettävissä" in error_text:
+            summary = "Aineiston analyysi epäonnistui: Azure AI ei ole käytettävissä. Tarkista yhteys ja yritä uudelleen."
+        else:
+            summary = "Aineiston analyysi epäonnistui. Tarkista Azure AI -yhteys ja yritä uudelleen."
         complete_ai_job(
             db,
             case_id,
             permit_type,
             job_id,
-            summary=f"Aineiston analyysi epäonnistui: {str(exc)[:200]}\n{tb[-400:]}",
+            summary=summary,
             result_artifact=f"intake_analysis:{permit_type}",
             failed=True,
         )
@@ -1193,6 +1207,100 @@ def deterministic_issues(
     return issues
 
 
+def criteria_comparison(db: Any, case_id: str) -> dict[str, Any]:
+    """Run the fixed residential comparison used by the integration demo.
+
+    The same complete application fixture is checked against the national
+    baseline, Vantaa, and Kerava criteria. No LLM call is involved.
+    """
+    form_data = {
+        "applicant_name": "Vertailu Oy",
+        "business_id": "1234567-8",
+        "contact_person": "Vertailun käyttäjä",
+        "email": "vertailu@example.fi",
+        "address": "Vertailutie 1",
+        "property_id": "092-001-1000-1",
+        "intended_use": "Asuinrakennus",
+        "project_description": "Uusi pientalo olemassa olevalle rakennuspaikalle.",
+        "floor_area_m2": "145",
+        "building_height_m": "8.2",
+        "distance_to_boundary_m": "4",
+        "wastewater_handling": "Jätevedet johdetaan kunnan viemäriverkostoon.",
+        "stormwater_management": "Hulevedet viivytetään tontilla ja johdetaan hallitusti.",
+        "designer": "Pääsuunnittelija Demo",
+    }
+    attachments = [
+        {"primary_type": "site_plan", "delivery_scope": "official_submission"},
+        {"primary_type": "main_drawings", "delivery_scope": "official_submission"},
+        {"primary_type": "facade_drawings", "delivery_scope": "official_submission"},
+    ]
+    contexts = [
+        {"id": "general", "label": "Yleinen", "municipality": ""},
+        {"id": "vantaa", "label": "Vantaa", "municipality": "Vantaa"},
+        {"id": "kerava", "label": "Kerava", "municipality": "Kerava"},
+    ]
+    results: list[dict[str, Any]] = []
+    for context in contexts:
+        criteria = (
+            load_criteria("building_residential", "__national__")
+            if context["id"] == "general"
+            else effective_criteria(db, case_id, "building_residential", context["municipality"])
+        )
+        issues = deterministic_issues(
+            "building_residential",
+            form_data,
+            attachments,
+            municipality=context["municipality"],
+            criteria=criteria,
+        )
+        results.append(
+            {
+                **context,
+                "criteria_set_id": str(criteria.get("criteria_set_id") or ""),
+                "criteria_version": str(criteria.get("version") or ""),
+                "rules": [
+                    {
+                        "id": str(rule.get("id") or ""),
+                        "severity": str(rule.get("severity") or "major"),
+                        "subject": str(rule.get("field_id") or rule.get("attachment_type") or "Yleinen vaatimus"),
+                        "instruction": str(rule.get("instruction") or ""),
+                    }
+                    for rule in criteria.get("rules", [])
+                    if isinstance(rule, dict)
+                ],
+                "issues": [
+                    {
+                        "id": issue.id,
+                        "severity": issue.severity,
+                        "title": issue.title,
+                        "detail": issue.detail,
+                    }
+                    for issue in issues
+                ],
+            }
+        )
+    rule_contexts: dict[str, set[str]] = {}
+    rule_rows: dict[str, dict[str, Any]] = {}
+    for result in results:
+        for rule in result["rules"]:
+            rule_contexts.setdefault(rule["id"], set()).add(result["id"])
+            rule_rows.setdefault(rule["id"], rule)
+    shared_rules = [rule_rows[rule_id] for rule_id, context_ids in rule_contexts.items() if len(context_ids) == len(contexts)]
+    local_rules = [
+        {**rule_rows[rule_id], "contexts": [result["label"] for result in results if result["id"] in context_ids]}
+        for rule_id, context_ids in rule_contexts.items()
+        if len(context_ids) < len(contexts)
+    ]
+    return {
+        "permit_type": "building_residential",
+        "fixture": {"label": "Sama valmis hakemus kaikissa kolmessa kontekstissa", "omitted": "energy_report"},
+        "contexts": results,
+        "shared_rules": shared_rules,
+        "local_rules": local_rules,
+        "created_at": time.time(),
+    }
+
+
 def _issue_id(issue: Issue | dict[str, Any]) -> str:
     return issue.id if isinstance(issue, Issue) else str(issue.get("id", ""))
 
@@ -1280,7 +1388,15 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             "retrieved_context": json.dumps(context, ensure_ascii=False),
         }
         vector_ids = azure_vector_store_ids(db, settings, case_id)
-        agent_issues = _run_check_agents(db, settings, case_id, base_values, vector_ids=vector_ids, max_output_tokens=5000)
+        agent_issues = _run_check_agents(
+            db,
+            settings,
+            case_id,
+            base_values,
+            vector_ids=vector_ids,
+            max_output_tokens=5000,
+            timeout_s=PACKAGE_ANALYSIS_TIMEOUT_SECONDS,
+        )
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "consistency_validator", "Ristiriitatarkistus valmis.")

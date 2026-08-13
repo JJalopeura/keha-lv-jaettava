@@ -65,14 +65,12 @@ def _is_presenter_case(db: Any, case_id: str) -> bool:
 
 
 def _real_llm_enabled_for_case(db: Any, case_id: str, settings: Any) -> bool:
-    """True when a real LLM is configured and not forced to mock, and the case is not presenter-mode."""
+    """True when a non-presenter case must execute the configured AI path."""
     if _is_presenter_case(db, case_id):
         return False
-    if settings is None:
+    if str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}:
         return False
-    if str(getattr(settings, "llm_provider", "mock") or "mock").lower() == "mock":
-        return False
-    return str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
+    return settings is not None
 
 
 def _extraction_queue_item(item: dict[str, Any]) -> dict[str, Any]:

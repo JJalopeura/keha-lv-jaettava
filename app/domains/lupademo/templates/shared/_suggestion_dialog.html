@@ -1,0 +1,125 @@
+<dialog class="suggestion-dialog" data-suggestion-dialog aria-labelledby="suggestion-dialog-title">
+  <div class="suggestion-dialog__header">
+    <div>
+      <p class="section-kicker">AI-ehdotus</p>
+      <h2 id="suggestion-dialog-title" data-dialog-field>Ehdotuksen tarkistus</h2>
+    </div>
+    <button type="button" class="secondary compact" data-dialog-close>Sulje</button>
+  </div>
+  <div class="suggestion-dialog__body">
+    <p class="suggestion-dialog__confidence" data-dialog-confidence></p>
+    <p data-dialog-rationale></p>
+    <details class="evidence-disclosure suggestion-dialog__evidence">
+      <summary>Mihin tämä perustuu?</summary>
+      <div class="suggestion-dialog__sources" data-dialog-source></div>
+    </details>
+    <form method="post" data-dialog-accept>
+      <input type="hidden" name="field_id" data-dialog-field-id>
+      <label>AI-ehdotus<textarea name="edited_value" rows="4" data-dialog-value></textarea></label>
+      <div class="suggestion-dialog__actions">
+        <button>Hyväksy ehdotus</button>
+        <button type="button" class="secondary" data-dialog-reject>Hylkää</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+<script>
+(function () {
+  var dialog = document.querySelector("[data-suggestion-dialog]");
+  if (!dialog || !dialog.showModal) return;
+  var acceptForm = dialog.querySelector("[data-dialog-accept]");
+  var rejectButton = dialog.querySelector("[data-dialog-reject]");
+  var closeButton = dialog.querySelector("[data-dialog-close]");
+  var field = dialog.querySelector("[data-dialog-field]");
+  var confidence = dialog.querySelector("[data-dialog-confidence]");
+  var rationale = dialog.querySelector("[data-dialog-rationale]");
+  var source = dialog.querySelector("[data-dialog-source]");
+  var value = dialog.querySelector("[data-dialog-value]");
+  var fieldId = dialog.querySelector("[data-dialog-field-id]");
+  var reject = dialog.querySelector("[data-dialog-reject]");
+  var activeButton;
+  var activePayload;
+
+  function close() { dialog.close(); activeButton = null; activePayload = null; }
+
+  document.querySelectorAll("[data-suggestion-open]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      activeButton = button;
+      activePayload = JSON.parse(button.dataset.suggestionPayload || "{}");
+      field.textContent = activePayload.field_label || "Ehdotuksen tarkistus";
+      var confidenceValue = parseFloat(activePayload.confidence);
+      confidence.textContent = "Luottamus " + (Number.isFinite(confidenceValue) ? confidenceValue.toFixed(2) : "-");
+      rationale.textContent = activePayload.rationale || "Ehdotukselle ei ole erillistä perustelua.";
+      var refs = activePayload.evidence_refs || [];
+      source.replaceChildren();
+      if (refs.length) {
+        refs.forEach(function (ref) {
+          var line = document.createElement("div");
+          line.className = "evidence-line";
+          var title = document.createElement("strong");
+          title.textContent = ref.title || "Lähde";
+          line.appendChild(title);
+          if (ref.locator) {
+            var locator = document.createElement("small");
+            locator.textContent = ref.locator + (ref.confidence ? " · luottamus " + Number(ref.confidence).toFixed(2) : "");
+            line.appendChild(locator);
+          }
+          if (ref.quote) {
+            var quote = document.createElement("p");
+            quote.textContent = ref.quote;
+            line.appendChild(quote);
+          }
+          source.appendChild(line);
+        });
+      } else {
+        var empty = document.createElement("p");
+        empty.className = "muted";
+        empty.textContent = "Lähdeviitettä ei ole saatavilla.";
+        source.appendChild(empty);
+      }
+      value.value = activePayload.suggested_value || "";
+      fieldId.value = activePayload.accept_field_id || "";
+      acceptForm.action = activePayload.accept_url || "";
+      reject.hidden = !activePayload.reject_url;
+      dialog.showModal();
+      value.focus();
+    });
+  });
+
+  acceptForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var body = new URLSearchParams(new FormData(acceptForm));
+    fetch(acceptForm.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body })
+      .then(function (response) { if (!response.ok) throw new Error("HTTP " + response.status); return response; })
+      .then(function () {
+        var input = activePayload && document.querySelector("[name='" + CSS.escape(activePayload.field_id) + "']");
+        if (input) input.value = value.value;
+        if (activeButton) {
+          var inline = activeButton.closest("[data-inline-suggestion]");
+          if (inline) inline.remove();
+        }
+        close();
+        if (!document.querySelector("[data-inline-suggestion]")) window.location.reload();
+      })
+      .catch(function () {});
+  });
+
+  rejectButton.addEventListener("click", function () {
+    if (!activePayload || !activePayload.reject_url) return;
+    fetch(activePayload.reject_url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: activePayload.accept_field_id ? new URLSearchParams({ field_id: activePayload.accept_field_id }) : undefined })
+      .then(function (response) { if (!response.ok) throw new Error("HTTP " + response.status); })
+      .then(function () {
+        if (activeButton) {
+          var inline = activeButton.closest("[data-inline-suggestion]");
+          if (inline) inline.remove();
+        }
+        close();
+        window.location.reload();
+      })
+      .catch(function () {});
+  });
+
+  closeButton.addEventListener("click", close);
+  dialog.addEventListener("click", function (event) { if (event.target === dialog) close(); });
+})();
+</script>

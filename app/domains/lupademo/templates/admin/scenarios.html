@@ -14,6 +14,7 @@
   <article class="scenario-card">
     <p class="section-kicker">Lähtötilanne {{ loop.index }}</p>
     <h2>{{ scenario.label }}</h2>
+    {% if scenario.presentation_role %}<p class="scenario-role">{{ scenario.presentation_role }}</p>{% endif %}
     <p>{{ scenario.persona }}</p>
     <details>
       <summary>Mitä skenaario osoittaa</summary>

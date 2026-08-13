@@ -45,6 +45,43 @@
   </div>
 </section>
 
+<section id="criteria-comparison" class="criteria-comparison" aria-labelledby="criteria-comparison-heading">
+  <div class="section-heading-line">
+    <div>
+      <p class="section-kicker">Kriteerien vertailu</p>
+      <h2 id="criteria-comparison-heading">Yleinen, Vantaa ja Kerava</h2>
+    </div>
+    <form method="post" action="/cases/{{ case_id }}/lupademo/demo-cockpit/criteria-comparison">
+      <button class="primary-cta">Suorita vertailu</button>
+    </form>
+  </div>
+  <p class="section-description">Sama valmis hakemus tarkistetaan kolmella kriteerikontekstilla. Tämä on sääntöpohjainen vertailu, ei oikeudellinen päätös.</p>
+  {% if comparison.get('contexts') %}
+  <div class="comparison-card-grid">
+    {% for context in comparison.contexts %}
+    <article class="comparison-card">
+      <div class="comparison-card__header"><h3>{{ context.label }}</h3><span class="pill">{{ context.criteria_version }}</span></div>
+      <p class="muted">{{ context.criteria_set_id }}</p>
+      <strong>{{ context.issues|length }} havaintoa</strong>
+      {% if context.issues %}
+      <ul>{% for issue in context.issues %}<li><span class="status {{ 'bad' if issue.severity == 'blocking' else 'warn' }}">{{ issue.severity }}</span> {{ issue.title }}</li>{% endfor %}</ul>
+      {% else %}<p class="comparison-clear">Ei avoimia havaintoja tässä vertailusyötteessä.</p>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  <div class="comparison-diff">
+    <h3>Kriteeristöjen erot</h3>
+    <p class="muted">Yhteiset säännöt: {{ comparison.shared_rules|length }} · Kuntakohtaiset säännöt: {{ comparison.local_rules|length }}</p>
+    {% if comparison.local_rules %}
+    <ul>{% for rule in comparison.local_rules %}<li><strong>{{ rule.subject }}</strong> · {{ rule.contexts|join(', ') }}<small>{{ rule.instruction }}</small></li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+  <p class="comparison-fixture">Vertailusyöte: {{ comparison.fixture.label }}. Puuttuva liite: {{ comparison.fixture.omitted }}.</p>
+  {% else %}
+  <p class="empty-state">Vertailua ei ole vielä suoritettu.</p>
+  {% endif %}
+</section>
+
 <nav class="demo-cockpit-links" aria-label="Demon navigointi">
   <a class="button secondary" href="/demo/scenarios">Vaihda skenaariota</a>
   <a class="button secondary" href="/demo-lab">Demo Lab ja alusta</a>

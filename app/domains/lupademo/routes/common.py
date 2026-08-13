@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
+import os
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
@@ -191,6 +192,52 @@ def context_app(
     active_criteria = svc.effective_criteria(db_obj, case_id, app["permit_type"], municipality)
     package_analysis = aj("package_analysis_result", {})
     package_analysis_stale = svc.is_package_analysis_stale(package_analysis, active_criteria)
+    ai_suggestions = aj("ai_suggestions", {"suggestions": []}).get("suggestions", [])
+    field_extraction_queue = aj("field_extraction_queue", {"items": []})
+    extraction_items = field_extraction_queue.get("items", [])
+    attachments = svc.list_attachments(db_obj, case_id, app["permit_type"])
+    attachment_by_name = {str(item.get("filename")): item for item in attachments}
+    for item in extraction_items:
+        refs = list(item.get("evidence_refs") or [])
+        source_document = str(item.get("source_document") or "")
+        source_attachment = attachment_by_name.get(source_document)
+        value_terms = [term.lower() for term in str(item.get("suggested_value") or "").split() if len(term) >= 5]
+        matching_attachments = [
+            attachment for attachment in attachments
+            if any(term in str(attachment.get("text_excerpt") or attachment.get("summary") or "").lower() for term in value_terms)
+        ]
+        candidates = [source_attachment] + matching_attachments if source_attachment else matching_attachments
+        for attachment in candidates:
+            if not attachment or len(refs) >= 3 or any(ref.get("title") == attachment.get("filename") for ref in refs if isinstance(ref, dict)):
+                continue
+            excerpt = str(attachment.get("text_excerpt") or attachment.get("summary") or "")
+            first_section = next((line.strip() for line in excerpt.splitlines() if line.strip()), "Tekstipoiminta")
+            refs.append(
+                svc.source_ref(
+                    str(attachment.get("filename") or "Hakemusaineisto"),
+                    first_section[:120],
+                    excerpt[:260],
+                    float(attachment.get("confidence") or 0.7),
+                )
+            )
+        if refs:
+            item["evidence_refs"] = refs[:3]
+    inline_field_suggestions = [dict(item, source_kind="suggestion") for item in ai_suggestions]
+    suggestion_fields = {str(item.get("field_id")) for item in inline_field_suggestions}
+    for item in extraction_items:
+        field_id = str(item.get("field_id") or "")
+        if not field_id or field_id in suggestion_fields or item.get("status") != "pending" or not item.get("suggested_value"):
+            continue
+        inline_field_suggestions.append(
+            {
+                **item,
+                "id": f"extraction_{field_id}",
+                "source_kind": "extraction",
+                "rationale": "Ehdotus poimittiin aineistosta ja odottaa käyttäjän hyväksyntää.",
+                "accept_url": f"/cases/{case_id}/lupademo/application/{app['application_id']}/extractions/accept",
+                "reject_url": f"/cases/{case_id}/lupademo/application/{app['application_id']}/extractions/reject",
+            }
+        )
     return {
         "application": app,
         "schema": svc.load_form_schema(app["permit_type"]),
@@ -198,7 +245,8 @@ def context_app(
         "criteria_municipality": str(active_criteria.get("municipality") or municipality or "Kansallinen oletus"),
         "criteria_version": str(active_criteria.get("version") or "demo"),
         "attachments": svc.list_attachments(db_obj, case_id, app["permit_type"]),
-        "suggestions": aj("ai_suggestions", {"suggestions": []}).get("suggestions", []),
+        "suggestions": ai_suggestions,
+        "inline_field_suggestions": inline_field_suggestions,
         "check_report": aj("check_report", {}),
         "precheck_gate": svc.precheck_gate_status(db_obj, case_id, app["permit_type"]),
         "package": aj("submission_package", {}),
@@ -209,7 +257,7 @@ def context_app(
         "material_package": svc.current_material_package(db_obj, case_id, app["permit_type"]),
         "package_analysis": package_analysis,
         "package_analysis_stale": package_analysis_stale,
-        "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
+        "field_extraction_queue": field_extraction_queue,
         "ai_jobs": svc.list_ai_jobs(db_obj, case_id, app["permit_type"]),
         "contextual_chat": aj("contextual_chat", {"messages": []}),
         "voice_state": svc.voice_feature_state(settings_obj),
@@ -218,6 +266,17 @@ def context_app(
             db_obj, case_id, "environmental_material_story", "main", {}
         ),
     }
+
+
+def ai_mode_status(project: dict[str, Any], settings_obj: Any) -> dict[str, str]:
+    """Describe the provider visible to the current demo case."""
+    if project.get("presenter_mode"):
+        return {"label": "AI-simulaatio", "kind": "simulation"}
+    if str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return {"label": "Testin AI-simulaatio", "kind": "simulation"}
+    if str(getattr(settings_obj, "llm_provider", "mock") or "mock").lower() == "azure":
+        return {"label": "Azure OpenAI", "kind": "azure"}
+    return {"label": "Azure OpenAI ei käytettävissä", "kind": "error"}
 
 
 def context_app_with_material(
@@ -301,6 +360,7 @@ class RouteContext:
             "project": project,
             "common": common,
             "sync": sync,
+            "ai_mode_status": ai_mode_status(project, self.settings()),
         }
         if permit_type:
             app = svc.ensure_application(self.db(), case_id, permit_type)
