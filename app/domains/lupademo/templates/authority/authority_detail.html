@@ -6,7 +6,15 @@
 {% set application_status_labels = {'draft': 'Luonnos', 'submitted': 'Vastaanotettu', 'in_review': 'Käsittelyssä', 'needs_more_info': 'Täydennyspyyntö luonnosteltu', 'decided': 'Päätetty'} %}
 {% set attachment_type_labels = {'environmental_application': 'Ympäristölupahakemus', 'public_summary': 'Julkinen yhteenveto', 'site_map': 'Asemapiirros / sijaintikartta', 'site_plan': 'Asemapiirros / sijaintikartta', 'zoning_extract': 'Kaavaote', 'main_drawings': 'Pääpiirustukset', 'facade_drawings': 'Julkisivupiirustukset', 'risk_preparedness_plan': 'Ennaltavarautumissuunnitelma', 'bat_assessment': 'BAT-arviointi', 'yva_statement': 'YVA-selostus / lausunto', 'chemical_inventory': 'Kemikaaliluettelo', 'air_quality_model': 'Ilmapäästöselvitys', 'noise_model': 'Meluselvitys', 'baseline_report': 'Perustilaselvitys', 'energy_report': 'Energiaselvitys', 'monitoring_plan': 'Tarkkailusuunnitelma', 'stormwater_plan': 'Hulevesisuunnitelma', 'landowner_permission': 'Maanomistajan lupa', 'event_program': 'Tapahtumaohjelma', 'rescue_plan': 'Pelastussuunnitelma', 'traffic_plan': 'Liikennesuunnitelma', 'waste_plan': 'Jätehuoltosuunnitelma', 'other': 'Muu asiakirja'} %}
 {% set severity_labels = {'blocking': 'Estävä', 'major': 'Merkittävä', 'minor': 'Vähäinen', 'recommendation': 'Suositus', 'good': 'Käsitelty'} %}
-{% macro authority_copy(value) %}{{ value|default('', true)|replace('check_reportin', 'tarkistusraportin')|replace('site_map', 'asemapiirros / sijaintikartta')|replace('site map', 'asemapiirros / sijaintikartta')|replace('zoning_extract', 'kaavaote')|replace('monitoring_plan', 'tarkkailusuunnitelma')|replace('location_environment', 'sijainti ja ympäristö')|replace('blocking', 'estävä')|replace('major', 'merkittävä') }}{% endmacro %}
+{% set stale_reason_labels = {
+  'missing_report': 'Tarkistusraporttia ei ole vielä muodostettu.',
+  'missing_checked_at': 'Tarkistusraportin ajankohta puuttuu.',
+  'form_changed_after_check': 'Hakemusta on muokattu tarkistuksen jälkeen.',
+  'attachments_changed_after_check': 'Liitteitä on muokattu tarkistuksen jälkeen.',
+  'criteria_changed': 'Kohteen kriteeristö on muuttunut tarkistuksen jälkeen.',
+  'report_too_old': 'Tarkistusraportti on vanhentunut.'
+} %}
+{% macro authority_copy(value) %}{{ value|default('', true)|replace('check_reportin', 'tarkistusraportin')|replace('site_map', 'asemapiirros / sijaintikartta')|replace('site map', 'asemapiirros / sijaintikartta')|replace('Site map', 'asemapiirros / sijaintikartta')|replace('kaava-/zoning-liite', 'kaavaote-liite')|replace('Zoning extract', 'kaavaote')|replace('kaavaote extract', 'kaavaote')|replace('zoning_extract', 'kaavaote')|replace('Zoning', 'kaavaote')|replace('zoning', 'kaavaote')|replace('extract', '')|replace('kaavaote -liite', 'kaavaote-liite')|replace('asemapiirros / sijaintikartta -liite', 'asemapiirros / sijaintikartta-liite')|replace(' .', '.')|replace('monitoring_plan', 'tarkkailusuunnitelma')|replace('location_environment', 'sijainti ja ympäristö')|replace('blocking', 'estävä')|replace('major', 'merkittävä') }}{% endmacro %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
 {{ page_header(project.name, (application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija') ~ ' · ' ~ (common.data.get('municipality') or 'Kunta ei tiedossa'), schema.title, [{'label': 'Työjono', 'href': '/authority/queue' ~ ('?' ~ request.url.query if request.url.query else '')}, {'label': 'Hakemuksen käsittely', 'href': ''}]) }}
@@ -18,11 +26,23 @@
 
 <form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/status" class="case-status-form case-status-toolbar"><label>Päivitä käsittelyn tila<select name="status"><option>Käsittelyssä</option><option>Täydennyspyyntö luonnosteltu</option><option>Päätetty</option></select></label><button class="secondary compact">Tallenna tila</button></form>
 
+{% if not precheck_gate.is_fresh %}
+{% set stale_reason_text = namespace(value='') %}
+{% for reason in precheck_gate.stale_reasons %}
+  {% set reason_text = stale_reason_labels.get(reason) %}
+  {% if reason_text %}{% set stale_reason_text.value = stale_reason_text.value ~ ' ' ~ reason_text %}{% endif %}
+{% endfor %}
+<section class="issue blocking" role="status">
+  <strong>Tuore tarkistus puuttuu</strong>
+  <p>Älä perusta käsittelyä vanhaan tarkistusraporttiin. {{ stale_reason_text.value.strip() or 'Hakemuksen tarkistuksen tuoreus pitää varmistaa.' }}</p>
+</section>
+{% endif %}
+
 <section class="application-material" id="application-material">
   <div class="section-heading-line"><div><p class="section-kicker">Virallinen aineisto</p><h2>Viranomaiselle toimitetut liitteet</h2></div><span>{{ attachments|selectattr('delivery_scope', 'equalto', 'official_submission')|list|length }} liitettä</span></div>
   <div class="official-document-list">{% for att in attachments if att.delivery_scope == 'official_submission' %}<div class="document-row"><span class="file-icon">{{ att.filename.split('.')[-1][:3]|upper }}</span><div><strong>{{ att.filename }}</strong><small>{{ attachment_type_labels.get(att.primary_type, 'Muu asiakirja') }}</small></div></div>{% else %}<p class="empty-copy">Viranomaiselle toimitettuja liitteitä ei ole saatavilla.</p>{% endfor %}</div>
   {% call technical_details('Näytä hakemuksen kaikki tiedot') %}
-  <dl class="data-list">{% for key, value in application.form_data.items() if value %}<div class="data-row"><dt>{{ field_labels.get(key, key|replace('_',' ')|capitalize) }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+  <dl class="data-list">{% for key, value in application.form_data.items() if value %}<div class="data-row"><dt>{{ field_labels.get(key, 'Muu tieto') }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
   {% endcall %}
 </section>
 

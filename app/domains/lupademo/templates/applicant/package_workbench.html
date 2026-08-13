@@ -3,6 +3,39 @@
 {% block content %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
+{% set document_type_labels = {
+  "environmental_application": "Ympäristölupahakemus",
+  "public_summary": "Julkinen yhteenveto",
+  "site_map": "Asemapiirros / sijaintikartta",
+  "zoning_extract": "Kaavaote",
+  "main_drawings": "Pääpiirustukset",
+  "facade_drawings": "Julkisivupiirustukset",
+  "risk_preparedness_plan": "Ennaltavarautumissuunnitelma",
+  "bat_assessment": "BAT-arviointi",
+  "yva_statement": "YVA-selostus / lausunto",
+  "chemical_inventory": "Kemikaaliluettelo",
+  "air_quality_model": "Ilmapäästöselvitys",
+  "noise_model": "Meluselvitys",
+  "baseline_report": "Perustilaselvitys",
+  "energy_report": "Energiaselvitys",
+  "monitoring_plan": "Tarkkailusuunnitelma",
+  "stormwater_plan": "Hulevesisuunnitelma",
+  "landowner_permission": "Maanomistajan lupa",
+  "event_program": "Tapahtumaohjelma",
+  "rescue_plan": "Pelastussuunnitelma",
+  "traffic_plan": "Liikennesuunnitelma",
+  "waste_plan": "Jätehuoltosuunnitelma",
+  "other": "Muu asiakirja"
+} %}
+{% set extraction_status_labels = {
+  "ready": "Valmis",
+  "error": "Tekstin poiminta epäonnistui",
+  "empty": "Ei poimittavaa tekstiä",
+  "not_extracted": "Tekstiä ei ole poimittu",
+  "not_started": "Ei aloitettu",
+  "partial": "Osittain valmis",
+  "missing": "Ei saatavilla"
+} %}
 {% macro evidence_source_title(title, all_attachments) %}{% set label = namespace(value=title) %}{% for attachment in all_attachments %}{% if label.value.endswith(attachment.filename) %}{% set label.value = attachment.filename %}{% endif %}{% endfor %}{{ label.value }}{% endmacro %}
 
 <nav class="flow-progress" aria-label="Hakemuspaketin tarkistuksen vaiheet">
@@ -88,14 +121,6 @@
     </section>
 
     {% if wizard.missing_attachments %}
-    {% set attachment_labels = {
-      "environmental_application": "Ympäristölupahakemus",
-      "site_map": "Asemapiirros / sijaintikartta",
-      "zoning_extract": "Kaavaote",
-      "main_drawings": "Pääpiirustukset",
-      "facade_drawings": "Julkisivupiirustukset",
-      "energy_report": "Energiaselvitys"
-    } %}
     <section class="missing-attachments-panel" aria-labelledby="missing-attachments-heading">
       <div>
         <p class="section-kicker">Täydennettävä aineisto</p>
@@ -104,7 +129,7 @@
       </div>
       <ul>
         {% for attachment_type in wizard.missing_attachments %}
-        <li>{{ attachment_labels.get(attachment_type, attachment_type|replace('_', ' ')|capitalize) }}</li>
+        <li>{{ document_type_labels.get(attachment_type, "Muu asiakirja") }}</li>
         {% endfor %}
       </ul>
       <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa aineistoa</a>
@@ -132,7 +157,7 @@
         <article class="extraction-row">
           {% set source_label = namespace(value=item.source_document or "Hakemusaineisto") %}
           {% for attachment in attachments %}{% if source_label.value.endswith(attachment.filename) %}{% set source_label.value = attachment.filename %}{% endif %}{% endfor %}
-          <div class="extraction-label"><strong>{{ field_labels.get(item.field_id, item.field_id|replace('_', ' ')|capitalize) }}</strong><small>{{ source_label.value }} · luottamus {{ (item.confidence * 100)|round|int if item.confidence <= 1 else item.confidence }} %</small></div>
+          <div class="extraction-label"><strong>{{ field_labels.get(item.field_id, "Valittu kenttä") }}</strong><small>{{ source_label.value }} · luottamus {{ (item.confidence * 100)|round|int if item.confidence <= 1 else item.confidence }} %</small></div>
           <div class="extraction-value">{{ item.get('accepted_value') or item.get('suggested_value') or item.get('extracted_value', '') }}{% if item.get('evidence_refs') %}<details class="evidence-disclosure compact"><summary>Näytä lähde</summary>{% for ref in item.get('evidence_refs', [])[:2] %}<div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
           {% if item.status == 'accepted' %}<span class="status good">Hyväksytty</span>{% else %}<form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept"><input type="hidden" name="field_id" value="{{ item.field_id }}"><input type="hidden" name="edited_value" value="{{ item.suggested_value }}"><button class="secondary compact">Hyväksy</button></form>{% endif %}
         </article>
@@ -147,7 +172,7 @@
     <div class="scope-group">
       <div class="scope-heading"><span><i class="scope-dot official"></i><strong>Viranomaiselle</strong></span><b>{{ official_attachments|length }}</b></div>
       <div class="document-list">
-        {% for attachment in official_attachments %}<div class="document-row"><span class="file-icon">{{ attachment.filename.split('.')[-1][:3]|upper }}</span><div><strong>{{ attachment.filename }}</strong><small>{{ attachment.primary_type|replace('_',' ') }} · {{ attachment.extraction_status }}</small></div></div>{% else %}<p class="empty-copy">Ei tiedostoja.</p>{% endfor %}
+        {% for attachment in official_attachments %}<div class="document-row"><span class="file-icon">{{ attachment.filename.split('.')[-1][:3]|upper }}</span><div><strong>{{ attachment.filename }}</strong><small>{{ document_type_labels.get(attachment.primary_type, "Muu asiakirja") }} · {{ extraction_status_labels.get(attachment.extraction_status, "Tila ei ole tiedossa") }}</small></div></div>{% else %}<p class="empty-copy">Ei tiedostoja.</p>{% endfor %}
       </div>
     </div>
     <div class="scope-group">

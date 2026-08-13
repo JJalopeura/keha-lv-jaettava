@@ -9,6 +9,15 @@
 } %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
+{% set extraction_status_labels = {
+  "ready": "Valmis",
+  "error": "Tekstin poiminta epäonnistui",
+  "empty": "Ei poimittavaa tekstiä",
+  "not_extracted": "Tekstiä ei ole poimittu",
+  "not_started": "Ei aloitettu",
+  "partial": "Osittain valmis",
+  "missing": "Ei saatavilla"
+} %}
 {% macro evidence_source_title(title, all_attachments) %}{% set label = namespace(value=title) %}{% for attachment in all_attachments %}{% if label.value.endswith(attachment.filename) %}{% set label.value = attachment.filename %}{% endif %}{% endfor %}{{ label.value }}{% endmacro %}
 {% set common_labels = {"applicant_name": "Hakija", "business_id": "Y-tunnus", "contact_person": "Yhteyshenkilö", "phone": "Puhelin", "email": "Sähköposti", "municipality": "Kunta", "address": "Osoite", "property_id": "Kiinteistötunnus", "project_name": "Hankkeen nimi"} %}
 {% set pending_extraction_count = wizard.get('pending_extraction_count', field_extraction_queue.get('items', [])|selectattr('status', 'equalto', 'pending')|list|length) %}
@@ -87,7 +96,7 @@
     <h2>LV-yhteiset tiedot</h2>
     <dl class="data-list">
       {% for key, value in common.data.items() %}
-      <div class="data-row"><dt>{{ common_labels.get(key, field_labels.get(key, key|replace('_', ' ')|capitalize)) }}</dt><dd>{{ value or "-" }}</dd></div>
+      <div class="data-row"><dt>{{ common_labels.get(key, field_labels.get(key, "Muu tieto")) }}</dt><dd>{{ value or "-" }}</dd></div>
       {% endfor %}
     </dl>
   </div>
@@ -239,7 +248,7 @@
       <div class="file-icon" aria-hidden="true">DOC</div>
       <div class="managed-document-copy">
         <strong>{{ att.filename }}</strong>
-        <small>{{ att.size_bytes }} B · {{ document_type_labels.get(att.primary_type, "Muu asiakirja") }} · {{ att.extraction_status }} · luottamus {{ att.confidence }}</small>
+        <small>{{ att.size_bytes }} B · {{ document_type_labels.get(att.primary_type, "Muu asiakirja") }} · {{ extraction_status_labels.get(att.extraction_status, "Tila ei ole tiedossa") }} · luottamus {{ att.confidence }}</small>
         {% if att.text_excerpt %}<p>{{ att.text_excerpt[:260] }}</p>{% endif %}
       </div>
       <div class="managed-document-actions">
@@ -249,7 +258,7 @@
               {% for option, label in document_type_labels.items() %}
               <option value="{{ option }}" {% if option == att.primary_type %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
-              {% if att.primary_type not in document_type_labels %}<option value="{{ att.primary_type }}" selected>{{ att.primary_type|replace('_', ' ')|capitalize }}</option>{% endif %}
+              {% if att.primary_type not in document_type_labels %}<option value="{{ att.primary_type }}" selected>Muu asiakirja</option>{% endif %}
             </select>
           </label>
           <select class="attachment-scope-control" name="delivery_scope" aria-label="Dokumentin käyttötarkoitus">
@@ -335,13 +344,13 @@
       {% set source_label = namespace(value=item.source_document or "Hakemusaineisto") %}
       {% for attachment in attachments %}{% if source_label.value.endswith(attachment.filename) %}{% set source_label.value = attachment.filename %}{% endif %}{% endfor %}
       <div class="extraction-label">
-        <strong>{{ field_labels.get(item.field_id, item.field_id|replace('_', ' ')|capitalize) }}</strong>
+        <strong>{{ field_labels.get(item.field_id, "Valittu kenttä") }}</strong>
         <small>{{ source_label.value }} · luottamus {{ ((item.confidence * 100) if item.confidence <= 1 else item.confidence)|round|int }} %</small>
       </div>
       <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept" class="inline">
         <input type="hidden" name="field_id" value="{{ item.field_id }}">
         <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#extraction-suggestions">
-        <textarea name="edited_value" rows="2" aria-label="{{ field_labels.get(item.field_id, item.field_id) }}">{{ item.suggested_value }}</textarea>
+        <textarea name="edited_value" rows="2" aria-label="{{ field_labels.get(item.field_id, "Valittu kenttä") }}">{{ item.suggested_value }}</textarea>
         <button>Hyväksy</button>
       </form>
       {% if item.evidence_refs %}
@@ -417,9 +426,9 @@
     {% for suggestion in suggestions %}
     <article class="suggestion-review-row" id="suggestion-{{ suggestion.id }}">
       <header>
-        {% if suggestion.status == "pending" and suggestion.suggested_value %}<input type="checkbox" name="suggestion_ids" value="{{ suggestion.id }}" form="accept-selected-suggestions" aria-label="Valitse {{ field_labels.get(suggestion.field_id, suggestion.field_id) }}">{% endif %}
+        {% if suggestion.status == "pending" and suggestion.suggested_value %}<input type="checkbox" name="suggestion_ids" value="{{ suggestion.id }}" form="accept-selected-suggestions" aria-label="Valitse {{ field_labels.get(suggestion.field_id, "Valittu kenttä") }}">{% endif %}
         <div>
-          <strong>{{ field_labels.get(suggestion.field_id, suggestion.field_id|replace('_', ' ')|capitalize) }}</strong>
+          <strong>{{ field_labels.get(suggestion.field_id, "Valittu kenttä") }}</strong>
           <small>{% if suggestion.fallback_used %}Paikallinen AI-simulaatio{% else %}Arvioitu lähdetuki {{ (suggestion.confidence * 100)|round|int }} %{% endif %}</small>
         </div>
         <span class="status {% if suggestion.status == 'accepted' %}good{% elif suggestion.status == 'rejected' %}warn{% endif %}">{{ {'pending': 'Odottaa tarkistusta', 'accepted': 'Hyväksytty', 'rejected': 'Hylätty'}.get(suggestion.status, 'Tarkistettava') }}</span>
@@ -446,7 +455,7 @@
       {% if suggestion.status == "pending" and suggestion.suggested_value %}
       <div class="suggestion-review-actions">
       <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/accept" class="suggestion-edit-form">
-        <textarea name="edited_value" rows="3" aria-label="Muokattu ehdotus kentälle {{ field_labels.get(suggestion.field_id, suggestion.field_id) }}">{{ suggestion.suggested_value }}</textarea>
+        <textarea name="edited_value" rows="3" aria-label="Muokattu ehdotus kentälle {{ field_labels.get(suggestion.field_id, "Valittu kenttä") }}">{{ suggestion.suggested_value }}</textarea>
         <button>Hyväksy</button>
       </form>
       <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/reject">
@@ -577,7 +586,7 @@
     <div class="issue {{ issue.severity }}" id="{% if issue.severity == 'blocking' %}check-blocking{% endif %}">
       {% set issue_fields = schema.fields|selectattr('id', 'equalto', issue.field_id)|list if issue.field_id else [] %}
       {% set issue_title = issue.title %}
-      {% if issue_fields %}{% set issue_title = issue_title|replace(issue.field_id, issue_fields[0].label) %}{% endif %}
+      {% if issue.field_id %}{% set issue_title = issue_title|replace(issue.field_id, issue_fields[0].label if issue_fields else "Valittu kenttä") %}{% endif %}
       {% set issue_attachment_type = issue.get('attachment_id') %}
       {% if issue_attachment_type %}{% set issue_title = issue_title|replace(issue_attachment_type, check_attachment_labels.get(issue_attachment_type, "liite")) %}{% endif %}
       <strong>{{ severity_labels.get(issue.severity, "Tarkistettava") }} · {{ issue_title }}</strong>
@@ -599,7 +608,7 @@
           {% if issue_fields and issue_fields[0].type == "textarea" %}
           <textarea name="{{ issue.field_id }}" aria-label="{{ issue_fields[0].label }}">{{ issue_value }}</textarea>
           {% else %}
-          <input type="text" name="{{ issue.field_id }}" value="{{ issue_value }}" aria-label="{{ issue_fields[0].label if issue_fields else issue.field_id }}">
+          <input type="text" name="{{ issue.field_id }}" value="{{ issue_value }}" aria-label="{{ issue_fields[0].label if issue_fields else "Valittu kenttä" }}">
           {% endif %}
           <button class="button compact">Tallenna ja tarkista uudelleen</button>
         </form>

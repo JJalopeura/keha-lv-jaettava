@@ -13,6 +13,7 @@ Stdlib unittest on purpose: no pytest dependency.
 
 import io
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -496,6 +497,13 @@ class ApplicantJourney(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn(f"Vaihe {step} / 6", response.text)
 
+    def test_applicant_precheck_copy_uses_canonical_terms(self) -> None:
+        response = client.get(f"{base}/wizard/4")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Estävät puutteet", response.text)
+        self.assertNotIn("blocking-puutteet", response.text)
+
 
 class AuthorityJourney(unittest.TestCase):
     """Caseworker path: queue -> detail -> observations -> status update."""
@@ -536,6 +544,51 @@ class AuthorityJourney(unittest.TestCase):
         self.assertIn("AI-yhteenveto", response.text)
         self.assertIn("Tarkista seuraavaksi", response.text)
 
+    def test_authority_copy_translates_azure_generated_terms(self) -> None:
+        svc.save_artifact(
+            db,
+            case,
+            "authority_summary",
+            PERMIT,
+            {
+                "summary_md": "Yhteenveto",
+                "key_facts": [],
+                "open_questions": ["Puuttuuko Site map -liite tai Zoning extract -liite?"],
+                "evidence_refs": [],
+            },
+        )
+        svc.save_artifact(
+            db,
+            case,
+            "additional_info_draft",
+            PERMIT,
+            {"body_md": "Toimita Site map -liite ja Zoning extract -liite."},
+        )
+
+        response = client.get(f"/cases/{case}/lupademo/authority/applications/{PERMIT}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("asemapiirros / sijaintikartta", response.text)
+        self.assertIn("kaavaote-liite", response.text)
+        self.assertNotIn("Site map", response.text)
+        self.assertNotIn("Zoning", response.text)
+        visible_text = re.sub(r"<[^>]+>", " ", response.text)
+        self.assertNotIn("extract", visible_text)
+
+    def test_stale_precheck_is_visible_to_authority(self) -> None:
+        stale_case = db.create_case("Stale authority detail", language="fi")
+        svc.ensure_seed_state(db, stale_case)
+        svc.update_application_data(db, stale_case, PERMIT, {"municipality": "Vantaa"})
+        svc.run_application_check(db, stale_case, PERMIT, settings=None)
+        svc.update_application_data(db, stale_case, PERMIT, {"activity_name": "Muokattu tarkistuksen jälkeen"})
+
+        response = client.get(f"/cases/{stale_case}/lupademo/authority/applications/{PERMIT}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Tuore tarkistus puuttuu", response.text)
+        self.assertIn("Hakemusta on muokattu tarkistuksen jälkeen.", response.text)
+        self.assertNotIn("form_changed_after_check", response.text)
+
     def test_generate_authority_summary(self) -> None:
         response = client.post(
             f"/cases/{case}/lupademo/authority/applications/{PERMIT}/ai/summary",
@@ -572,6 +625,12 @@ class AuthorityJourney(unittest.TestCase):
 
         decisions = svc.artifact_json(db, case, "caseworker_observation_decisions", PERMIT, {"items": {}})
         self.assertEqual(decisions["items"][observation_id]["status"], "accepted")
+
+        reloaded = client.get(f"/cases/{case}/lupademo/authority/applications/{PERMIT}")
+        self.assertEqual(reloaded.status_code, 200)
+        self.assertIn("Merkitty käsitellyksi", reloaded.text)
+        events = svc.artifact_json(db, case, "lupademo_events", "main", {"events": []})
+        self.assertTrue(any(item.get("action") == "authority.observation.reviewed" for item in events["events"]))
 
 
 if __name__ == "__main__":
