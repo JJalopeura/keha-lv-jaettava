@@ -3,12 +3,13 @@
 {% block title %}Viranomaisen työtila{% endblock %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
+{% set application_status_labels = {'draft': 'Luonnos', 'submitted': 'Vastaanotettu', 'in_review': 'Käsittelyssä', 'needs_more_info': 'Täydennyspyyntö luonnosteltu', 'decided': 'Päätetty'} %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
 {{ page_header(project.name, (application.form_data.get('applicant_name') or common.data.get('applicant_name') or 'Hakija') ~ ' · ' ~ (common.data.get('municipality') or 'Kunta ei tiedossa'), schema.title, [{'label': 'Työjono', 'href': '/authority/queue' ~ ('?' ~ request.url.query if request.url.query else '')}, {'label': 'Hakemuksen käsittely', 'href': ''}]) }}
 
 <div class="status-action-layout" id="overview">
-  {{ status_summary('Hakemus on vastaanotettu', 'Varmista viranomaiselle toimitettu aineisto ennen AI-havaintojen tai luonnosten käyttöä.', 'attention', application.status|replace('_', ' ')|capitalize) }}
+  {{ status_summary('Hakemus on vastaanotettu', 'Varmista viranomaiselle toimitettu aineisto ennen AI-havaintojen tai luonnosten käyttöä.', 'attention', application_status_labels.get(application.status, 'Tarkistettava')) }}
   {{ recommended_action('Tarkista avoimet asiat', 'Käy käsittelijän tarkistuslista ja aktiiviset havainnot läpi ennen seuraavaa ratkaisua.', '#review', 'Siirry tarkistettaviin asioihin') }}
 </div>
 
@@ -45,7 +46,7 @@
     {% endfor %}
     <div class="column-heading findings-heading"><div><p class="section-kicker">AI-havainnot</p><h2>Vaatii ihmisen arvion</h2></div></div>
     {% for observation in caseworker_observations.top_ai_observations %}
-    <article class="observation-review {{ observation.severity }}" id="observation-{{ observation.id }}"><div><span class="status warn">{{ observation.review_status }}</span><strong>{{ observation.title }}</strong><p>{{ observation.detail }}</p><small>{{ observation.source }}</small></div><div class="review-actions"><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="accepted"><button class="secondary compact">Hyväksy havainto</button></form><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="needs_human_review"><button class="text-button">Jätä tarkistettavaksi</button></form><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="rejected"><button class="text-button danger-text">Hylkää</button></form></div></article>
+    <article class="observation-review {{ observation.severity }}" id="observation-{{ observation.id }}"><div><span class="status warn">{{ {'needs_human_review': 'Vaatii ihmisen arvion', 'accepted': 'Merkitty käsitellyksi', 'rejected': 'Hylätty'}.get(observation.review_status, 'Tarkistettava') }}</span><strong>{{ observation.title }}</strong><p>{{ observation.detail }}</p><small>{{ observation.source }}</small></div><div class="review-actions"><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="accepted"><button class="secondary compact">Merkitse käsitellyksi</button></form><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="needs_human_review"><button class="text-button">Jätä tarkistettavaksi</button></form><form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/observations/{{ observation.id }}/status"><input type="hidden" name="status" value="rejected"><button class="text-button danger-text">Hylkää</button></form></div></article>
     {% else %}<p class="empty-copy">Ei uusia AI-havaintoja.</p>{% endfor %}
   </section>
 
@@ -59,7 +60,7 @@
 </div>
 
 <section class="drafts-section" id="drafts">
-  <div class="section-heading-line"><div><p class="section-kicker">Luonnokset</p><h2>Tarkista ja muokkaa ennen käyttöä</h2></div></div>
+  <div class="section-heading-line"><div><p class="section-kicker">Luonnokset</p><h2>Muokkaa tai kopioi ennen käyttöä</h2><p class="muted">Luonnoksen muokkauksia ei tallenneta automaattisesti.</p></div></div>
   <div class="draft-grid">
     <article><h3>Täydennyspyyntö</h3>{% if additional_info_draft %}<label>Otsikko<input value="{{ additional_info_draft.get('subject', '') }}"></label><label>Sisältö<textarea rows="10">{{ additional_info_draft.get('body_md', '') }}</textarea></label>{% for item in additional_info_draft.get('requested_items', []) %}<div class="open-question"><span>!</span><div><strong>{{ item.title }}</strong><small>{{ item.reason }}</small></div></div>{% endfor %}{% else %}<p class="empty-copy">Täydennyspyyntöä ei ole vielä muodostettu.</p>{% endif %}</article>
     <article><h3>Käsittelymuistio</h3>{% if authority_memo %}<textarea rows="12">{{ authority_memo.get('memo_md', '') }}</textarea>{% for check in authority_memo.get('caseworker_checks', []) %}<div class="review-row needs_review"><span class="review-icon">!</span><div>{{ check }}</div></div>{% endfor %}{% else %}<p class="empty-copy">Käsittelymuistiota ei ole vielä muodostettu.</p>{% endif %}</article>

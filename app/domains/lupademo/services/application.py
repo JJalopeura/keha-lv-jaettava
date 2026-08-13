@@ -2786,6 +2786,8 @@ def caseworker_observation_panel(db: Any, case_id: str, permit_type: str) -> dic
                 "detail": issue.get("detail") or issue.get("suggested_fix") or "Tarkista hakemuksen tieto käsittelyssä.",
                 "severity": issue.get("severity") or "major",
                 "source": "AI-tarkistus",
+                "confidence": issue.get("confidence", 0.5),
+                "evidence_refs": issue.get("evidence_refs", []),
             }
         )
     for index, question in enumerate((authority_summary_data.get("open_questions") or [])[:3], start=1):

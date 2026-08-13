@@ -10,7 +10,7 @@
     <p class="suggestion-dialog__confidence" data-dialog-confidence></p>
     <p data-dialog-rationale></p>
     <details class="evidence-disclosure suggestion-dialog__evidence">
-      <summary>Mihin tämä perustuu?</summary>
+      <summary data-dialog-evidence-summary>Mihin tämä perustuu?</summary>
       <div class="suggestion-dialog__sources" data-dialog-source></div>
     </details>
     <form method="post" data-dialog-accept>
@@ -32,6 +32,7 @@
   var closeButton = dialog.querySelector("[data-dialog-close]");
   var field = dialog.querySelector("[data-dialog-field]");
   var confidence = dialog.querySelector("[data-dialog-confidence]");
+  var evidenceSummary = dialog.querySelector("[data-dialog-evidence-summary]");
   var rationale = dialog.querySelector("[data-dialog-rationale]");
   var source = dialog.querySelector("[data-dialog-source]");
   var value = dialog.querySelector("[data-dialog-value]");
@@ -48,11 +49,18 @@
       activePayload = JSON.parse(button.dataset.suggestionPayload || "{}");
       field.textContent = activePayload.field_label || "Ehdotuksen tarkistus";
       var confidenceValue = parseFloat(activePayload.confidence);
-      confidence.textContent = "Luottamus " + (Number.isFinite(confidenceValue) ? confidenceValue.toFixed(2) : "-");
+      var isFallback = Boolean(activePayload.fallback_used);
+      confidence.textContent = isFallback ? "Paikallinen AI-simulaatio" : "Arvioitu lähdetuki " + (Number.isFinite(confidenceValue) ? Math.round(confidenceValue * 100) + " %" : "-");
       rationale.textContent = activePayload.rationale || "Ehdotukselle ei ole erillistä perustelua.";
+      evidenceSummary.textContent = isFallback ? "Miten simulaatio muodostui?" : "Mihin tämä perustuu?";
       var refs = activePayload.evidence_refs || [];
       source.replaceChildren();
-      if (refs.length) {
+      if (isFallback) {
+        var simulation = document.createElement("p");
+        simulation.className = "muted";
+        simulation.textContent = "Tämä on paikallinen AI-simulaatio. Ehdotus ei perustu tunnistettuun lähdekatkelmaan.";
+        source.appendChild(simulation);
+      } else if (refs.length) {
         refs.forEach(function (ref) {
           var line = document.createElement("div");
           line.className = "evidence-line";
@@ -61,7 +69,7 @@
           line.appendChild(title);
           if (ref.locator) {
             var locator = document.createElement("small");
-            locator.textContent = ref.locator + (ref.confidence ? " · luottamus " + Number(ref.confidence).toFixed(2) : "");
+            locator.textContent = ref.locator + (ref.confidence ? " · arvioitu lähdetuki " + Math.round(Number(ref.confidence) * 100) + " %" : "");
             line.appendChild(locator);
           }
           if (ref.quote) {

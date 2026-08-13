@@ -972,7 +972,6 @@ class Pages(unittest.TestCase):
         self.assertEqual(db.get_app_setting("lupademo_active_package_id"), package["package_id"])
 
         selected_page = client.get("/")
-        selected_value = f'value="{case}:{package["package_id"]}" selected'
         self.assertIn(f'value="{case}:{package["package_id"]}"', selected_page.text)
         self.assertIn("selected", selected_page.text)
 

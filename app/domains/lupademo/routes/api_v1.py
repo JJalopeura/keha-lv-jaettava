@@ -282,6 +282,8 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         request_id = str(payload.get("request_id") or f"authority_{uuid.uuid4().hex[:8]}")
         job = svc.start_ai_job(db(), case_id, application_id, "authority_summary", "Authority summary API", ["authority_summary_agent"], eta_seconds=job_eta_seconds("authority_summary"), tenant_id=client["tenant_id"])
         result = svc.authority_summary(db(), case_id, application_id, settings=settings())
+        result["criteria_version"] = svc.criteria_version(application_id, db(), case_id)
+        result = security.annotate_api_response(client, result)
         completed = _complete_api_job(case_id, application_id, job, result)
         envelope = api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
         svc.save_artifact(db(), case_id, "api_job_result", completed["id"], envelope)

@@ -34,3 +34,6 @@ skills-lock.json
 .audit/
 .scratch/
 docs/
+.github/
+quality/
+pixie_qa/

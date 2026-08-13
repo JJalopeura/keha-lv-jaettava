@@ -5069,6 +5069,11 @@ button:disabled {
     width: 100%;
   }
 
+  .queue-table {
+    min-width: 760px;
+    table-layout: auto;
+  }
+
   .page-heading h1,
   .workbench-header h1,
   .application-header h1,

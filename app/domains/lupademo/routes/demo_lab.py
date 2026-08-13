@@ -31,7 +31,6 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
         ui_demo = svc.artifact_json(db(), case_id, "suggestion_service_demo", "ui_only", {})
         request_log = svc.artifact_json(db(), case_id, "suggestion_service_request_log", "main", {"items": []})
         comparison = svc.artifact_json(db(), case_id, "criteria_comparison", "main", {})
-        api_result = api_demo.get("result") or (api_demo.get("response") or {}).get("result") or {}
         api_done = bool(api_demo.get("response"))
         ui_done = bool(ui_demo.get("extracted_fields"))
         tenant_done = bool(comparison.get("contexts"))
