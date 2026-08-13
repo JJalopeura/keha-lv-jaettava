@@ -2,8 +2,9 @@
 {% from "shared/_components.html" import page_header, status_summary, recommended_action %}
 {% block title %}API-työkalu{% endblock %}
 {% block content %}
-{% set response = result.get('response') if result.get('response') else result %}
-{% set has_response = result.get('response') or response.get('suggestions') or response.get('extracted_fields') %}
+{% set response = result.get('response') if result.get('response') else {} %}
+{% set visual_response = result.get('result') or response.get('result') or response %}
+{% set has_response = result.get('response') %}
 {{ page_header(
   "API-työkalu",
   "Lähetä ulkoisen asiointipalvelun sopimusta vastaava pyyntö ja tarkista tulkittu vastaus.",
@@ -47,6 +48,18 @@
       <pre class="trace-preview">{{ result.trace_stream | tojson(indent=2) }}</pre>
     </details>
     {% endif %}
+    {% if result.get('integration_summary') %}
+    <div class="integration-contract-card" aria-label="Integraation tulkittu sopimus">
+      <div class="integration-contract-card__header"><span class="criteria-context-icon" aria-hidden="true">API</span><div><p class="section-kicker">Integraatio toimi</p><h3>Palvelu palautti rakenteisen tuloksen</h3></div></div>
+      <dl class="data-list">
+        <div class="data-row"><dt>Tenant</dt><dd>{{ result.integration_summary.tenant_id }}</dd></div>
+        <div class="data-row"><dt>Kohteen kunta</dt><dd>{{ result.integration_summary.municipality }}</dd></div>
+        <div class="data-row"><dt>Kriteeriversio</dt><dd>{{ result.integration_summary.criteria_version or 'Palautteen mukana' }}</dd></div>
+        <div class="data-row"><dt>Endpoint</dt><dd><code>{{ result.integration_summary.endpoint }}</code></dd></div>
+        <div class="data-row"><dt>Palautuneita rivejä</dt><dd>{{ result.integration_summary.result_count }}</dd></div>
+      </dl>
+    </div>
+    {% endif %}
     <details class="technical-details result-item">
       <summary>Lopullinen JSON-vastaus</summary>
       {% if result.get('response') %}
@@ -55,9 +68,9 @@
       <p class="muted">Lopullinen JSON-vastaus näkyy tässä, kun request on ajettu.</p>
       {% endif %}
     </details>
-    {% if response.get('suggestions') %}
+    {% if visual_response.get('suggestions') %}
     <div class="result-list">
-      {% for suggestion in response.suggestions %}
+      {% for suggestion in visual_response.suggestions %}
       <div class="result-item">
         <span class="status good">AI-ehdotus</span>
         <p>{{ suggestion.suggested_value }}</p>
@@ -66,9 +79,9 @@
       </div>
       {% endfor %}
     </div>
-    {% elif response.get('extracted_fields') %}
+    {% elif visual_response.get('extracted_fields') %}
     <div class="result-list">
-      {% for field in response.extracted_fields %}
+      {% for field in visual_response.extracted_fields %}
       <div class="result-item">
         <span class="status good">AI:n löytämä tieto</span>
         <p>{{ field.get('value', field.get('suggested_value', '')) }}</p>
@@ -77,18 +90,19 @@
       </div>
       {% endfor %}
     </div>
-    {% if response.get('document_inventory') %}
+    {% endif %}
+    {% if visual_response.get('document_inventory') %}
       <details class="technical-details">
       <summary>Dokumenttien tekniset tiedot</summary>
     <table>
       <tr><th>Tiedosto</th><th>Rooli</th><th>Scope</th><th>Merkit</th></tr>
-      {% for doc in response.document_inventory %}
+      {% for doc in visual_response.document_inventory %}
       <tr><td>{{ doc.filename }}</td><td>{{ doc.document_role }}</td><td>{{ doc.delivery_scope }}</td><td>{{ doc.text_chars }}</td></tr>
       {% endfor %}
     </table>
     </details>
     {% endif %}
-    {% else %}
+    {% if has_response and not visual_response.get('suggestions') and not visual_response.get('extracted_fields') and not visual_response.get('document_inventory') %}
     <p class="muted">Ei vielä API-vastausta.</p>
     {% endif %}
     <details class="technical-details"><summary>Tekniset sopimustiedot</summary><p class="muted">Endpointit: <code>POST /api/v1/application-packages:analyze</code>, <code>GET /api/v1/jobs/{job_id}/events</code>, <code>GET /api/v1/jobs/{job_id}/result</code> tai <code>POST /api/v1/suggestions/field</code> · Header: <code>X-Lupademo-Api-Key</code></p></details>

@@ -245,14 +245,17 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
     @router.get("/admin/criteria", response_class=HTMLResponse)
     def criteria_global(request: Request):
         case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
+        municipality = str(request.query_params.get("municipality") or "").strip()
         ctx = context(case_id)
         permit_types = list(svc.PERMIT_SCHEMAS.keys())
         ctx.update({
-            "criteria_sets": [svc.effective_criteria(db(), case_id, pt) for pt in permit_types],
-            "criteria_histories": {pt: svc.criteria_history(db(), case_id, pt) for pt in permit_types},
-            "criteria_history_rows": {pt: svc.criteria_history_rows(svc.criteria_history(db(), case_id, pt)) for pt in permit_types},
-            "criteria_rule_rows": {pt: svc.criteria_rule_rows(svc.effective_criteria(db(), case_id, pt)) for pt in permit_types},
-            "criteria_test_results": {pt: svc.artifact_json(db(), case_id, "criteria_test_result", pt, {}) for pt in permit_types},
+            "selected_municipality": municipality,
+            "municipalities": svc.list_municipalities(db(), case_id),
+            "criteria_sets": [svc.effective_criteria(db(), case_id, pt, municipality) for pt in permit_types],
+            "criteria_histories": {pt: svc.criteria_history(db(), case_id, pt, municipality) for pt in permit_types},
+            "criteria_history_rows": {pt: svc.criteria_history_rows(svc.criteria_history(db(), case_id, pt, municipality)) for pt in permit_types},
+            "criteria_rule_rows": {pt: svc.criteria_rule_rows(svc.effective_criteria(db(), case_id, pt, municipality)) for pt in permit_types},
+            "criteria_test_results": {pt: svc.artifact_json(db(), case_id, "criteria_test_result", f"{pt}:{municipality.lower()}", {}) for pt in permit_types},
             "source_ingest": svc.artifact_json(db(), case_id, "source_material_ingest", "main", {}),
         })
         return templates.TemplateResponse("admin/criteria.html", {**ctx, "request": request})

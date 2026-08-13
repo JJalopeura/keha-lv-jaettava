@@ -7,6 +7,7 @@
 {% set municipalities = municipalities|default([]) %}
 {% set total_rules = namespace(value=0) %}
 {% for criteria in criteria_sets %}{% set total_rules.value = total_rules.value + (criteria.rules|length if criteria.rules else 0) %}{% endfor %}
+{% set active_city = selected_municipality or 'Kansallinen oletus' %}
 {{ page_header(
   "Kriteeristöt",
   "Hallitse lupatyyppien aktiivisia sääntöjä, testaa muutoksia ja palauta aiempia versioita.",
@@ -53,6 +54,13 @@
       </form>
     </div>
   </div>
+  <div class="criteria-workspace-context" aria-label="Aktiivinen kriteeristökonteksti">
+    <span class="criteria-workspace-context__icon" aria-hidden="true">K</span>
+    <div>
+      <strong>{{ active_city }} ohjaa nyt AI-tarkistuksia</strong>
+      <p>Muokkaukset vaikuttavat uuden hakemuksen tarkistusporttiin, aineistotyöpöydän analyysiin ja rajapintapalautteisiin.</p>
+    </div>
+  </div>
 </section>
 
 {% for criteria in criteria_sets %}
@@ -66,6 +74,13 @@
   </summary>
   <div class="grid two-wide">
     <div>
+      {% set blocking_rules = criteria.rules|selectattr('severity', 'equalto', 'blocking')|list if criteria.rules else [] %}
+      {% set major_rules = criteria.rules|selectattr('severity', 'equalto', 'major')|list if criteria.rules else [] %}
+      <div class="criteria-impact-grid" aria-label="Kriteeristön vaikutus">
+        <div><strong>{{ criteria.rules|length if criteria.rules else 0 }}</strong><span>vaatimusta</span></div>
+        <div><strong>{{ blocking_rules|length }}</strong><span>estävää</span></div>
+        <div><strong>{{ major_rules|length }}</strong><span>merkittävää</span></div>
+      </div>
       <dl class="data-list">
         <div class="data-row"><dt>Päivitetty</dt><dd>{{ criteria.get('updated_at')|finnish_datetime if criteria.get('updated_at') else "Alkuperäinen versio" }}</dd></div>
         <div class="data-row"><dt>Päivittäjä</dt><dd>{{ criteria.get('updated_by') or "Demon lähtöaineisto" }}</dd></div>
@@ -79,6 +94,7 @@
       {% if test_result %}
       <div class="result-item">
         <h3>Viimeisin testipyyntö</h3>
+        <p class="criteria-test-context">Testattu kunta: <strong>{{ test_result.municipality or active_city }}</strong> · versio <code>{{ test_result.result.criteria_version }}</code></p>
         <p>{{ test_result.result.suggestions|length }} ehdotusta muodostettu aktiivisella versiolla.</p>
         {% for suggestion in test_result.result.suggestions %}<p><span class="status good">Ehdotus</span> {{ suggestion.suggested_value }}</p>{% endfor %}
         {% call technical_details("Testin tekniset tiedot") %}<p>Kriteeriversio: <code>{{ test_result.result.criteria_version }}</code></p>{% endcall %}
@@ -118,6 +134,7 @@
               <label>Vakavuus<select name="severity">{% for severity in ["blocking", "major", "minor", "recommendation"] %}<option value="{{ severity }}" {% if rule.severity == severity %}selected{% endif %}>{{ severity }}</option>{% endfor %}</select></label>
             </div>
             <label>Arviointiohje<textarea name="instruction">{{ rule.instruction }}</textarea></label>
+            <p class="criteria-rule-impact"><strong>Vaikutus AI-tarkistukseen:</strong> {% if rule.field_id %}tarkistaa kentän {{ rule.field_id }}{% endif %}{% if rule.field_id and rule.attachment_type %} ja {% endif %}{% if rule.attachment_type %}vaatii liitteen {{ rule.attachment_type }}{% endif %}{% if not rule.field_id and not rule.attachment_type %}ohjaa yleistä arviointia{% endif %}.</p>
             <button>Tallenna sääntö</button>
           </form>
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule/delete" class="inline-action">

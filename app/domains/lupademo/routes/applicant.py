@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import io
+import logging
 import os
 import time
 import uuid
@@ -14,6 +15,8 @@ from pydantic import ValidationError
 from .. import scenarios, security, services as svc
 from .common import RouteContext, context_app_with_material, job_eta_seconds
 from app.infra.llm_factory import create_llm_client
+
+logger = logging.getLogger(__name__)
 
 def create_applicant_router(ctx: RouteContext) -> APIRouter:
     router = APIRouter()
@@ -712,8 +715,9 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                     full_answer += chunk
                     yield f"data: {json.dumps({'chunk': chunk})}\n\n"
                 yield f"data: {json.dumps({'done': True})}\n\n"
-            except Exception as e:
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            except Exception:
+                logger.exception("Contextual chat stream failed for case %s", case_id)
+                yield f"data: {json.dumps({'error': 'AI-avustaja ei voinut vastata juuri nyt.'})}\n\n"
                 return
 
             # Save to artifact store

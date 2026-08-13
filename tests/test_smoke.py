@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import app.domains.lupademo.security as security  # noqa: E402
 import app.domains.lupademo.services as svc  # noqa: E402
 from app.infra.azure_client import AzureOpenAIClient  # noqa: E402
-from app.infra.config import Settings  # noqa: E402
+from app.infra.config import Settings, load_settings  # noqa: E402
 from app.infra.db import DB  # noqa: E402
 from app.infra.llm_factory import create_llm_client  # noqa: E402
 from app.infra.llm_utils import call_llm_json, vector_store_ids  # noqa: E402
@@ -37,6 +37,7 @@ from app.main import app, db as app_db  # noqa: E402
 
 PERMIT = "environmental_industrial"
 KEY = {"X-Lupademo-Api-Key": "demo-avi-key"}
+VANTAA_KEY = {"X-Lupademo-Api-Key": "demo-vantaa-key"}
 SAMPLE = "Biokaasulaitos Vantaalla, kasittelymaara 18000 t/a, toiminnanharjoittaja Oy Testi Ab."
 
 client = TestClient(app, follow_redirects=False)
@@ -531,6 +532,102 @@ class PublicApi(unittest.TestCase):
             self.assertTrue(suggestion["fallback_used"])
             self.assertTrue(suggestion["warnings"])
 
+    def test_suggestion_api_uses_municipality_specific_criteria_version(self) -> None:
+        payload = {
+            "tenant_id": "kerava_demo",
+            "permit_type": "building_residential",
+            "field_id": "project_description",
+            "form_schema": svc.load_form_schema("building_residential"),
+            "form_data": {"municipality": "Kerava"},
+            "common_data": {"municipality": "Kerava"},
+            "request_id": "kerava-suggestion",
+        }
+
+        result = svc.suggestion_service_field(payload, db=db, settings=load_settings(), case_id=case)
+
+        self.assertEqual(result["criteria_version"], "2026-08-demo-1")
+        self.assertEqual(result["suggestions"][0]["criteria_version"], "2026-08-demo-1")
+
+    def test_precheck_api_uses_municipality_specific_criteria_version(self) -> None:
+        result = svc.suggestion_service_check(
+            {
+                "tenant_id": "kerava_demo",
+                "permit_type": "building_residential",
+                "form_schema": svc.load_form_schema("building_residential"),
+                "form_data": {"municipality": "Kerava"},
+                "common_data": {"municipality": "Kerava"},
+                "request_id": "kerava-precheck",
+            },
+            db=db,
+            settings=load_settings(),
+            case_id=case,
+        )
+
+        self.assertEqual(result["criteria_version"], "2026-08-demo-1")
+
+        response = client.post(
+            "/api/v1/applications:precheck",
+            json={
+                "permit_type": "building_residential",
+                "form_schema": svc.load_form_schema("building_residential"),
+                "form_data": {"municipality": "Kerava"},
+                "common_data": {"municipality": "Kerava"},
+                "request_id": "kerava-precheck-http",
+            },
+            headers=VANTAA_KEY,
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_legacy_api_rejects_tenant_disallowed_municipality(self) -> None:
+        payload = {
+            "tenant_id": "vantaa_demo",
+            "permit_type": "building_residential",
+            "field_id": "project_description",
+            "form_schema": svc.load_form_schema("building_residential"),
+            "form_data": {"municipality": "Kerava"},
+            "common_data": {"municipality": "Kerava"},
+            "request_id": "legacy-kerava-rejected",
+        }
+
+        for path in ("/api/v1/suggestions/field", "/api/v1/suggestions/form", "/api/v1/checks/application"):
+            with self.subTest(path=path):
+                response = client.post(path, json=payload, headers=VANTAA_KEY)
+                self.assertEqual(response.status_code, 403)
+
+    def test_legacy_api_responses_expose_job_lifecycle_urls(self) -> None:
+        payload = {
+            "tenant_id": "avi_demo",
+            "permit_type": PERMIT,
+            "field_id": "activity_description",
+            "form_schema": svc.load_form_schema(PERMIT),
+            "form_data": {},
+            "request_id": "legacy-lifecycle-contract",
+        }
+
+        for path in ("/api/v1/suggestions/field", "/api/v1/suggestions/form", "/api/v1/checks/application"):
+            with self.subTest(path=path):
+                response = client.post(path, json=payload, headers=KEY)
+                self.assertEqual(response.status_code, 200)
+                body = response.json()
+                self.assertIn("job_id", body)
+                for key in ("events_url", "stream_url", "result_url"):
+                    self.assertIn(key, body)
+
+    def test_legacy_result_url_returns_canonical_envelope(self) -> None:
+        payload = {
+            "tenant_id": "avi_demo",
+            "permit_type": PERMIT,
+            "field_id": "activity_description",
+            "form_schema": svc.load_form_schema(PERMIT),
+            "form_data": {},
+            "request_id": "legacy-result-envelope",
+        }
+        body = client.post("/api/v1/suggestions/field", json=payload, headers=KEY).json()
+        result = client.get(body["result_url"], headers=KEY).json()
+        self.assertEqual(result["job_id"], body["job_id"])
+        self.assertIn("result", result)
+
     def test_route_fills_in_schema_the_caller_omitted(self) -> None:
         """The route resolved request_id and form_schema then threw them away."""
         response = client.post(
@@ -567,6 +664,7 @@ class PublicApi(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 self.assertEqual(method(path, headers=other_tenant).status_code, 403)
+                self.assertIn(method(path).status_code, {401, 403})
 
         self.assertEqual(
             client.post(f"/api/v1/jobs/{body['job_id']}/cancel", headers=KEY).status_code,
@@ -576,6 +674,34 @@ class PublicApi(unittest.TestCase):
             client.post(f"/api/v1/jobs/{body['job_id']}/retry", headers=KEY).status_code,
             409,
         )
+
+    def test_ai_job_creation_requires_tenant_and_owns_job(self) -> None:
+        payload = {"permit_type": "environmental_industrial", "title": "API job contract"}
+        self.assertIn(client.post("/api/v1/ai/jobs", json=payload).status_code, {401, 403})
+
+        response = client.post("/api/v1/ai/jobs", json=payload, headers=KEY)
+        self.assertEqual(response.status_code, 200)
+        job_id = response.json()["job_id"]
+        self.assertEqual(client.get(f"/api/v1/jobs/{job_id}", headers=KEY).status_code, 200)
+
+        denied = client.post(
+            "/api/v1/ai/jobs",
+            json={"application_id": "building_residential", "title": "Disallowed permit"},
+            headers=KEY,
+        )
+        self.assertEqual(denied.status_code, 403)
+
+    def test_suggestion_response_exposes_job_lifecycle_urls(self) -> None:
+        response = client.post(
+            "/api/v1/field-suggestions",
+            json={"permit_type": PERMIT, "field_id": "activity_description", "request_id": "lifecycle-contract"},
+            headers=KEY,
+        )
+
+        body = response.json()
+        self.assertEqual(response.status_code, 200)
+        for key in ("events_url", "stream_url", "result_url"):
+            self.assertIn(key, body)
 
     def test_api_tenants_use_distinct_persisted_cases(self) -> None:
         avi = client.post(
@@ -847,7 +973,8 @@ class Pages(unittest.TestCase):
 
         selected_page = client.get("/")
         selected_value = f'value="{case}:{package["package_id"]}" selected'
-        self.assertIn(selected_value, selected_page.text)
+        self.assertIn(f'value="{case}:{package["package_id"]}"', selected_page.text)
+        self.assertIn("selected", selected_page.text)
 
     def test_project_page_uses_shared_branding_without_mock_metadata(self) -> None:
         page = client.get(f"/lv/projects/{case}")
@@ -922,41 +1049,276 @@ class Pages(unittest.TestCase):
                 self.assertIn(f'href="{path}"', response.text)
                 self.assertEqual(client.get(path).status_code, 200)
 
+    def test_criteria_workspace_explains_active_municipality_and_rule_impact(self) -> None:
+        response = client.get("/admin/criteria")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ohjaa nyt AI-tarkistuksia", response.text)
+        self.assertIn("Vaikutus AI-tarkistukseen", response.text)
+        self.assertIn("Koko kriteeristön JSON-muokkaus", response.text)
+
+        kerava = client.get("/admin/criteria?municipality=Kerava")
+        self.assertEqual(kerava.status_code, 200)
+        self.assertIn("Kerava ohjaa nyt AI-tarkistuksia", kerava.text)
+        self.assertIn('value="Kerava" selected', kerava.text)
+
+    def test_api_playground_renders_integration_contract_summary(self) -> None:
+        response = client.get(f"/cases/{case}/lupademo/suggestion-service/api-demo")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("API-työkalu", response.text)
+        self.assertIn("Lopullinen JSON-vastaus", response.text)
+
+    def test_api_playground_rejects_tenant_disallowed_municipality(self) -> None:
+        payload = {
+            "tenant_id": "vantaa_demo",
+            "permit_type": "building_residential",
+            "form_data": {"municipality": "Kerava"},
+            "field_id": "project_description",
+        }
+
+        response = client.post(
+            f"/cases/{case}/lupademo/suggestion-service/api-demo",
+            data={"api_key": "demo-vantaa-key", "request_json": json.dumps(payload)},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_playground_uses_selected_tenant_case(self) -> None:
+        payload = {
+            "tenant_id": "avi_demo",
+            "permit_type": "environmental_industrial",
+            "source_text": "Biokaasulaitoksen hakemus.",
+        }
+
+        response = client.post(
+            f"/cases/{case}/lupademo/suggestion-service/api-demo",
+            data={"api_key": "demo-avi-key", "request_json": json.dumps(payload)},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("/cases/", response.headers["location"])
+        self.assertNotEqual(response.headers["location"], f"/cases/{case}/lupademo/suggestion-service/api-demo")
+
+    def test_api_playground_rejects_unknown_municipality(self) -> None:
+        payload = {
+            "tenant_id": "vantaa_demo",
+            "permit_type": "building_residential",
+            "form_data": {"municipality": "Espoo"},
+            "field_id": "project_description",
+        }
+
+        response = client.post(
+            f"/cases/{case}/lupademo/suggestion-service/api-demo",
+            data={"api_key": "demo-vantaa-key", "request_json": json.dumps(payload)},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_playground_rejects_empty_document(self) -> None:
+        payload = {
+            "tenant_id": "avi_demo",
+            "permit_type": "environmental_industrial",
+            "documents": [{"filename": "empty.txt"}],
+        }
+
+        response = client.post(
+            f"/cases/{case}/lupademo/suggestion-service/api-demo",
+            data={"api_key": "demo-avi-key", "request_json": json.dumps(payload)},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_api_rejects_malformed_nested_payload_shapes(self) -> None:
+        response = client.post(
+            "/api/v1/suggestions/field",
+            json={"permit_type": PERMIT, "field_id": "activity_description", "form_data": "bad"},
+            headers=KEY,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_api_rejects_malformed_json(self) -> None:
+        for path in (
+            "/api/v1/field-suggestions",
+            "/api/v1/applications:precheck",
+            "/api/v1/suggestions/field",
+            "/api/v1/suggestions/form",
+            "/api/v1/checks/application",
+        ):
+            with self.subTest(path=path):
+                response = client.post(path, content="{", headers={**KEY, "Content-Type": "application/json"})
+                self.assertEqual(response.status_code, 422)
+
+    def test_package_api_rejects_malformed_document_entries(self) -> None:
+        response = client.post(
+            "/api/v1/application-packages:analyze",
+            json={"permit_type": PERMIT, "documents": ["invalid", {"text": "Biokaasu"}]},
+            headers=KEY,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_api_playground_accepts_source_text_package_contract(self) -> None:
+        payload = {
+            "tenant_id": "avi_demo",
+            "permit_type": "environmental_industrial",
+            "source_text": "Biokaasulaitoksen ympäristölupahakemus, kapasiteetti 18000 tonnia vuodessa.",
+            "request_id": "playground-source-text",
+        }
+
+        response = client.post(
+            f"/cases/{case}/lupademo/suggestion-service/api-demo",
+            data={"api_key": "demo-avi-key", "request_json": json.dumps(payload)},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        page = client.get(response.headers["location"])
+        self.assertIn("Lopullinen JSON-vastaus", page.text)
+        self.assertIn("result_url", page.text)
+
+    def test_api_playground_renders_document_inventory_from_result(self) -> None:
+        payload = {
+            "tenant_id": "avi_demo",
+            "permit_type": "environmental_industrial",
+            "documents": [{"filename": "hakemus.txt", "document_role": "application_form", "text": "Ympäristölupahakemus."}],
+            "request_id": "playground-inventory",
+        }
+        response = client.post(
+            f"/cases/{case}/lupademo/suggestion-service/api-demo",
+            data={"api_key": "demo-avi-key", "request_json": json.dumps(payload)},
+            follow_redirects=False,
+        )
+        page = client.get(response.headers["location"])
+        self.assertIn("Dokumenttien tekniset tiedot", page.text)
+        self.assertIn("hakemus.txt", page.text)
+
+    def test_package_api_does_not_fabricate_fields_for_neutral_document(self) -> None:
+        response = client.post(
+            "/api/v1/application-packages:analyze",
+            json={
+                "permit_type": PERMIT,
+                "request_id": "neutral-document",
+                "documents": [{"filename": "neutral.txt", "text": "Asiakirja ilman tunnistettavia lomakekenttia."}],
+            },
+            headers=KEY,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = client.get(response.json()["result_url"], headers=KEY)
+        self.assertEqual(result.json()["result"]["extracted_fields"], [])
+
+    def test_package_api_preserves_document_source_references(self) -> None:
+        response = client.post(
+            "/api/v1/application-packages:analyze",
+            json={
+                "permit_type": PERMIT,
+                "request_id": "document-source-refs",
+                "documents": [{"document_id": "doc-1", "filename": "hakemus.txt", "text": "activity_description: Biokaasulaitoksen toiminta ja tuotanto."}],
+            },
+            headers=KEY,
+        )
+
+        result = client.get(response.json()["result_url"], headers=KEY).json()["result"]
+        evidence = [ref for field in result["extracted_fields"] for ref in field.get("evidence_refs", [])]
+        self.assertTrue(any(ref.get("source_id") == "doc-1" for ref in evidence))
+
+    def test_package_api_result_includes_criteria_provenance(self) -> None:
+        response = client.post(
+            "/api/v1/application-packages:analyze",
+            json={"permit_type": PERMIT, "source_text": "Biokaasulaitoksen ympäristölupahakemus."},
+            headers=KEY,
+        )
+        result = client.get(response.json()["result_url"], headers=KEY).json()["result"]
+        self.assertIn("criteria_set_id", result)
+        self.assertIn("criteria_municipality", result)
+
+    def test_structure_extract_returns_lifecycle_envelope(self) -> None:
+        response = client.post(
+            "/api/v1/structure/extract",
+            json={"permit_type": PERMIT, "source_text": "activity_description: Biokaasu."},
+            headers=KEY,
+        )
+
+        body = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("result_url", body)
+        self.assertIn("result", client.get(body["result_url"], headers=KEY).json())
+
+    def test_structure_extract_rejects_disallowed_municipality(self) -> None:
+        response = client.post(
+            "/api/v1/structure/extract",
+            json={"permit_type": "building_residential", "form_data": {"municipality": "Kerava"}, "source_text": "Biokaasu."},
+            headers=VANTAA_KEY,
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_auxiliary_api_routes_reject_disallowed_municipality(self) -> None:
+        payload = {"permit_type": "building_residential", "form_data": {"municipality": "Kerava"}}
+        for path in ("/api/v1/ai/jobs", "/api/v1/question-plans", "/api/v1/authority:summarize"):
+            with self.subTest(path=path):
+                response = client.post(path, json=payload, headers=VANTAA_KEY)
+                self.assertEqual(response.status_code, 403)
+
+    def test_api_playground_normalizes_minimal_field_request(self) -> None:
+        payload = {"tenant_id": "avi_demo", "permit_type": PERMIT, "field_id": "activity_description"}
+        response = client.post(
+            f"/cases/{case}/lupademo/suggestion-service/api-demo",
+            data={"api_key": "demo-avi-key", "request_json": json.dumps(payload)},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 303)
+
+    def test_package_api_rejects_malformed_document_field_types(self) -> None:
+        for document in (
+            {"filename": "bad.txt", "text": 123},
+            {"filename": {"bad": True}, "text": "Biokaasu"},
+        ):
+            with self.subTest(document=document):
+                response = client.post(
+                    "/api/v1/application-packages:analyze",
+                    json={"permit_type": PERMIT, "documents": [document]},
+                    headers=KEY,
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_package_api_rejects_empty_document(self) -> None:
+        response = client.post(
+            "/api/v1/application-packages:analyze",
+            json={"permit_type": PERMIT, "request_id": "empty-document", "documents": [{"filename": "empty.txt"}]},
+            headers=KEY,
+        )
+
+        self.assertEqual(response.status_code, 422)
+
     def test_navigation_is_scoped_to_active_workspace(self) -> None:
         applicant = client.get(f"{base}/wizard/1").text
         authority = client.get("/authority/queue").text
         demo_lab = client.get("/demo-lab").text
 
-        # Case Workbench (wizard): focused task nav (Hakemus + Palaa hankkeeseen),
-        # no authority/demo links, and no workspace-level "Hanke" nav
-        applicant_header = applicant.split("</header>", 1)[0]
-        self.assertIn(">Hakemus</a>", applicant_header)
-        self.assertIn(">Palaa hankkeeseen</a>", applicant_header)
-        self.assertNotIn(">Hanke</a>", applicant_header)
-        self.assertNotIn("Viranomainen", applicant_header)
-        self.assertNotIn("Demo Lab", applicant_header)
-
-        # Authority: Työjono nav only, no applicant links
-        authority_header = authority.split("</header>", 1)[0]
-        self.assertIn(">Työjono</a>", authority_header)
-        self.assertNotIn(">Hanke</a>", authority_header)
-        self.assertNotIn(">Hakemus</a>", authority_header)
-        self.assertNotIn(">Kevytasiointi</a>", authority_header)
-
-        # Demo Lab: Yleiskuva + Integraatiot, no applicant links
-        demo_header = demo_lab.split("</header>", 1)[0]
-        self.assertIn(">Yleiskuva</a>", demo_header)
-        self.assertIn(">Integraatiot</a>", demo_header)
-        self.assertNotIn(">Hanke</a>", demo_header)
-        self.assertNotIn(">Hakemus</a>", demo_header)
-
-        # Footer: all three workspace links present on every page
+        # Navigation sidebar shows workspace links for every page.
         for page in (applicant, authority, demo_lab):
-            footer = page.split('<footer class="service-footer">', 1)[1]
-            self.assertIn('href="/">Hakija</a>', footer)
-            self.assertIn(">Viranomainen</a>", footer)
-            self.assertIn(">Demo Lab ja alusta</a>", footer)
+            sidebar = page.split('<aside class="app-sidebar"', 1)[1].split("</aside>", 1)[0]
+            self.assertIn('>Hakija<', sidebar)
+            self.assertIn('>Viranomainen<', sidebar)
+            self.assertIn('>Demo Lab ja alusta<', sidebar)
             self.assertEqual(page.count('<footer class="service-footer">'), 1)
+
+        # Wizard page has the six-step stepper in the main content area (not sidebar).
+        for label in ("Perustiedot", "Aineistot", "AI-ehdotukset", "Tarkistus", "Paketointi", "Vastaanotto"):
+            self.assertIn(f">{label}</strong>", applicant)
+        self.assertIn('aria-label="Hakemuksen vaiheet"', applicant)
+
+        # Authority and Demo Lab keep their workspace-specific navigation.
+        authority_header = authority.split("</header>", 1)[0]
+        self.assertIn(">Työtila</span>", authority_header)
+        self.assertIn(">Viranomainen</strong>", authority_header)
+        demo_sidebar = demo_lab.split('<aside class="app-sidebar"', 1)[1].split("</aside>", 1)[0]
+        self.assertIn(">Yleiskuva", demo_sidebar)
+        self.assertIn(">Demon ohjaus", demo_sidebar)
 
 
 if __name__ == "__main__":

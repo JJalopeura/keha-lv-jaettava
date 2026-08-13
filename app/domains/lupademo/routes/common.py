@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Optional
 
+from fastapi import HTTPException
 from fastapi.templating import Jinja2Templates
 
 from .. import services as svc
+from ..services.criteria import _normalize_municipality
 
 
 def finnish_datetime(value: Any) -> str:
@@ -89,6 +91,63 @@ def service_payload(payload: dict[str, Any], request_id: str, application_id: st
     }
 
 
+def parse_documents(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Validate and parse documents from an API payload. Returns (source_text, document_inventory, source_refs)."""
+    documents = payload.get("documents") or []
+    document_text_parts: list[str] = []
+    document_inventory: list[dict[str, Any]] = []
+    for index, doc in enumerate(documents):
+        if not isinstance(doc, dict):
+            raise HTTPException(status_code=422, detail=f"documents[{index}] must be an object")
+        filename_value = doc.get("filename") or doc.get("name")
+        text_value = doc.get("text") or doc.get("content")
+        if filename_value is not None and not isinstance(filename_value, str):
+            raise HTTPException(status_code=422, detail=f"documents[{index}].filename must be a string")
+        if text_value is not None and not isinstance(text_value, str):
+            raise HTTPException(status_code=422, detail=f"documents[{index}].text must be a string")
+        filename = filename_value or f"document_{index + 1}.txt"
+        text = text_value or ""
+        if text.strip():
+            document_text_parts.append(f"\n\n[{filename}]\n{text}")
+        document_inventory.append(
+            {
+                "document_id": str(doc.get("document_id") or f"api_doc_{index + 1}"),
+                "filename": filename,
+                "document_role": str(doc.get("document_role") or "unknown"),
+                "delivery_scope": str(doc.get("delivery_scope") or "official_submission"),
+                "text_chars": len(text),
+            }
+        )
+    source_text = str(payload.get("source_text") or payload.get("text") or "") + "".join(document_text_parts)
+    if not source_text.strip():
+        raise HTTPException(status_code=422, detail="At least one document with text content or source_text is required")
+    source_refs = [
+        {"source_id": item["document_id"], "title": item["filename"], "locator": f"document:{item['document_id']}"}
+        for item in document_inventory
+        if item["text_chars"] > 0
+    ]
+    if not source_refs and source_text.strip():
+        source_refs = [{"source_id": "source_text", "title": "Request source_text", "locator": "request:source_text"}]
+    return source_text, document_inventory, source_refs
+
+
+def validate_municipality_criteria(client: dict[str, Any], payload: dict[str, Any], application_id: str) -> None:
+    """Reject requests where the municipality's criteria set is not allowlisted for this tenant."""
+    municipality = str(
+        (payload.get("form_data") or {}).get("municipality")
+        or (payload.get("common_data") or {}).get("municipality")
+        or ""
+    ).strip()
+    if not municipality:
+        return
+    criteria = svc.load_criteria(application_id, municipality)
+    criteria_set_id = str(criteria.get("criteria_set_id") or "")
+    if _normalize_municipality(criteria.get("municipality")) != _normalize_municipality(municipality):
+        raise HTTPException(status_code=403, detail=f"No allowlisted criteria exists for municipality {municipality}")
+    if criteria_set_id and criteria_set_id not in client["criteria_sets"]:
+        raise HTTPException(status_code=403, detail=f"Tenant {client['tenant_id']} cannot use criteria for municipality {municipality}")
+
+
 def api_response(client: dict[str, Any], request_id: str, job: dict[str, Any], result: dict[str, Any], *, case_id: str, application_id: str) -> dict[str, Any]:
     evidence_refs: list[dict[str, Any]] = []
     for key in ("suggestions", "issues", "extracted_fields", "questions"):
@@ -97,15 +156,20 @@ def api_response(client: dict[str, Any], request_id: str, job: dict[str, Any], r
             if isinstance(row, dict) and isinstance(row.get("evidence_refs"), list):
                 evidence_refs.extend([ref for ref in row["evidence_refs"] if isinstance(ref, dict)])
     status_payload = svc.ai_job_status_payload(job, case_id=case_id, application_id=application_id)
-    return {
+    job_id = str(job.get("id") or "")
+    envelope = {
         "request_id": request_id,
-        "job_id": job.get("id"),
+        "job_id": job_id,
         "status": status_payload["status"],
+        "events_url": f"/api/v1/jobs/{job_id}/events",
+        "stream_url": f"/api/v1/jobs/{job_id}/stream",
+        "result_url": f"/api/v1/jobs/{job_id}/result",
         "evidence_refs": evidence_refs,
         "agent_trace": status_payload["events"],
         "tenant_id": client["tenant_id"],
         "result": result,
     }
+    return envelope
 
 
 def context_app(
@@ -120,10 +184,19 @@ def context_app(
     def aj(type_: str, default: Any) -> Any:
         return svc.artifact_json(db_obj, case_id, type_, permit_type, default)
 
+    municipality = (
+        app.get("form_data", {}).get("municipality")
+        or svc.artifact_json(db_obj, case_id, "lv_common_data", "main", {"data": {}}).get("data", {}).get("municipality", "")
+    )
+    active_criteria = svc.effective_criteria(db_obj, case_id, app["permit_type"], municipality)
+    package_analysis = aj("package_analysis_result", {})
+    package_analysis_stale = svc.is_package_analysis_stale(package_analysis, active_criteria)
     return {
         "application": app,
         "schema": svc.load_form_schema(app["permit_type"]),
-        "criteria": svc.load_criteria(app["permit_type"]),
+        "criteria": active_criteria,
+        "criteria_municipality": str(active_criteria.get("municipality") or municipality or "Kansallinen oletus"),
+        "criteria_version": str(active_criteria.get("version") or "demo"),
         "attachments": svc.list_attachments(db_obj, case_id, app["permit_type"]),
         "suggestions": aj("ai_suggestions", {"suggestions": []}).get("suggestions", []),
         "check_report": aj("check_report", {}),
@@ -134,7 +207,8 @@ def context_app(
         "structure_extraction": aj("structure_extraction_result", {}),
         "intake_analysis": aj("intake_analysis", {}),
         "material_package": svc.current_material_package(db_obj, case_id, app["permit_type"]),
-        "package_analysis": aj("package_analysis_result", {}),
+        "package_analysis": package_analysis,
+        "package_analysis_stale": package_analysis_stale,
         "field_extraction_queue": aj("field_extraction_queue", {"items": []}),
         "ai_jobs": svc.list_ai_jobs(db_obj, case_id, app["permit_type"]),
         "contextual_chat": aj("contextual_chat", {"messages": []}),

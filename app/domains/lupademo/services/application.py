@@ -55,11 +55,25 @@ from app.infra.llm_utils import call_llm_json, vector_store_ids
 
 from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
 from .criteria import *  # noqa: F401,F403
+from .criteria import _normalize_municipality
 from .jobs import complete_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
 from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
+
+
+def is_package_analysis_stale(package_analysis: dict[str, Any], active_criteria: dict[str, Any]) -> bool:
+    """True when the stored package analysis was produced against a different criteria set."""
+    return bool(
+        package_analysis
+        and (
+            str(package_analysis.get("criteria_set_id") or "") != str(active_criteria.get("criteria_set_id") or "")
+            or str(package_analysis.get("criteria_version") or "") != str(active_criteria.get("version") or "")
+            or _normalize_municipality(package_analysis.get("criteria_municipality"))
+            != _normalize_municipality(active_criteria.get("municipality"))
+        )
+    )
 
 
 def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str, municipality: Any = None) -> dict[str, Any]:
@@ -81,7 +95,14 @@ def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str, mu
         "attachments": [],
     }
     result = suggestion_service_field(payload, db=db, settings=settings, case_id=case_id)
-    save_artifact(db, case_id, "criteria_test_result", permit_type, {"permit_type": permit_type, "result": result, "tested_at": time.time()})
+    municipality_value = str(municipality or "").strip()
+    save_artifact(
+        db,
+        case_id,
+        "criteria_test_result",
+        f"{permit_type}:{municipality_value.lower()}",
+        {"permit_type": permit_type, "municipality": municipality_value, "result": result, "tested_at": time.time()},
+    )
     event(db, case_id, "criteria.tested", "Criteria test request completed", {"permit_type": permit_type, "municipality": str(municipality or ""), "criteria_version": result.get("criteria_version")})
     return result
 
@@ -279,9 +300,16 @@ def package_analysis_from_current_state(
             effective_form_data[item["field_id"]] = item["extracted_value"]
     common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
     municipality = effective_form_data.get("municipality") or common.get("data", {}).get("municipality", "")
+    active_criteria = effective_criteria(db, case_id, permit_type, municipality)
     issues = [
         issue
-        for issue in deterministic_issues(permit_type, effective_form_data, attachments, municipality=municipality)
+        for issue in deterministic_issues(
+            permit_type,
+            effective_form_data,
+            attachments,
+            municipality=municipality,
+            criteria=active_criteria,
+        )
         if not (
             issue.id.startswith("missing_attachment_")
             and attachment_requirement_covered(str(issue.attachment_id or issue.id.removeprefix("missing_attachment_")), attachments)
@@ -441,6 +469,13 @@ def package_analysis_from_current_state(
     ))
     result["job_id"] = job_id
     result["extraction_queue"] = extraction_queue
+    result.update(
+        {
+            "criteria_set_id": str(active_criteria.get("criteria_set_id") or ""),
+            "criteria_municipality": str(active_criteria.get("municipality") or municipality),
+            "criteria_version": str(active_criteria.get("version") or "demo"),
+        }
+    )
     save_artifact(db, case_id, "package_analysis_result", permit_type, result)
     save_artifact(db, case_id, "field_extraction_queue", permit_type, {"items": extraction_queue, "updated_at": time.time()})
     event(db, case_id, "materials.package.analyzed", "Material package analyzed", {"permit_type": permit_type, "readiness": readiness, "score": score})
@@ -621,6 +656,9 @@ def contextual_chat_context(db: Any, case_id: str, permit_type: str) -> dict[str
         "form_data": app.get("form_data", {}),
         "field_sources": app.get("field_sources", {}),
         "package_analysis": {
+            "criteria_set_id": package_analysis.get("criteria_set_id"),
+            "criteria_version": package_analysis.get("criteria_version"),
+            "criteria_municipality": package_analysis.get("criteria_municipality"),
             "readiness": package_analysis.get("readiness"),
             "readiness_score": package_analysis.get("readiness_score"),
             "summary": package_analysis.get("summary"),
@@ -655,7 +693,17 @@ def _chat_proposed_changes(db: Any, case_id: str, permit_type: str, message: str
         target = next((f for f in schema.get("fields", []) if f.get("ai_suggest")), None)
     if not target:
         return []
-    suggestion = deterministic_suggestion(permit_type, target["id"], app.get("form_data", {}), list_attachments(db, case_id, permit_type))
+    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
+    municipality = app.get("form_data", {}).get("municipality") or common.get("data", {}).get("municipality", "")
+    active_criteria = effective_criteria(db, case_id, permit_type, municipality)
+    suggestion = deterministic_suggestion(
+        permit_type,
+        target["id"],
+        app.get("form_data", {}),
+        list_attachments(db, case_id, permit_type),
+        municipality=municipality,
+        criteria=active_criteria,
+    )
     return [
         {
             "field_id": target["id"],
@@ -663,13 +711,26 @@ def _chat_proposed_changes(db: Any, case_id: str, permit_type: str, message: str
             "suggested_value": suggestion.suggested_value,
             "rationale": "Chat ehdottaa muutosta käyttäjän hyväksyttäväksi. Lomakedataa ei muutettu.",
             "confidence": suggestion.confidence,
+            "criteria_version": str(active_criteria.get("version") or "demo"),
         }
     ]
 
 
 def contextual_chat_answer(db: Any, case_id: str, permit_type: str, message: str, settings: Any = None) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
+    app = ensure_application(db, case_id, permit_type)
+    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
+    municipality = app.get("form_data", {}).get("municipality") or common.get("data", {}).get("municipality", "")
+    active_criteria = effective_criteria(db, case_id, permit_type, municipality)
     context = contextual_chat_context(db, case_id, permit_type)
+    package_analysis = context.get("package_analysis") or {}
+    package_analysis_stale = is_package_analysis_stale(package_analysis, active_criteria)
+    context["criteria"] = active_criteria
+    context["criteria_version"] = str(active_criteria.get("version") or "demo")
+    context["criteria_municipality"] = str(active_criteria.get("municipality") or municipality)
+    context["package_analysis_stale"] = package_analysis_stale
+    if package_analysis_stale:
+        context["package_analysis"] = {}
     history = artifact_json(db, case_id, "contextual_chat", permit_type, {"messages": []})
     prompt = (
         "Olet lupahakemuksen contextual chat -avustaja. Vastaa suomeksi hakijan kysymykseen. "
@@ -730,7 +791,7 @@ def contextual_chat_answer(db: Any, case_id: str, permit_type: str, message: str
                 rationale=change["rationale"],
                 confidence=float(change.get("confidence") or 0.65),
                 evidence_refs=evidence,
-                criteria_version=criteria_version(permit_type, db, case_id),
+                criteria_version=str(active_criteria.get("version") or "demo"),
                 agent="contextual_chat_assistant",
             )
             pending.setdefault("suggestions", []).append(suggestion)
@@ -818,8 +879,15 @@ def voice_mock_turn(db: Any, case_id: str, permit_type: str, transcript: str, se
     return result
 
 
-def deterministic_suggestion(permit_type: str, field_id: str, form_data: dict[str, Any], attachments: Optional[list[dict[str, Any]]] = None) -> Suggestion:
-    criteria = load_criteria(permit_type)
+def deterministic_suggestion(
+    permit_type: str,
+    field_id: str,
+    form_data: dict[str, Any],
+    attachments: Optional[list[dict[str, Any]]] = None,
+    municipality: Any = None,
+    criteria: dict[str, Any] | None = None,
+) -> Suggestion:
+    criteria = criteria or load_criteria(permit_type, municipality)
     source_title = (criteria.get("sources") or ["Lupademon demokriteeristö"])[0]
     current_value = str(form_data.get(field_id, "") or "")
     values = {
@@ -839,6 +907,10 @@ def deterministic_suggestion(permit_type: str, field_id: str, form_data: dict[st
         "risk_preparedness": "Laitoksella on ennaltavarautumissuunnitelma ja toimintaohjeet häiriö- ja poikkeustilanteita varten. Keskeiset riskit liittyvät kemikaalien käsittelyyn, tulipaloon ja vuotoihin.",
     }
     suggested_value = values.get(field_id, "")
+    if field_id == "project_description":
+        city = str(municipality or "").strip()
+        if city:
+            suggested_value = suggested_value.replace("Vantaalle", f"{city}lle")
     if suggested_value and attachments:
         official = [a["filename"] for a in attachments if a.get("delivery_scope") == "official_submission"]
         if official:
@@ -862,6 +934,9 @@ def deterministic_suggestion(permit_type: str, field_id: str, form_data: dict[st
 
 def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: str, settings: Any = None, *, job_id: str = "", complete_job: bool = True) -> Suggestion:
     app = ensure_application(db, case_id, permit_type)
+    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
+    municipality = app.get("form_data", {}).get("municipality") or common.get("data", {}).get("municipality", "")
+    active_criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
     if not job_id:
         job = start_ai_job(
             db,
@@ -873,13 +948,19 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
             eta_seconds=15,
         )
         job_id = job["id"]
-    fallback_suggestion = deterministic_suggestion(app["permit_type"], field_id, app.get("form_data", {}), list_attachments(db, case_id, app["permit_type"]))
+    fallback_suggestion = deterministic_suggestion(
+        app["permit_type"],
+        field_id,
+        app.get("form_data", {}),
+        list_attachments(db, case_id, app["permit_type"]),
+        municipality=municipality,
+        criteria=active_criteria,
+    )
     if settings is not None:
         schema = load_form_schema(app["permit_type"])
         field_def = next((f for f in schema.get("fields", []) if f.get("id") == field_id), {"id": field_id})
-        criteria = effective_criteria(db, case_id, app["permit_type"])
+        criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
         context = retrieval_context(db, case_id, app["permit_type"])
-        common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
         response = run_json_agent(
             db,
             settings,
@@ -887,7 +968,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
             "field_suggestion_agent",
             {
                 "request_id": f"ui_{uuid.uuid4().hex[:8]}",
-                "criteria_version": criteria_version(app["permit_type"], db, case_id),
+                "criteria_version": criteria_version(app["permit_type"], db, case_id, municipality),
                 "field_id": field_id,
                 "field_definition": json.dumps(field_def, ensure_ascii=False),
                 "form_data": json.dumps(app.get("form_data", {}), ensure_ascii=False),
@@ -897,7 +978,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
             },
             FieldSuggestionResponse,
             vector_ids=azure_vector_store_ids(db, settings, case_id),
-            fallback={"request_id": f"fallback_{uuid.uuid4().hex[:8]}", "criteria_version": criteria_version(app["permit_type"], db, case_id), "suggestions": [fallback_suggestion], "warnings": []},
+            fallback={"request_id": f"fallback_{uuid.uuid4().hex[:8]}", "criteria_version": criteria_version(app["permit_type"], db, case_id, municipality), "suggestions": [fallback_suggestion], "warnings": []},
             max_output_tokens=3000,
             reasoning_effort="low",
         )
@@ -909,7 +990,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
         suggestion = fallback_suggestion
     current_value = str(app.get("form_data", {}).get(field_id, "") or "")
     suggestion.current_value = suggestion.current_value or current_value
-    suggestion.criteria_version = suggestion.criteria_version or criteria_version(app["permit_type"], db, case_id)
+    suggestion.criteria_version = str(active_criteria.get("version") or "demo")
     suggestion.agent = suggestion.agent or "field_suggestion_agent"
     suggestion.fallback_used = bool(suggestion.fallback_used)
     if not suggestion.diff_summary:
@@ -1007,14 +1088,20 @@ def reject_suggestion(db: Any, case_id: str, permit_type: str, suggestion_id: st
     return pending
 
 
-def criteria_version(permit_type: str, db: Any = None, case_id: str = "") -> str:
-    criteria = effective_criteria(db, case_id, permit_type) if db is not None and case_id else load_criteria(permit_type)
+def criteria_version(permit_type: str, db: Any = None, case_id: str = "", municipality: Any = None) -> str:
+    criteria = effective_criteria(db, case_id, permit_type, municipality) if db is not None and case_id else load_criteria(permit_type, municipality)
     return str(criteria.get("version") or "demo")
 
 
-def deterministic_issues(permit_type: str, form_data: dict[str, Any], attachments: list[dict[str, Any]], municipality: Any = None) -> list[Issue]:
+def deterministic_issues(
+    permit_type: str,
+    form_data: dict[str, Any],
+    attachments: list[dict[str, Any]],
+    municipality: Any = None,
+    criteria: dict[str, Any] | None = None,
+) -> list[Issue]:
     schema = load_form_schema(permit_type)
-    criteria = load_criteria(permit_type, municipality)
+    criteria = criteria or load_criteria(permit_type, municipality)
     criteria_source = EvidenceRef(source_id=criteria.get("criteria_set_id", "demo"), title=(criteria.get("sources") or ["Demokriteeristö"])[0], locator="criteria", confidence=0.75)
     issues: list[Issue] = []
     for schema_field in schema.get("fields", []):
@@ -1041,6 +1128,68 @@ def deterministic_issues(permit_type: str, form_data: dict[str, Any], attachment
         chemical_official = any(a.get("primary_type") == "chemical_inventory" and a.get("delivery_scope") == "official_submission" for a in attachments)
         if mentions_chemicals and chemical_ai_only and not chemical_official:
             issues.append(Issue(id="chemical_inventory_scope", type="inconsistent", severity="major", attachment_id="chemical_inventory", title="Kemikaaliluettelo on vain AI-tausta-aineistona", detail="Hakemus viittaa kemikaaliluetteloon, mutta liite ei kuulu viranomaiselle lähtevään pakettiin.", suggested_fix="Merkitse kemikaaliluettelo viranomaiselle toimitettavaksi tai poista viittaus.", evidence_refs=[criteria_source], confidence=0.88))
+    official_types = {a.get("primary_type") for a in attachments if a.get("delivery_scope") == "official_submission"}
+    schema_field_ids = {str(field.get("id")) for field in schema.get("fields", [])}
+    existing_missing_fields = {str(issue.field_id) for issue in issues if issue.field_id and issue.type == "missing"}
+    existing_missing_attachments = {str(issue.attachment_id) for issue in issues if issue.attachment_id and issue.type == "missing"}
+    criteria_subjects: dict[tuple[str, str], Issue] = {}
+    for rule in criteria.get("rules", []):
+        if not isinstance(rule, dict):
+            continue
+        condition = rule.get("condition") or {}
+        if condition:
+            condition_field_id = str(condition.get("field_id") or "")
+            condition_value = str(form_data.get(condition_field_id, "")).lower()
+            condition_terms = [str(term).lower() for term in condition.get("contains_any", [])]
+            if condition_field_id and condition_terms and not any(term in condition_value for term in condition_terms):
+                continue
+        field_id = str(rule.get("field_id") or "")
+        attachment_type = str(rule.get("attachment_type") or "")
+        missing_field = field_id and field_id in schema_field_ids and not str(form_data.get(field_id, "")).strip()
+        missing_attachment = attachment_type and attachment_type not in official_types
+        if not (missing_field or missing_attachment):
+            continue
+        field_id = field_id if field_id not in existing_missing_fields else ""
+        attachment_type = attachment_type if attachment_type not in existing_missing_attachments else ""
+        if not field_id and not attachment_type:
+            continue
+        subject_key = (field_id, attachment_type)
+        subject = field_id or attachment_type
+        candidate = Issue(
+            id=f"criteria_{rule.get('id') or subject}",
+            type="missing",
+            severity=str(rule.get("severity") or "major"),
+            field_id=field_id or None,
+            attachment_id=attachment_type or None,
+            title=f"Kunnan kriteeri: {subject} puuttuu",
+            detail=str(rule.get("instruction") or "Aktiivinen kuntakohtainen vaatimus ei täyty."),
+            suggested_fix="Täydennä tieto tai lisää vaatimus täyttävä viranomaisliite.",
+            evidence_refs=[criteria_source],
+            confidence=0.9,
+        )
+        previous = criteria_subjects.get(subject_key)
+        if previous and SEVERITY_ORDER.get(previous.severity, 1) >= SEVERITY_ORDER.get(candidate.severity, 1):
+            continue
+        criteria_subjects[subject_key] = candidate
+    for key, candidate in criteria_subjects.items():
+        field_id, attachment_type = key
+        matching_indexes = [
+            index
+            for index, issue in enumerate(issues)
+            if issue.type == "missing"
+            and issue.field_id == (field_id or None)
+            and issue.attachment_id == (attachment_type or None)
+        ]
+        strongest_baseline = max(
+            (issues[index] for index in matching_indexes),
+            key=lambda issue: SEVERITY_ORDER.get(issue.severity, 1),
+            default=None,
+        )
+        if strongest_baseline and SEVERITY_ORDER.get(strongest_baseline.severity, 1) >= SEVERITY_ORDER.get(candidate.severity, 1):
+            continue
+        for index in reversed(matching_indexes):
+            issues.pop(index)
+        issues.append(candidate)
     return issues
 
 
@@ -1104,13 +1253,20 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
     schema = load_form_schema(app["permit_type"])
     common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
     municipality = app.get("form_data", {}).get("municipality") or common.get("data", {}).get("municipality", "")
-    deterministic = deterministic_issues(app["permit_type"], app.get("form_data", {}), attachments, municipality=municipality)
+    active_criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
+    deterministic = deterministic_issues(
+        app["permit_type"],
+        app.get("form_data", {}),
+        attachments,
+        municipality=municipality,
+        criteria=active_criteria,
+    )
     if job_id:
         mark_agent_complete(db, case_id, app["permit_type"], job_id, "deterministic_checks", "Sääntöpohjainen tarkistus valmis.")
     agent_issues: list[Issue] = []
     criteria_results: list[dict[str, Any]] = []
     if settings is not None:
-        criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
+        criteria = active_criteria
         context = retrieval_context(db, case_id, app["permit_type"])
         base_values = {
             "form_schema": json.dumps(schema, ensure_ascii=False),
@@ -1150,7 +1306,8 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
     major = sum(1 for i in issues if i.severity == "major" and not i.resolved)
     score = max(0, 100 - blockers * 25 - major * 10 - (len(issues) - blockers - major) * 4)
     checked_at = time.time()
-    current_criteria_version = criteria_version(app["permit_type"], db, case_id)
+    current_criteria_version = criteria_version(app["permit_type"], db, case_id, municipality)
+    active_criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
     response = ApplicationCheckResponse(
         request_id=f"check_{uuid.uuid4().hex[:8]}",
         criteria_version=current_criteria_version,
@@ -1165,6 +1322,8 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             "checked_at": checked_at,
             "form_updated_at": float(app.get("updated_at") or 0),
             "attachments_updated_at": attachments_updated_at(db, case_id, app["permit_type"]),
+            "criteria_set_id": str(active_criteria.get("criteria_set_id") or ""),
+            "criteria_municipality": str(active_criteria.get("municipality") or municipality),
             "criteria_version": current_criteria_version,
             "questions": questions,
         }
@@ -1216,8 +1375,14 @@ def precheck_gate_status(db: Any, case_id: str, permit_type: str, *, max_age_sec
         checked_at = 0.0
     form_updated_at = float(app.get("updated_at") or 0)
     current_attachments_updated_at = attachments_updated_at(db, case_id, permit_type)
-    current_criteria_version = criteria_version(permit_type, db, case_id)
+    municipality = app.get("form_data", {}).get("municipality") or artifact_json(db, case_id, "lv_common_data", "main", {"data": {}}).get("data", {}).get("municipality", "")
+    current_criteria = effective_criteria(db, case_id, permit_type, municipality)
+    current_criteria_version = str(current_criteria.get("version") or "demo")
+    current_criteria_set_id = str(current_criteria.get("criteria_set_id") or "")
+    current_criteria_municipality = str(current_criteria.get("municipality") or municipality)
     report_criteria_version = str(report.get("criteria_version") or report.get("criteria_version_id") or "")
+    report_criteria_set_id = str(report.get("criteria_set_id") or "")
+    report_criteria_municipality = str(report.get("criteria_municipality") or "")
 
     if not report:
         stale_reasons.append("missing_report")
@@ -1227,8 +1392,12 @@ def precheck_gate_status(db: Any, case_id: str, permit_type: str, *, max_age_sec
         stale_reasons.append("form_changed_after_check")
     if checked_at > 0 and current_attachments_updated_at > checked_at + 0.001:
         stale_reasons.append("attachments_changed_after_check")
-    if report and report_criteria_version and report_criteria_version != current_criteria_version:
-        stale_reasons.append("criteria_version_changed")
+    if report and (
+        report_criteria_set_id != current_criteria_set_id
+        or report_criteria_version != current_criteria_version
+        or _normalize_municipality(report_criteria_municipality) != _normalize_municipality(current_criteria_municipality)
+    ):
+        stale_reasons.append("criteria_changed")
     if checked_at > 0 and now - checked_at > max_age_seconds:
         stale_reasons.append("report_too_old")
 
@@ -2827,11 +2996,12 @@ def _request_from_payload(model: type[Any], payload: dict[str, Any]) -> Any:
 
 def suggestion_service_field(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
     req = _request_from_payload(FieldSuggestionRequest, payload)
-    fallback_suggestion = deterministic_suggestion(req.permit_type, req.field_id, req.form_data, req.attachments)
-    response = FieldSuggestionResponse(request_id=req.request_id, criteria_version=criteria_version(req.permit_type), suggestions=[fallback_suggestion], warnings=[])
+    municipality = req.form_data.get("municipality") or (req.common_data or {}).get("municipality", "")
+    fallback_suggestion = deterministic_suggestion(req.permit_type, req.field_id, req.form_data, req.attachments, municipality=municipality)
+    response = FieldSuggestionResponse(request_id=req.request_id, criteria_version=criteria_version(req.permit_type, municipality=municipality), suggestions=[fallback_suggestion], warnings=[])
     if db is not None and settings is not None:
         api_case = _api_case_id(db, case_id)
-        criteria = effective_criteria(db, api_case, req.permit_type)
+        criteria = effective_criteria(db, api_case, req.permit_type, municipality)
         agent_response = run_json_agent(
             db,
             settings,
@@ -2839,7 +3009,7 @@ def suggestion_service_field(payload: dict[str, Any], db: Any = None, settings: 
             "field_suggestion_agent",
             {
                 "request_id": req.request_id,
-                "criteria_version": criteria_version(req.permit_type, db, api_case),
+                "criteria_version": criteria_version(req.permit_type, db, api_case, municipality),
                 "field_id": req.field_id,
                 "field_definition": json.dumps(_field_defs(req.form_schema, [req.field_id])[0], ensure_ascii=False),
                 "form_data": json.dumps(req.form_data, ensure_ascii=False),
@@ -2858,9 +3028,12 @@ def suggestion_service_field(payload: dict[str, Any], db: Any = None, settings: 
         else:
             suggestions = [fallback_suggestion]
             warnings = []
+        active_version = criteria_version(req.permit_type, db, api_case, municipality)
+        for suggestion in suggestions:
+            suggestion.criteria_version = active_version
         response = FieldSuggestionResponse(
             request_id=req.request_id,
-            criteria_version=criteria_version(req.permit_type, db, api_case),
+            criteria_version=active_version,
             suggestions=suggestions,
             warnings=warnings,
         )
@@ -2869,12 +3042,16 @@ def suggestion_service_field(payload: dict[str, Any], db: Any = None, settings: 
 
 def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
     base = _request_from_payload(FieldSuggestionRequest, payload)
+    municipality = base.form_data.get("municipality") or (base.common_data or {}).get("municipality", "")
     target_fields = payload.get("target_field_ids") or [base.field_id]
-    fallback_suggestions = [deterministic_suggestion(base.permit_type, field_id, base.form_data, base.attachments) for field_id in target_fields]
-    response = FieldSuggestionResponse(request_id=base.request_id, criteria_version=criteria_version(base.permit_type), suggestions=fallback_suggestions, warnings=[])
+    fallback_suggestions = [
+        deterministic_suggestion(base.permit_type, field_id, base.form_data, base.attachments, municipality=municipality)
+        for field_id in target_fields
+    ]
+    response = FieldSuggestionResponse(request_id=base.request_id, criteria_version=criteria_version(base.permit_type, municipality=municipality), suggestions=fallback_suggestions, warnings=[])
     if db is not None and settings is not None:
         api_case = _api_case_id(db, case_id)
-        criteria = effective_criteria(db, api_case, base.permit_type)
+        criteria = effective_criteria(db, api_case, base.permit_type, municipality)
         agent_response = run_json_agent(
             db,
             settings,
@@ -2882,7 +3059,7 @@ def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: A
             "form_suggestion_agent",
             {
                 "request_id": base.request_id,
-                "criteria_version": criteria_version(base.permit_type, db, api_case),
+                "criteria_version": criteria_version(base.permit_type, db, api_case, municipality),
                 "target_fields": json.dumps(_field_defs(base.form_schema, target_fields), ensure_ascii=False),
                 "form_data": json.dumps(base.form_data, ensure_ascii=False),
                 "criteria": json.dumps(criteria, ensure_ascii=False),
@@ -2899,9 +3076,12 @@ def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: A
         else:
             suggestions = fallback_suggestions
             warnings = []
+        active_version = criteria_version(base.permit_type, db, api_case, municipality)
+        for suggestion in suggestions:
+            suggestion.criteria_version = active_version
         response = FieldSuggestionResponse(
             request_id=base.request_id,
-            criteria_version=criteria_version(base.permit_type, db, api_case),
+            criteria_version=active_version,
             suggestions=suggestions,
             warnings=warnings,
         )
@@ -2911,11 +3091,14 @@ def suggestion_service_form(payload: dict[str, Any], db: Any = None, settings: A
 def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
     req = _request_from_payload(ApplicationCheckRequest, payload)
     municipality = req.form_data.get("municipality") or (req.common_data or {}).get("municipality", "")
-    issues = deterministic_issues(req.permit_type, req.form_data, req.attachments, municipality=municipality)
     api_case: str = ""
+    active_criteria = None
     if db is not None and settings is not None:
         api_case = _api_case_id(db, case_id)
-        criteria = effective_criteria(db, api_case, req.permit_type, municipality)
+        active_criteria = effective_criteria(db, api_case, req.permit_type, municipality)
+    issues = deterministic_issues(req.permit_type, req.form_data, req.attachments, municipality=municipality, criteria=active_criteria)
+    if db is not None and settings is not None:
+        criteria = active_criteria
         base_values = {
             "form_schema": json.dumps(req.form_schema, ensure_ascii=False),
             "form_data": json.dumps(req.form_data, ensure_ascii=False),
@@ -2951,7 +3134,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
     majors = sum(1 for i in issues if i.severity == "major")
     response = ApplicationCheckResponse(
         request_id=req.request_id,
-        criteria_version=criteria_version(req.permit_type, db, api_case) if db is not None and settings is not None else criteria_version(req.permit_type),
+        criteria_version=criteria_version(req.permit_type, db, api_case, municipality) if db is not None and settings is not None else criteria_version(req.permit_type, municipality=municipality),
         score=max(0, 100 - blockers * 25 - majors * 10),
         summary="API-tarkistus valmis.",
         issues=issues,
@@ -2961,11 +3144,12 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
 
 def structure_extract(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:
     req = _request_from_payload(StructureExtractionRequest, payload)
+    municipality = str((payload.get("form_data") or {}).get("municipality") or (payload.get("common_data") or {}).get("municipality") or "").strip()
     extracted = []
     text = req.source_text.lower()
     for schema_field in req.form_schema.get("fields", []):
         fid = schema_field.get("id")
-        if fid and fid.replace("_", " ") in text:
+        if fid and (fid.lower() in text or fid.replace("_", " ").lower() in text):
             extracted.append({"field_id": fid, "value": req.source_text[:240], "confidence": 0.55, "evidence_refs": req.source_refs})
     fallback = StructureExtractionResponse(request_id=req.request_id, extracted_fields=extracted)
     if db is not None and settings is not None:
@@ -2987,5 +3171,19 @@ def structure_extract(payload: dict[str, Any], db: Any = None, settings: Any = N
             reasoning_effort="low",
         )
         if isinstance(response, StructureExtractionResponse):
-            return asdict(StructureExtractionResponse(request_id=req.request_id, extracted_fields=response.extracted_fields))
-    return asdict(fallback)
+            extracted_fields = response.extracted_fields or fallback.extracted_fields
+            response = asdict(StructureExtractionResponse(request_id=req.request_id, extracted_fields=extracted_fields))
+        else:
+            response = asdict(fallback)
+    else:
+        response = asdict(fallback)
+    if db is not None and case_id:
+        criteria = effective_criteria(db, case_id, req.permit_type, municipality)
+        response.update(
+            {
+                "criteria_set_id": str(criteria.get("criteria_set_id") or ""),
+                "criteria_municipality": str(criteria.get("municipality") or municipality),
+                "criteria_version": str(criteria.get("version") or "demo"),
+            }
+        )
+    return response

@@ -55,8 +55,13 @@ def call_llm_json(
     reasoning_effort: Optional[str] = None,
     text_verbosity: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # Azure OpenAI requires the prompt to contain "json" when using json_object
+    # response format. Append a JSON output instruction if not already present.
+    normalized_prompt = prompt if prompt else ""
+    if "json" not in normalized_prompt.lower():
+        normalized_prompt = f"{normalized_prompt}\n\nReturn the result as a JSON object."
     payload = _build_responses_payload(
-        client.model, input_text=prompt, vector_store_ids=vector_store_ids_list,
+        client.model, input_text=normalized_prompt, vector_store_ids=vector_store_ids_list,
         response_format="json_object", max_output_tokens=max_output_tokens,
         reasoning_effort=reasoning_effort, text_verbosity=text_verbosity,
     )
@@ -80,7 +85,7 @@ def call_llm_json(
             request_tokens = max(max_output_tokens or 0, 6000) * 2 if retrying else max_output_tokens
             request_reasoning = "low" if retrying else reasoning_effort
             resp = client.responses(
-                input_text=prompt, vector_store_ids=vector_store_ids_list,
+                input_text=normalized_prompt, vector_store_ids=vector_store_ids_list,
                 response_format="json_object", max_output_tokens=request_tokens,
                 reasoning_effort=request_reasoning, text_verbosity=text_verbosity,
             )

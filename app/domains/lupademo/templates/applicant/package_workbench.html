@@ -22,6 +22,12 @@
 <div class="workbench-layout">
   <div class="workbench-main">
     <section class="analysis-panel {% if active_job %}is-running{% elif package_analysis %}is-complete{% endif %}" id="analysis" aria-live="polite" data-ai-jobs-panel data-analysis-ready="{{ 'true' if package_analysis else 'false' }}">
+      {% if package_analysis_stale %}
+      <div class="issue blocking" role="status">
+        <strong>Analyysi on vanhentunut</strong>
+        <p>Kohteen kunta tai sen kriteeristö on muuttunut. Aja aineiston analyysi uudelleen ennen johtopäätösten käyttämistä.</p>
+      </div>
+      {% endif %}
       <div class="analysis-lead">
         <span class="ai-orbit" aria-hidden="true"><i></i></span>
         <div>

@@ -47,13 +47,30 @@ def require_api_client(request: Request) -> dict[str, Any]:
 
 
 def validate_client_payload(client: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="request body must be a JSON object")
     out = dict(payload)
+    for key in ("form_data", "common_data", "form_schema"):
+        if key in out and out[key] is not None and not isinstance(out[key], dict):
+            raise HTTPException(status_code=422, detail=f"{key} must be an object")
+    for key in ("attachments", "documents", "target_field_ids"):
+        if key in out and out[key] is not None and not isinstance(out[key], list):
+            raise HTTPException(status_code=422, detail=f"{key} must be an array")
+    for key in ("source_text", "text"):
+        if key in out and out[key] is not None and not isinstance(out[key], str):
+            raise HTTPException(status_code=422, detail=f"{key} must be a string")
     tenant_id = client["tenant_id"]
     if out.get("tenant_id") and out["tenant_id"] != tenant_id:
         raise HTTPException(status_code=403, detail="API key tenant does not match request tenant_id")
     out["tenant_id"] = tenant_id
     permit_type = str(out.get("permit_type") or "").strip()
-    if permit_type and permit_type not in client["permit_types"]:
+    if not permit_type:
+        allowed_permits = list(client.get("permit_types") or [])
+        if len(allowed_permits) != 1:
+            raise HTTPException(status_code=422, detail="permit_type is required")
+        permit_type = str(allowed_permits[0])
+        out["permit_type"] = permit_type
+    if permit_type not in client["permit_types"]:
         raise HTTPException(status_code=403, detail=f"Tenant {tenant_id} cannot use permit_type {permit_type}")
     criteria_sets = client["criteria_sets"]
     criteria_set_id = str(out.get("criteria_set_id") or "").strip()

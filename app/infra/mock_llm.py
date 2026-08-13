@@ -122,6 +122,23 @@ class MockLLMClient:
             }
 
         if "epärakenteisen lupahakemustiedon rakenteistaja" in low:
+            source_match = self._extract_first(r'"source_text"\s*:\s*"((?:\\.|[^"\\])*)"', input_text)
+            source_text = source_match or ""
+            source_id = self._extract_first(r'"source_id"\s*:\s*"([^"]+)"', input_text) or "source_text"
+            evidence_terms = [
+                "rakennus",
+                "ympäristö",
+                "ymparisto",
+                "biokaasu",
+                "tuotanto",
+                "kemikaal",
+                "huleves",
+                "tapahtuma",
+                "activity_description",
+                "project_description",
+            ]
+            if not any(term in source_text.lower() for term in evidence_terms):
+                return {"request_id": f"mock-{seed:08x}", "extracted_fields": []}
             return {
                 "request_id": f"mock-{seed:08x}",
                 "extracted_fields": [
@@ -129,7 +146,7 @@ class MockLLMClient:
                         "field_id": "project_description" if "project_description" in low else "activity_description",
                         "value": "Mock-rakenteistus lähdetekstin perusteella.",
                         "confidence": 0.58,
-                        "evidence_refs": [self._lupademo_evidence("source_text")],
+                        "evidence_refs": [self._lupademo_evidence(source_id)],
                     }
                 ]
             }

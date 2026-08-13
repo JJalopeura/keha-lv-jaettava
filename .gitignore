@@ -32,3 +32,4 @@ testiaineisto/
 .agents/skills/
 skills-lock.json
 .audit/
+.scratch/

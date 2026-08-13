@@ -1,93 +1,168 @@
 <!doctype html>
 <html lang="fi">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#ffffff">
-  <title>{% block title %}Lupa-apuri{% endblock %} · Luvat ja valvonta</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2212%22 fill=%22%23123a64%22/><text y=%22.65em%22 x=%2250%22 text-anchor=%22middle%22 font-size=%2260%22 font-weight=%22800%22 fill=%22white%22>L</text></svg>">
-  <link rel="stylesheet" href="/static/style.css?v=20260804-v6">
-</head>
-<body class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}">
-  {% set current_path = request.url.path %}
-  {% set authority_workspace = '/authority/' in current_path %}
-  {% set demo_workspace = current_path.startswith('/demo-lab') or current_path.startswith('/demo/') or '/admin/' in current_path or '/metrics' in current_path or '/suggestion-service' in current_path or current_path.startswith('/integrations/') %}
-  {# Case Workbench = completing one specific permit application (wizard + receipt).
-     Everything else in the applicant flow is the Customer Workspace (manage projects/applications). #}
-  {% set case_workbench = not authority_workspace and not demo_workspace and '/lupademo/application/' in current_path %}
-  {% set workspace_name = 'Viranomainen' if authority_workspace else ('Demo Lab ja alusta' if demo_workspace else ('Hakemustyötila' if case_workbench else 'Hakija')) %}
-  {% set workspace_purpose = 'Käsittele hakemuksia ja havaintoja' if authority_workspace else ('Alustan ja demon hallinta' if demo_workspace else ('Täytä tämä lupahakemus' if case_workbench else 'Hallinnoi hankkeita ja hakemuksia')) %}
-  {% set workspace_brand = 'LV' %}
-  {% set workspace_brand_sub = 'Luvat ja valvonta' %}
-  {% set workspace_home = ('/lv/projects/' ~ case_id) if (case_workbench and case_id is defined) else '/' %}
-  <a class="skip-link" href="#main-content">Siirry sisältöön</a>
-  <header class="app-header" data-workspace="{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else ('workbench' if case_workbench else 'customer')) }}">
-    <a href="{{ workspace_home }}" class="app-brand" aria-label="{{ 'Hakemustyötila' if case_workbench else 'Lupa-apurin etusivu' }}">
-      <span class="brand-mark" aria-hidden="true">LV</span>
-      <span><strong>{{ workspace_brand }}</strong><small>{{ workspace_brand_sub }}</small></span>
-    </a>
-    <div class="workspace-identity" aria-label="Nykyinen työtila">
-      <span>Työtila</span>
-      <strong>{{ workspace_name }}</strong>
-      <small>{{ workspace_purpose }}</small>
-      {% if request.query_params.get('present') == '1' %}<small class="presenter-tag">Esittäjätila</small>{% endif %}
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>{% block title %}Lupa-apuri{% endblock %} · Luvat ja valvonta</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2212%22 fill=%22%23123a64%22/><text y=%22.65em%22 x=%2250%22 text-anchor=%22middle%22 font-size=%2260%22 font-weight=%22800%22 fill=%22white%22>L</text></svg>"
+    />
+    <link rel="stylesheet" href="/static/style.css?v=20260804-v6" />
+  </head>
+  <body
+    class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}"
+  >
+    {% set current_path = request.url.path %} {% set authority_workspace =
+    '/authority/' in current_path %} {% set demo_workspace =
+    current_path.startswith('/demo-lab') or current_path.startswith('/demo/') or
+    '/admin/' in current_path or '/metrics' in current_path or
+    '/suggestion-service' in current_path or
+    current_path.startswith('/integrations/') %} {# Case Workbench = completing
+    one specific permit application (wizard + receipt). Everything else in the
+    applicant flow is the Customer Workspace (manage projects/applications). #}
+    {% set case_workbench = not authority_workspace and not demo_workspace and
+    '/lupademo/application/' in current_path %} {% set workspace_name =
+    'Viranomainen' if authority_workspace else ('Demo Lab ja alusta' if
+    demo_workspace else ('Hakemustyötila' if case_workbench else 'Hakija')) %}
+    {% set workspace_purpose = 'Käsittele hakemuksia ja havaintoja' if
+    authority_workspace else ('Alustan ja demon hallinta' if demo_workspace else
+    ('Täytä tämä lupahakemus' if case_workbench else 'Hallinnoi hankkeita ja
+    hakemuksia')) %} {% set workspace_brand = 'LV' %} {% set workspace_brand_sub
+    = 'Luvat ja valvonta' %} {% set workspace_home = ('/lv/projects/' ~ case_id)
+    if (case_workbench and case_id is defined) else '/' %}
+    <a class="skip-link" href="#main-content">Siirry sisältöön</a>
+    <div class="app-shell">
+      <aside class="app-sidebar" aria-label="Päävalikko">
+        <nav class="sidebar-nav">
+          <p class="sidebar-heading">Työtilat</p>
+          <a
+            class="sidebar-link{% if not authority_workspace and not demo_workspace %} active{% endif %}"
+            href="/"
+            {% if not authority_workspace and not demo_workspace %}aria-current="page"{% endif %}
+            >Hakija</a
+          >
+          <a
+            class="sidebar-link{% if authority_workspace %} active{% endif %}"
+            href="/authority/queue"
+            {% if authority_workspace %}aria-current="page"{% endif %}
+            >Viranomainen</a
+          >
+          <a
+            class="sidebar-link{% if demo_workspace %} active{% endif %}"
+            href="/demo-lab"
+            {% if demo_workspace %}aria-current="page"{% endif %}
+            >Demo Lab ja alusta</a
+          >
+
+          {% if not authority_workspace and not demo_workspace %}
+          <p class="sidebar-heading">Hakija</p>
+          <a class="sidebar-link{% if current_path == '/applicant' %} active{% endif %}" href="/applicant" {% if current_path == '/applicant' %}aria-current="page"{% endif %}>Uusi hakemus</a>
+          <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Tarkista aineisto</a>
+          {% if case_id is defined %}
+          <a class="sidebar-link{% if current_path.startswith('/lv/projects/') %} active{% endif %}" href="/lv/projects/{{ case_id }}" {% if current_path.startswith('/lv/projects/') %}aria-current="page"{% endif %}>Hanke</a>
+          {% endif %}
+          {% endif %}
+
+          {% if authority_workspace %}
+          <p class="sidebar-heading">Viranomainen</p>
+          <a class="sidebar-link active" href="/authority/queue" aria-current="page">Työjono</a>
+          {% endif %}
+
+          {% if demo_workspace %}
+          <p class="sidebar-heading">Demo Lab ja alusta</p>
+          <a class="sidebar-link{% if current_path == '/demo-lab' %} active{% endif %}" href="/demo-lab" {% if current_path == '/demo-lab' %}aria-current="page"{% endif %}>Yleiskuva</a>
+          <a class="sidebar-link{% if current_path.startswith('/demo/') or current_path == '/demo-lab/presenter' %} active{% endif %}" href="/demo/scenarios" {% if current_path.startswith('/demo/') or current_path == '/demo-lab/presenter' %}aria-current="page"{% endif %}>Demon ohjaus</a>
+          {% if case_id is defined %}
+          <a class="sidebar-link{% if '/metrics' in current_path %} active{% endif %}" href="/metrics" {% if '/metrics' in current_path %}aria-current="page"{% endif %}>Vaikuttavuus</a>
+          <a class="sidebar-link{% if '/admin/criteria' in current_path %} active{% endif %}" href="/admin/criteria" {% if '/admin/criteria' in current_path %}aria-current="page"{% endif %}>Kriteeristöt</a>
+          <a class="sidebar-link{% if '/suggestion-service' in current_path or '/integrations/' in current_path %} active{% endif %}" href="/admin/suggestion-service" {% if '/suggestion-service' in current_path or '/integrations/' in current_path %}aria-current="page"{% endif %}>Integraatiot</a>
+          {% endif %}
+          {% endif %}
+        </nav>
+      </aside>
+      <div class="app-stage">
+        <header
+          class="app-header"
+          data-workspace="{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else ('workbench' if case_workbench else 'customer')) }}"
+        >
+          <a
+            href="{{ workspace_home }}"
+            class="app-brand"
+            aria-label="Lupa-apurin etusivu"
+          >
+            <span class="brand-mark" aria-hidden="true">LV</span>
+            <span
+              ><strong>{{ workspace_brand }}</strong
+              ><small>{{ workspace_brand_sub }}</small></span
+            >
+          </a>
+          <div class="workspace-identity" aria-label="Nykyinen työtila">
+            <span>Työtila</span>
+            <strong>{{ workspace_name }}</strong>
+            <small>{{ workspace_purpose }}</small>
+            {% if request.query_params.get('present') == '1' %}<small
+              class="presenter-tag"
+              >Esittäjätila</small
+            >{% endif %}
+          </div>
+          {% if workspace_options is defined and workspace_options %}
+          <form
+            class="workspace-picker"
+            method="post"
+            action="/workspace/select"
+            aria-label="Hakija"
+          >
+            <label for="workspace">Hakija</label>
+            <select
+              id="workspace"
+              name="workspace"
+              onchange="this.form.submit()"
+            >
+              {% for option in workspace_options %}
+              <option
+                value="{{ option.case_id }}:{{ option.package_id }}"
+                {%
+                if
+                option.selected
+                %}selected{%
+                endif
+                %}
+              >
+                {{ option.customer }}
+              </option>
+              {% endfor %}
+            </select>
+          </form>
+          {% endif %}
+        </header>
+        {% if case_id is defined %}
+        <div
+          class="project-context project-context--{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else 'application') }}"
+          aria-label="Avoin hanke"
+        >
+          <div>
+            <span class="context-kicker">Avoin hanke</span>
+            <strong>{{ project.name }}</strong>
+          </div>
+          <div class="context-meta">
+            <span
+              >{{ schema.title if schema is defined and schema else 'Lupahanke'
+              }}</span
+            >
+            <span>Yhteiset tiedot v{{ common.version or 1 }}</span>
+          </div>
+        </div>
+        {% endif %}
+        <main id="main-content">
+          {% block content %}{% endblock %}
+          <footer class="service-footer">
+            <span>Demo: Luvat ja valvonta</span>
+          </footer>
+        </main>
+      </div>
     </div>
-    {% if workspace_options is defined and workspace_options %}
-    <form class="workspace-picker" method="post" action="/workspace/select" aria-label="Hakija">
-      <label for="workspace">Hakija</label>
-      <select id="workspace" name="workspace" onchange="this.form.submit()">
-        {% for option in workspace_options %}
-        <option value="{{ option.case_id }}:{{ option.package_id }}" {% if option.selected %}selected{% endif %}>{{ option.customer }}</option>
-        {% endfor %}
-      </select>
-    </form>
-    {% endif %}
-    <nav class="app-nav" aria-label="{{ workspace_name }}: päänavigaatio">
-      {% if authority_workspace %}
-      <a href="/authority/queue" aria-current="page">Työjono</a>
-      {% elif demo_workspace %}
-      <a href="/demo-lab"{% if current_path == '/demo-lab' %} aria-current="page"{% endif %}>Yleiskuva</a>
-      <a href="/demo/scenarios"{% if current_path.startswith('/demo/') or current_path == '/demo-lab/presenter' %} aria-current="page"{% endif %}>Demon ohjaus</a>
-      {% if case_id is defined %}
-      <a href="/metrics"{% if '/metrics' in current_path %} aria-current="page"{% endif %}>Vaikuttavuus</a>
-      <a href="/admin/criteria"{% if '/admin/criteria' in current_path %} aria-current="page"{% endif %}>Kriteeristöt</a>
-      {% endif %}
-      <a href="/admin/suggestion-service"{% if '/suggestion-service' in current_path or '/integrations/' in current_path %} aria-current="page"{% endif %}>Integraatiot</a>
-      {% elif case_workbench %}
-      {% set nav_permits = project.get('permits', []) if project is defined and project else [] %}
-      {% set nav_application_id = application.application_id if application is defined and application else (nav_permits|first if nav_permits else 'building_residential') %}
-      <a href="/cases/{{ case_id }}/lupademo/application/{{ nav_application_id }}/wizard/1"{% if '/wizard/' in current_path %} aria-current="page"{% endif %}>Hakemus</a>
-      <a href="/lv/projects/{{ case_id }}">Palaa hankkeeseen</a>
-      {% elif case_id is defined %}
-      {% set nav_permits = project.get('permits', []) if project is defined and project else [] %}
-      {% set nav_application_id = application.application_id if application is defined and application else (nav_permits|first if nav_permits else 'building_residential') %}
-      <a href="/lv/projects/{{ case_id }}"{% if current_path.startswith('/lv/projects/') %} aria-current="page"{% endif %}>Hanke</a>
-      <a href="/cases/{{ case_id }}/lupademo/application/{{ nav_application_id }}/wizard/1"{% if '/application/' in current_path or '/package' in current_path %} aria-current="page"{% endif %}>Hakemus</a>
-      {% else %}
-      <a href="/applicant"{% if current_path == '/applicant' %} aria-current="page"{% endif %}>Uusi hakemus</a>
-      <a href="/applicant/packages/new"{% if current_path.startswith('/applicant/packages') %} aria-current="page"{% endif %}>Tarkista aineisto</a>
-      {% endif %}
-    </nav>
-  </header>
-  {% if case_id is defined %}
-  <div class="project-context project-context--{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else 'application') }}" aria-label="Avoin hanke">
-    <div>
-      <span class="context-kicker">Avoin hanke</span>
-      <strong>{{ project.name }}</strong>
-    </div>
-    <div class="context-meta">
-      <span>{{ schema.title if schema is defined and schema else 'Lupahanke' }}</span>
-      <span>Yhteiset tiedot v{{ common.version or 1 }}</span>
-    </div>
-  </div>
-  {% endif %}
-  <main id="main-content">
-    {% block content %}{% endblock %}
-    <footer class="service-footer">
-      <span>Demo: Luvat ja valvonta</span>
-      <nav aria-label="Muut työtilat"><a href="/">Hakija</a><a href="/authority/queue">Viranomainen</a><a href="/demo-lab">Demo Lab ja alusta</a></nav>
-    </footer>
-  </main>
-  {% include 'shared/_floating_chat.html' %}
-</body>
+    {% include 'shared/_floating_chat.html' %}
+  </body>
 </html>

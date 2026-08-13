@@ -85,6 +85,7 @@
       "id": "chemical_inventory_required_if_chemicals",
       "field_id": "raw_materials_chemicals",
       "attachment_type": "chemical_inventory",
+      "condition": {"field_id": "raw_materials_chemicals", "contains_any": ["kemikaal", "vaarallinen", "varastointi"]},
       "severity": "major",
       "instruction": "Jos hakemus mainitsee kemikaalien käytön tai varastoinnin, kemikaaliluettelo tulee toimittaa viranomaiselle."
     },
@@ -145,12 +146,14 @@
       "id": "noise_model_conditional",
       "field_id": "noise_vibration",
       "attachment_type": "noise_model",
+      "condition": {"field_id": "environmental_impacts", "contains_any": ["melu", "melua", "meluisa", "ään"]},
       "severity": "minor",
       "instruction": "Jos toiminta aiheuttaa merkittävää melua, melumallinnus tai perustelu sen tarpeettomuudesta tulee liittää."
     },
     {
       "id": "baseline_report_conditional",
       "attachment_type": "baseline_report",
+      "condition": {"field_id": "raw_materials_chemicals", "contains_any": ["vaarallinen", "vaarallisia", "haitallinen"]},
       "severity": "minor",
       "instruction": "Perustilaselvityksen tarve tulee arvioida, jos toiminnassa käytetään vaarallisia aineita."
     },

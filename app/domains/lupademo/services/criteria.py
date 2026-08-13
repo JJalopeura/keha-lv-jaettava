@@ -24,6 +24,7 @@ CRITERIA_FILES = {
 CRITERIA_BY_MUNICIPALITY: dict[str, dict[str, str]] = {
     "building_residential": {
         "vantaa": "vantaa_building_residential_demo_v1.json",
+        "kerava": "kerava_building_residential_demo_v1.json",
     },
     "event_public": {
         "vantaa": "vantaa_event_public_demo_v1.json",
@@ -71,9 +72,12 @@ def create_city_criteria(db: Any, case_id: str, municipality: str, editor: str =
     result: dict[str, Any] = {}
     for permit_type in PERMIT_SCHEMAS:
         name = _criteria_name(permit_type, city)
-        if artifact_json(db, case_id, "criteria_set", name, {}):
+        existing = artifact_json(db, case_id, "criteria_set", name, {})
+        if existing and _normalize_municipality(existing.get("municipality")) == _normalize_municipality(city):
             continue
-        criteria = copy.deepcopy(load_criteria(permit_type))
+        criteria = copy.deepcopy(load_criteria(permit_type, city))
+        if _normalize_municipality(criteria.get("municipality")) != _normalize_municipality(city):
+            criteria["criteria_set_id"] = f"{_normalize_municipality(city)}_{permit_type}_custom"
         criteria["municipality"] = city
         criteria["version"] = f"{city.lower()}-{int(time.time())}"
         criteria["status"] = "active"
@@ -111,10 +115,15 @@ def effective_criteria(db: Any, case_id: str, permit_type: str, municipality: An
     permit_type = application_id_for(permit_type)
     name = _criteria_name(permit_type, municipality)
     art = artifact_json(db, case_id, "criteria_set", name, {})
-    if art:
+    requested_city = _normalize_municipality(municipality)
+    if art and (not requested_city or _normalize_municipality(art.get("municipality")) == requested_city):
         return art
     criteria = load_criteria(permit_type, municipality)
-    save_artifact(db, case_id, "criteria_set", name, criteria)
+    criteria_city = _normalize_municipality(criteria.get("municipality"))
+    if requested_city and criteria_city != requested_city:
+        return criteria
+    if not requested_city or criteria_city == requested_city:
+        save_artifact(db, case_id, "criteria_set", name, criteria)
     return criteria
 
 
@@ -124,7 +133,13 @@ def save_criteria_version(db: Any, case_id: str, permit_type: str, criteria: dic
     current = effective_criteria(db, case_id, permit_type, municipality)
     history = artifact_json(db, case_id, "criteria_history", name, {"versions": []})
     history.setdefault("versions", []).append({"ts": time.time(), "editor": editor, "action": "replaced", "criteria": current})
-    criteria["version"] = str(criteria.get("version") or f"edited-{int(time.time())}")
+    submitted_version = str(criteria.get("version") or "")
+    current_version = str(current.get("version") or "")
+    criteria["version"] = (
+        f"{current_version or 'criteria'}-edited-{time.time_ns()}"
+        if not submitted_version or submitted_version == current_version
+        else submitted_version
+    )
     criteria["status"] = str(criteria.get("status") or "active")
     criteria["source_files"] = criteria.get("source_files") or criteria.get("sources") or []
     criteria["updated_at"] = time.time()
@@ -215,17 +230,17 @@ def upsert_criteria_rule(db: Any, case_id: str, permit_type: str, rule: dict[str
         "id": rule_id,
         "severity": str(rule.get("severity") or "major"),
         "instruction": str(rule.get("instruction") or "").strip(),
+        "field_id": str(rule.get("field_id") or "").strip(),
+        "attachment_type": str(rule.get("attachment_type") or "").strip(),
     }
-    field_id = str(rule.get("field_id") or "").strip()
-    attachment_type = str(rule.get("attachment_type") or "").strip()
-    if field_id:
-        clean_rule["field_id"] = field_id
-    if attachment_type:
-        clean_rule["attachment_type"] = attachment_type
     replaced = False
     for index, existing in enumerate(rules):
         if isinstance(existing, dict) and existing.get("id") == rule_id:
-            rules[index] = {**existing, **clean_rule}
+            merged = {**existing, **clean_rule}
+            for key in ("field_id", "attachment_type"):
+                if not merged.get(key):
+                    merged.pop(key, None)
+            rules[index] = merged
             replaced = True
             break
     if not replaced:

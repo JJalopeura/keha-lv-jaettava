@@ -448,6 +448,13 @@
 <section class="grid two" id="check">
   <div>
     <h2>AI- ja sääntötarkistus</h2>
+    <div class="criteria-context" aria-label="Tarkistuksessa käytetty kriteeristö">
+      <span class="criteria-context-icon" aria-hidden="true">K</span>
+      <div>
+        <strong>{{ criteria_municipality }} · {{ criteria_version }}</strong>
+        <p>AI tarkistaa hakemuksen tämän kohteen kunnan aktiivisia vaatimuksia vasten.</p>
+      </div>
+    </div>
     <div class="issue {% if precheck_gate.can_submit %}minor{% else %}blocking{% endif %}">
       <strong>Tarkistusportti: {% if precheck_gate.can_submit %}lähetys sallittu{% else %}lähetys estetty{% endif %}</strong>
       <p>Blocking-puutteet {{ precheck_gate.blocking_count }} · Tuore tarkistus: {{ "kyllä" if precheck_gate.is_fresh else "ei" }}</p>
