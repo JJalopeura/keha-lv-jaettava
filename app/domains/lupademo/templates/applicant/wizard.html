@@ -13,9 +13,7 @@
 {% set pending_field_suggestion_count = wizard.get('pending_field_suggestion_count', suggestions|selectattr('status', 'equalto', 'pending')|list|length) %}
 <header class="application-header">
   <div>
-    <p class="section-kicker">Hakemusluonnos</p>
     <h1>{{ schema.title }}</h1>
-    <p>{{ project.name }} · {{ wizard.steps[step - 1].label }}</p>
   </div>
   <div class="application-readiness">
     <span class="readiness-dot {% if wizard.blocking_count %}blocked{% elif wizard.missing_required_fields %}attention{% else %}ready{% endif %}"></span>
@@ -641,7 +639,6 @@
   </div>
   <div>
     <h2>Seuraavat näkymät</h2>
-    <a class="button" href="/lv/projects/{{ case_id }}{% if present %}?present=1{% endif %}">Takaisin LV:hen</a>
     <a class="button secondary" href="/authority/queue{% if present %}?present=1{% endif %}">Viranomaisnäkymä</a>
   </div>
 </section>

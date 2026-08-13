@@ -59,6 +59,7 @@
         "environmental_industrial"
       ],
       "tenant_id": "multi",
+      "default_next": "/cases/{case_id}/lupademo/demo-cockpit",
       "proof_points": [
         "API-integraatio",
         "UI-only kevytkäyttö",

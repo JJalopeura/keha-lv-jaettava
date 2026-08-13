@@ -1,0 +1,52 @@
+{% extends "shared/light_base.html" %}
+{% from "shared/_components.html" import page_header, status_summary %}
+{% block title %}{{ scenario.label }}{% endblock %}
+{% block content %}
+{{ page_header(
+  scenario.label,
+  "Käy läpi neljä näyttöä, joilla asiointipalvelun ja AI-ehdotuspalvelun välinen sopimus tulee näkyväksi.",
+  "Demo Lab ja alusta",
+  [{'label': 'Skenaariot', 'href': '/demo/scenarios'}, {'label': scenario.label, 'href': ''}]
+) }}
+
+<div class="status-action-layout">
+  {{ status_summary(
+    "Demo etenee",
+    "Avaa näytöt järjestyksessä ja tarkista jokaisen lopputulos.",
+    "success" if completed_count == proof_cards|length else "neutral",
+    completed_count|string ~ " / " ~ proof_cards|length ~ " näyttöä valmiina"
+  ) }}
+  <div class="demo-cockpit-note">
+    <strong>Roolijako tässä demossa</strong>
+    <p>LV kokoaa lupakokonaisuuden. Asiointipalvelu käyttää tenanttikohtaista AI-ehdotuspalvelua omilla kriteereillään.</p>
+  </div>
+</div>
+
+<section aria-labelledby="proof-heading">
+  <div class="section-heading-line">
+    <div>
+      <p class="section-kicker">Demon tavoite</p>
+      <h2 id="proof-heading">Mitä skenaario osoittaa</h2>
+    </div>
+    <span>{{ scenario.persona }}</span>
+  </div>
+  <div class="demo-proof-grid">
+    {% for card in proof_cards %}
+    <article class="demo-proof-card{% if card.done %} is-complete{% endif %}">
+      <div class="demo-proof-card__topline">
+        <span class="demo-proof-index">{{ "%02d"|format(loop.index) }}</span>
+        <span class="status {{ 'good' if card.done else 'neutral' }}">{{ "Valmis" if card.done else "Aloittamatta" }}</span>
+      </div>
+      <h3>{{ card.label }}</h3>
+      <p>{{ card.description }}</p>
+      <a class="button{% if not card.done %} primary-cta{% endif %}" href="{{ card.href }}">{{ "Avaa uudelleen" if card.done else "Avaa demo" }} <span aria-hidden="true">→</span></a>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<nav class="demo-cockpit-links" aria-label="Demon navigointi">
+  <a class="button secondary" href="/demo/scenarios">Vaihda skenaariota</a>
+  <a class="button secondary" href="/demo-lab">Demo Lab ja alusta</a>
+</nav>
+{% endblock %}

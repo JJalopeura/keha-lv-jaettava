@@ -22,6 +22,57 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
         return ctx.context(case_id, permit_type)
 
+    @router.get("/cases/{case_id}/lupademo/demo-cockpit", response_class=HTMLResponse)
+    def demo_cockpit(request: Request, case_id: str):
+        scenario = svc.artifact_json(db(), case_id, "demo_scenario", "main", {}).get("scenario", {})
+        if scenario.get("id") != "national_suggestion_service":
+            return RedirectResponse(url=f"/lv/projects/{case_id}", status_code=303)
+        api_demo = svc.artifact_json(db(), case_id, "suggestion_service_demo", "api", {})
+        ui_demo = svc.artifact_json(db(), case_id, "suggestion_service_demo", "ui_only", {})
+        request_log = svc.artifact_json(db(), case_id, "suggestion_service_request_log", "main", {"items": []})
+        api_result = api_demo.get("result") or (api_demo.get("response") or {}).get("result") or {}
+        api_done = bool(api_demo.get("response"))
+        ui_done = bool(ui_demo.get("extracted_fields"))
+        tenant_done = api_done and bool(api_result.get("criteria_version"))
+        audit_done = bool(request_log.get("items"))
+        proof_cards = [
+            {
+                "label": "API-integraatio",
+                "description": "Lähetä ulkoisen asiointipalvelun pyyntö ja tarkista rakenteinen vastaus.",
+                "href": f"/cases/{case_id}/lupademo/suggestion-service/api-demo",
+                "done": api_done,
+            },
+            {
+                "label": "UI-only kevytkäyttö",
+                "description": "Liitä aineisto ehdotustyökaluun ja kopioi valitut tiedot omaan järjestelmään.",
+                "href": f"/cases/{case_id}/lupademo/suggestion-service/ui-only",
+                "done": ui_done,
+            },
+            {
+                "label": "Tenant- ja kriteeriversiovalinta",
+                "description": "Vaihda demoasiakasta ja näe, miten tenant määrittää käytettävän kriteeristön.",
+                "href": f"/cases/{case_id}/lupademo/suggestion-service/api-demo#api-request",
+                "done": tenant_done,
+            },
+            {
+                "label": "Request/response audit",
+                "description": "Tarkista palvelupyynnöt, ajotapahtumat ja AI-kutsujen jäljitettävyys.",
+                "href": f"/cases/{case_id}/lupademo/suggestion-service",
+                "done": audit_done,
+            },
+        ]
+        completed_count = sum(1 for card in proof_cards if card["done"])
+        return templates.TemplateResponse(
+            request,
+            "admin/demo_cockpit.html",
+            {
+                **context(case_id),
+                "scenario": scenario,
+                "proof_cards": proof_cards,
+                "completed_count": completed_count,
+            },
+        )
+
     @router.get("/cases/{case_id}/lupademo/suggestion-service/ui-only", response_class=HTMLResponse)
     def ui_only(request: Request, case_id: str):
         return templates.TemplateResponse(

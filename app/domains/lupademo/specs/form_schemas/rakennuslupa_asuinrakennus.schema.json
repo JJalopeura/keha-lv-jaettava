@@ -1,7 +1,7 @@
 {
   "schema_id": "building_residential_v1",
   "permit_type": "building_residential",
-  "title": "Rakennuslupa / asuinrakennusdemo",
+  "title": "Rakennuslupa",
   "authority_default": "Vantaan rakennusvalvonta",
   "tabs": [
     {

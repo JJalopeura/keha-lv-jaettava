@@ -27,14 +27,20 @@
     one specific permit application (wizard + receipt). Everything else in the
     applicant flow is the Customer Workspace (manage projects/applications). #}
     {% set case_workbench = not authority_workspace and not demo_workspace and
-    '/lupademo/application/' in current_path %} {% set workspace_name =
-    'Viranomainen' if authority_workspace else ('Demo Lab ja alusta' if
-    demo_workspace else ('Hakemustyötila' if case_workbench else 'Hakija')) %}
-    {% set workspace_purpose = 'Käsittele hakemuksia ja havaintoja' if
-    authority_workspace else ('Alustan ja demon hallinta' if demo_workspace else
-    ('Täytä tämä lupahakemus' if case_workbench else 'Hallinnoi hankkeita ja
-    hakemuksia')) %} {% set workspace_brand = 'LV' %} {% set workspace_brand_sub
-    = 'Luvat ja valvonta' %} {% set workspace_home = ('/lv/projects/' ~ case_id)
+    '/lupademo/application/' in current_path %}
+    {% set service_names = {
+    'building_residential': 'Rakennusluvan asiointi',
+    'environmental_industrial': 'Ympäristöluvan asiointi',
+    'event_public': 'Tapahtumaluvan asiointi'
+    } %}
+    {% set current_service_name = service_names.get(application.permit_type if application is defined else '', 'Lupa-asiointi') %}
+    {% set workspace_brand = 'LV' %} {% set workspace_brand_sub
+    = 'Luvat ja valvonta' %}
+    {% if case_workbench %}
+    {% set workspace_brand = current_service_name %}
+    {% set workspace_brand_sub = 'LV:n asiointipalvelu' %}
+    {% endif %}
+    {% set workspace_home = ('/lv/projects/' ~ case_id)
     if (case_workbench and case_id is defined) else '/' %}
     <a class="skip-link" href="#main-content">Siirry sisältöön</a>
     <div class="app-shell">
@@ -83,8 +89,7 @@
           <a class="sidebar-link{% if '/admin/criteria' in current_path %} active{% endif %}" href="/admin/criteria" {% if '/admin/criteria' in current_path %}aria-current="page"{% endif %}>Kriteeristöt</a>
           <a class="sidebar-link{% if '/suggestion-service' in current_path or '/integrations/' in current_path %} active{% endif %}" href="/admin/suggestion-service" {% if '/suggestion-service' in current_path or '/integrations/' in current_path %}aria-current="page"{% endif %}>Integraatiot</a>
           {% endif %}
-          {% endif %}
-        </nav>
+            {% endif %}
       </aside>
       <div class="app-stage">
         <header
@@ -95,21 +100,22 @@
             href="{{ workspace_home }}"
             class="app-brand"
           >
+            {% if not case_workbench %}
             <span class="brand-mark" aria-hidden="true">LV</span>
+            {% endif %}
             <span
               ><strong>{{ workspace_brand }}</strong
               ><small>{{ workspace_brand_sub }}</small></span
             >
           </a>
+          {% if authority_workspace or demo_workspace %}
           <div class="workspace-identity" aria-label="Nykyinen työtila">
             <span>Työtila</span>
-            <strong>{{ workspace_name }}</strong>
-            <small>{{ workspace_purpose }}</small>
-            {% if request.query_params.get('present') == '1' %}<small
-              class="presenter-tag"
-              >Esittäjätila</small
-            >{% endif %}
+            <strong>{{ 'Viranomainen' if authority_workspace else 'Demo Lab ja alusta' }}</strong>
+            <small>{{ 'Käsittele hakemuksia ja havaintoja' if authority_workspace else 'Alustan ja demon hallinta' }}</small>
+            {% if request.query_params.get('present') == '1' %}<small class="presenter-tag">Esittäjätila</small>{% endif %}
           </div>
+          {% endif %}
           {% if workspace_options is defined and workspace_options %}
           <form
             class="workspace-picker"
@@ -143,18 +149,11 @@
         {% if case_id is defined %}
         <div
           class="project-context project-context--{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else 'application') }}"
-          aria-label="Avoin hanke"
+          aria-label="{{ 'LV:n lupakokonaisuus' if case_workbench else 'Avoin hanke' }}"
         >
           <div>
-            <span class="context-kicker">Avoin hanke</span>
+            <span class="context-kicker">{{ 'LV:n lupakokonaisuus' if case_workbench else 'Avoin hanke' }}</span>
             <strong>{{ project.name }}</strong>
-          </div>
-          <div class="context-meta">
-            <span
-              >{{ schema.title if schema is defined and schema else 'Lupahanke'
-              }}</span
-            >
-            <span>Yhteiset tiedot v{{ common.version or 1 }}</span>
           </div>
         </div>
         {% endif %}

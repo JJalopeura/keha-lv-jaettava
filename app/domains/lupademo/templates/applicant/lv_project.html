@@ -32,7 +32,7 @@
 {% if sync.changes %}
 {{ recommended_action('Tarkista yhteisten tietojen muutokset', 'Ratkaise hankkeen ja hakemusten väliset muutokset ennen jatkamista.', '#common-data-changes', 'Tarkista muutokset', 'attention') }}
 {% else %}
-{{ recommended_action('Jatka hakemusta', 'Täydennä lupahakemus ja tarkista sen aineisto ennen lähettämistä.', '/cases/' ~ case_id ~ '/lupademo/application/' ~ next_permit ~ '/wizard/1', 'Jatka hakemusta') }}
+{{ recommended_action('Avaa asiointi', 'Avaa valitun luvan asiointipalvelu ja jatka hakemuksen tekemistä.', '/cases/' ~ case_id ~ '/lupademo/application/' ~ next_permit ~ '/wizard/1', 'Avaa asiointi') }}
 {% endif %}
 
 <div class="project-data-details">
@@ -50,16 +50,16 @@
 </div>
 
 <section id="common-data-changes">
-  <h2>Lupahakemukset</h2>
+  <h2>Lupakokonaisuuden asioinnit</h2>
   <div class="cards">
     {% for permit_type in ["building_residential", "environmental_industrial", "event_public"] %}
     <article>
       <h3>{{ permit_labels.get(permit_type, permit_type) }}</h3>
       <p>Tila: <span class="status">{{ statuses.get(project.get("statuses", {}).get(permit_type), project.get("statuses", {}).get(permit_type)) }}</span></p>
       {% if permit_type in project.get("permits", []) %}
-      <a class="button {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Jatka hakemusta</a>
+      <a class="button {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Avaa asiointi</a>
       {% else %}
-      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Aloita hakemus</a>
+      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Avaa asiointi</a>
       {% endif %}
     </article>
     {% endfor %}

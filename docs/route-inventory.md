@@ -130,6 +130,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 
 | Method | Path | Handler | Template |
 |--------|------|---------|----------|
+| GET | `/cases/{case_id}/lupademo/demo-cockpit` | `demo_cockpit` | `admin/demo_cockpit.html` |
 | GET | `/cases/{case_id}/lupademo/suggestion-service/ui-only` | `ui_only` | `admin/ui_only.html` |
 | GET | `/suggestion-service/ui-only` | `ui_only_global` | — (redirect) |
 | POST | `/cases/{case_id}/lupademo/suggestion-service/ui-only` | `ui_only_post` | — (redirect) |
