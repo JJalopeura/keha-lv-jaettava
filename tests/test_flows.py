@@ -537,6 +537,11 @@ class ApplicantJourney(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn(f"Vaihe {step} / 6", response.text)
 
+        step_one = client.get(f"{base}/wizard/1")
+        self.assertIn("Palaa hankkeen tietoihin", step_one.text)
+        self.assertIn("Tarkista Yhteisistä tiedoista tuodut tiedot", step_one.text)
+        self.assertNotIn("Muokkaa yhteisiä tietoja LV:ssä", step_one.text)
+
     def test_applicant_precheck_copy_uses_canonical_terms(self) -> None:
         response = client.get(f"{base}/wizard/4")
 

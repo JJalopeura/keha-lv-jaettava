@@ -6,24 +6,28 @@
 {{ page_header('Uusi hanke', 'Luo uusi hanke ja valitse sille ensimmäinen lupahakemus.', 'Hakijan asiointi', [{'label': 'Etusivu', 'href': '/'}, {'label': 'Uusi hanke', 'href': ''}]) }}
 <form method="post" action="/projects/new" class="setup-layout">
   <input type="hidden" name="start_at" value="wizard">
-  <input type="hidden" name="applicant_name" value="{{ profile.get('applicant_name', customer.display_name if customer is defined and customer else '') }}">
   <section class="form-section" aria-labelledby="project-details">
-    <div class="form-section-heading"><div><h2 id="project-details">Hankkeen lähtötiedot</h2><p>Yrityksen tiedot tulevat Yhteisistä tiedoista. Täydennä tähän vain tätä hanketta koskevat tiedot.</p></div></div>
+    <div class="form-section-heading"><div><h2 id="project-details">Hankkeen lähtötiedot</h2></div></div>
     <div class="field-grid">
       <label class="wide-field">Hankkeen nimi<input name="project_name" value="" placeholder="Esimerkiksi Koivutien pientalo" required></label>
-      <div class="field-readonly wide-field"><span>Yritys</span><strong>{{ profile.get('applicant_name', customer.display_name if customer is defined and customer else '') }}</strong><small>Yhteiset tiedot · <a href="/customer/profile">Muokkaa yrityksen tietoja</a></small></div>
+      <label class="wide-field">Hakija<input name="applicant_name" value="{{ profile.get('applicant_name', customer.display_name if customer is defined and customer else '') }}" autocomplete="organization"></label>
+      <label>Y-tunnus<input name="business_id" value="{{ profile.get('business_id', '') }}" autocomplete="off"></label>
+      <label>Yhteyshenkilö<input name="contact_person" value="{{ profile.get('contact_person', '') }}" autocomplete="name"></label>
+      <label>Puhelin<input name="phone" value="{{ profile.get('phone', '') }}" autocomplete="tel"></label>
+      <label class="wide-field">Sähköposti<input type="email" name="email" value="{{ profile.get('email', '') }}" autocomplete="email"></label>
       <label>Kunta<input name="municipality" value="" autocomplete="address-level2"></label>
-      <label class="wide-field">Hankkeen osoite<input name="address" value="" autocomplete="street-address"></label>
+      <label class="wide-field">Osoite<input name="address" value="" autocomplete="street-address"></label>
+      <label class="wide-field">Kiinteistötunnus<input name="property_id" value="" autocomplete="off"></label>
     </div>
   </section>
   <section class="form-section" aria-labelledby="permit-choice">
-    <div class="form-section-heading"><div><h2 id="permit-choice">Valitse lupatyyppi</h2><p>Valitse lähin vaihtoehto. Lupa-apuri auttaa tarkentamaan tarvetta.</p></div></div>
+    <div class="form-section-heading"><div><h2 id="permit-choice">Valitse lupatyyppi</h2></div></div>
     <div class="choice-list">
       <label class="choice-row"><input type="radio" name="permit_type" value="building_residential" checked><span><strong>Rakennuslupa</strong><small>Asuinrakennus, laajennus tai muu rakennushanke</small></span></label>
       <label class="choice-row"><input type="radio" name="permit_type" value="environmental_industrial"><span><strong>Ympäristölupa</strong><small>Teollinen toiminta tai ympäristövaikutuksia aiheuttava hanke</small></span></label>
       <label class="choice-row"><input type="radio" name="permit_type" value="event_public"><span><strong>Tapahtuman luvat</strong><small>Yleisötapahtuman lupa- ja ilmoitustarpeet</small></span></label>
     </div>
   </section>
-  <div class="form-actions"><p>Seuraavaksi tarkistat hankkeen lähtötiedot ja lisäät aineiston.</p><button class="primary-cta">Luo hanke <span aria-hidden="true">→</span></button></div>
+  <div class="form-actions"><button class="primary-cta">Luo hanke <span aria-hidden="true">→</span></button></div>
 </form>
 {% endblock %}

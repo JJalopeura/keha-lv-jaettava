@@ -1,5 +1,5 @@
 {% extends "shared/light_base.html" %}
-{% block title %}{{ material_package.display_name }} · Aineistotyöpöytä{% endblock %}
+{% block title %}{{ material_package.display_name }} · Hakemuspaketin tarkistus{% endblock %}
 {% block content %}
 {% set field_labels = {} %}
 {% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
@@ -46,11 +46,12 @@
 
 <header class="workbench-header">
   <div>
-    <p class="section-kicker">Aineistotyöpöytä</p>
+    <a class="flow-back-link" href="/">← Omat asiat</a>
+    <p class="section-kicker">Hakemuspaketin tarkistus</p>
     <h1>{{ material_package.display_name }}</h1>
     <p>{% if material_package.status == 'processing' %}{{ attachments|length }} / {{ material_package.get('expected_document_count', attachments|length) }} asiakirjaa käsitelty{% else %}{{ official_attachments|length }} lähetettävää liitettä · {{ context_attachments|length }} tausta-aineistoa · {{ material_intake.get('skipped_count', material_intake.get('skipped', [])|length) }} ohitettua tiedostoa{% endif %}</p>
   </div>
-  <a class="text-link" href="/applicant/packages/new">Tuo toinen paketti</a>
+  <a class="text-link" href="/applicant/packages/new">Tarkista toinen paketti</a>
 </header>
 
 <div class="workbench-layout">
@@ -190,7 +191,7 @@
     </div>
     {% endif %}
     <div class="inspector-note"><strong>Aineistorajat pidetään erillään</strong><p>Hakemusta arvioidaan hakijan aineiston ja voimassa olevan ohje- ja sääntötiedon perusteella.</p></div>
-    <a class="button secondary full-button" href="{% if is_package_review %}/applicant/packages/new{% else %}/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials{% endif %}">{% if is_package_review %}Tarkista toinen paketti{% else %}Muokkaa aineistoa{% endif %}</a>
+    {% if not is_package_review %}<a class="button secondary full-button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa aineistoa</a>{% endif %}
       </div>
     </details>
   </aside>

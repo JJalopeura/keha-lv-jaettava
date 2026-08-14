@@ -27,6 +27,7 @@
 {% set current_step_status = wizard.step_status.get(step, {}) %}
 <header class="application-header">
   <div>
+    <a class="flow-back-link" href="/lv/projects/{{ case_id }}">← Hanke</a>
     <h1>{{ schema.title }}</h1>
   </div>
   <div class="application-readiness">
@@ -75,7 +76,7 @@
     <p class="section-kicker">Vaihe {{ step }} / 6</p>
     <h2>{{ wizard.steps[step - 1].label }}</h2>
     {% if step == 1 %}
-    <p>Tarkista LV:stä tuodut yhteiset tiedot. Kaikki hakemuksen kentät täytetään vaiheessa 3.</p>
+    <p>Tarkista Yhteisistä tiedoista tuodut tiedot. Kaikki hakemuksen kentät täytetään vaiheessa 3.</p>
     {% elif step == 2 %}
     <p>Lisää hakemuksen liitteet ja tausta-aineisto. AI auttaa luokittelemaan dokumentit ja poimimaan niistä tietoja.</p>
     {% elif step == 3 %}
@@ -96,14 +97,14 @@
 {% if step == 1 %}
 <section class="context-section">
   <div>
-    <div class="section-heading-line"><div><p class="section-kicker">Hakemuksen lähtökohta</p><h2>LV-yhteiset tiedot</h2></div><span>LV:stä haettu</span></div>
+    <div class="section-heading-line"><div><p class="section-kicker">Hakemuksen lähtökohta</p><h2>Yhteiset tiedot</h2></div><span>Yhteisistä tiedoista</span></div>
     <dl class="data-list">
       {% for key, value in common.data.items() %}
       <div class="data-row"><dt>{{ common_labels.get(key, field_labels.get(key, "Muu tieto")) }}</dt><dd>{{ value or "-" }}</dd></div>
       {% endfor %}
     </dl>
-    <p class="section-description">Nämä yhteiset tiedot muodostavat hakemuksen lähtökohdan. Täytä varsinainen hakemus aineiston jälkeen.</p>
-    <a class="context-edit-link" href="/lv/projects/{{ case_id }}">Muokkaa yhteisiä tietoja LV:ssä</a>
+    <p class="section-description">Nämä tiedot muodostavat hakemuksen lähtökohdan. Täytä varsinainen hakemus aineiston jälkeen.</p>
+    <a class="context-edit-link" href="/lv/projects/{{ case_id }}">Palaa hankkeen tietoihin</a>
   </div>
 </section>
 {% endif %}

@@ -205,30 +205,35 @@ with a `?t=` cache-buster when all jobs reach a terminal state.
 ## Package workbench → API calls
 
 The package workbench (`/applicant/packages/*`) is a **separate path** from the
-wizard. It starts from an existing customer-owned hanke/application and runs
-the **full** analysis pipeline in sequence. Routes live in
-`routes/applicant.py`.
+wizard. It starts from a permit type, municipality, and raw material, then runs
+a criteria-based review in a standalone package-review session. It does not
+create a hanke or `permit_application` until the user promotes the result.
+Routes live in `routes/applicant.py`.
 
-> **Do not mix-match.** The workbench (Path A, material-first) and the wizard
-> (Path B, form-first) are two distinct entry flows into the same application
-> state. They share `permit_application:<permit_type>` and converge on the
-> wizard, but their routes, templates, and handlers are separate. Keep them
-> independent — do not merge, alias, or cross-wire them. See `AGENTS.md` →
-> "Two entry paths (do NOT mix-match)" for the full comparison.
+> **Do not mix-match.** The workbench (Path A, package review) and the wizard
+> (Path B, form-first) are two distinct entry flows. Path A uses a standalone
+> review scope until promotion; Path B creates the customer-owned hanke and
+> application immediately. Their routes, templates, and handlers are separate.
+> See `AGENTS.md` → "Two entry paths (do NOT mix-match)" for the full comparison.
 
 ### Create + ingest
 
 | Method | Path | Purpose | AI job |
 |--------|------|---------|--------|
 | `GET` | `/applicant/packages/new` | New-package form | — |
-| `POST` | `/applicant/packages/new` | Create a pending package under the selected application, start ingest | `material_ingest` |
+| `POST` | `/applicant/packages/new` | Create a standalone package-review session and pending package, start ingest | `material_ingest` |
 | `GET` | `/applicant/packages/{package_id}` | Render workbench (polls active job) | — |
 
-`POST /applicant/packages/new` validates the signed-in customer's selected
-`case_id` and application, then calls `create_pending_material_package(...)`
-and `start_material_ingest_job` + `execute_material_ingest_job` in the
-background. It never creates a case. This builds the selected case vector store
-and marks the package `ready`.
+`POST /applicant/packages/new` validates the signed-in customer's permit type
+and municipality, creates a `package_reviews` row, and calls
+`create_pending_material_package(...)` plus `start_material_ingest_job` and
+`execute_material_ingest_job` in the background. It never creates a case or
+application. The review uses the municipality's criteria set and marks the
+package `ready`.
+
+`POST /applicant/packages/{package_id}/promote` is the explicit handoff. It
+creates the customer-owned hanke/application, copies review artifacts, moves
+uploaded files, marks the review promoted, and redirects to wizard step 2.
 
 ### Analyze (full pipeline)
 

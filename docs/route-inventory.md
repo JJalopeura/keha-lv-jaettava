@@ -11,11 +11,10 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 ## `routes/applicant.py` — applicant wizard, intake, common data, chat
 
 > **Two entry paths (do NOT mix-match).** Routes under `/applicant/packages/*`
-> belong to **Path A — package workbench** (material-first), but require an
-> existing customer-owned hanke and application. Routes under `/projects/new`
-> → `/cases/{case_id}/lupademo/application/*/wizard/*` belong to **Path B —
-> wizard** (form-first). They share application state but are separate journeys;
-> keep them independent. See `AGENTS.md` → "Two entry paths".
+> belong to **Path A — standalone package review** (permit and municipality
+> first). They do not create a hanke/application until promotion. Routes under
+> `/projects/new` → `/cases/{case_id}/lupademo/application/*/wizard/*` belong
+> to **Path B — wizard** (form-first). See `AGENTS.md` → "Two entry paths".
 
 | Method | Path | Handler | Template | Path |
 |--------|------|---------|----------|------|

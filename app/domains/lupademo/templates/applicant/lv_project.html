@@ -1,5 +1,5 @@
 {% extends "shared/light_base.html" %}
-{% from "shared/_components.html" import page_header, status_summary, recommended_action %}
+{% from "shared/_components.html" import page_header %}
 {% block title %}{{ project.get("name") or "Lupahanke" }}{% endblock %}
 {% block content %}
 {% set present = request.query_params.get('present') == '1' %}
@@ -27,44 +27,48 @@
 } %}
 {% set active_permits = project.get('permits', []) %}
 {% set next_permit = active_permits|first if active_permits else 'building_residential' %}
-{% set customer_profile = customer.profile if customer is defined and customer else {} %}
-{% set hanke_fields = ['project_name', 'municipality', 'address', 'property_id'] %}
+{% set hanke_fields = ['applicant_name', 'business_id', 'contact_person', 'phone', 'email', 'municipality', 'address', 'property_id', 'project_name'] %}
 {{ page_header(project.get("name") or "Lupahanke", (project.get("scenario_label") or "Lupahanke") ~ ' · ' ~ (project.get("location") or common.data.get("municipality") or "Kunta ei tiedossa"), 'Projektin tilanne') }}
-{{ status_summary('Projektin tilanne', (project.get('permits', [])|length|string) ~ ' lupahakemusta ja ' ~ (sync.changes|length|string) ~ ' hankkeen ja hakemusten tietojen muutosta tarkistettavana.', 'attention' if sync.changes else 'ready') }}
-{% if sync.changes %}
-{{ recommended_action('Tarkista yhteisten tietojen muutokset', 'Ratkaise hankkeen ja hakemusten väliset muutokset ennen jatkamista.', '#common-data-changes', 'Tarkista muutokset', 'attention') }}
-{% else %}
-{{ recommended_action('Avaa asiointi', 'Avaa valitun luvan asiointipalvelu ja jatka hakemuksen tekemistä.', '/cases/' ~ case_id ~ '/lupademo/application/' ~ next_permit ~ '/wizard/1', 'Avaa asiointi') }}
-{% endif %}
-
-<div class="project-data-details">
-  <h2>Hankkeen tiedot</h2>
-  <div class="profile-context">
-    <div><span class="section-kicker">Yrityksen lähtötiedot</span><strong>{{ common.data.get('applicant_name') or customer_profile.get('applicant_name', 'Yritys') }}</strong><p>{{ common.data.get('business_id') or customer_profile.get('business_id', '') }} · {{ common.data.get('contact_person') or customer_profile.get('contact_person', '') }}</p></div>
-    <a class="text-link" href="/customer/profile">Muokkaa Yhteisiä tietoja</a>
+<section class="hanke-status-bar" aria-labelledby="project-status-heading">
+  <div>
+    <p class="section-kicker">Projektin tilanne</p>
+    <h2 id="project-status-heading">{{ 'Muutoksia tarkistettavana' if sync.changes else 'Valmis jatkamaan' }}</h2>
+    <p class="hanke-status-meta">{{ project.get('permits', [])|length }} lupahakemus{% if project.get('permits', [])|length != 1 %}ta{% endif %} · {{ sync.changes|length }} muutosta</p>
   </div>
-  <div class="project-data-details__content">
-    <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="form-grid">
+  {% if sync.changes %}
+  <a class="button" href="#common-data-changes">Tarkista muutokset</a>
+  {% else %}
+  <a class="button" href="/cases/{{ case_id }}/lupademo/application/{{ next_permit }}/wizard/1">Avaa asiointi</a>
+  {% endif %}
+</section>
+
+<section class="hanke-data-section" aria-labelledby="hanke-data-heading">
+  <div class="hanke-section-heading">
+    <h2 id="hanke-data-heading">Hankkeen tiedot</h2>
+    <a class="hanke-profile-link" href="/customer/profile">Yhteiset tiedot</a>
+  </div>
+  <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="hanke-form-grid">
       {% for key in hanke_fields %}
       {% set value = common.data.get(key, '') %}
-      <label>{{ labels.get(key, key) }}
+      <label class="{% if key in ['applicant_name', 'email', 'address', 'project_name'] %}hanke-field-wide{% endif %}">{{ labels.get(key, key) }}
         <input name="{{ key }}" value="{{ value }}">
       </label>
       {% endfor %}
-      <button>Tallenna hankkeen tiedot</button>
-    </form>
-  </div>
-</div>
+    <div class="hanke-form-actions"><button class="button secondary">Tallenna hankkeen tiedot</button></div>
+  </form>
+</section>
 
-<section id="common-data-changes">
-  <h2>Lupakokonaisuuden asioinnit</h2>
-  <div class="cards">
+<section class="hanke-applications" id="common-data-changes">
+  <div class="hanke-section-heading">
+    <h2>Hakemukset</h2>
+    <span class="hanke-section-count">{{ project.get('permits', [])|length }} hakemus{% if project.get('permits', [])|length != 1 %}ta{% endif %}</span>
+  </div>
+  <div class="hanke-application-list">
     {% for permit_type in ["building_residential", "environmental_industrial", "event_public"] %}
-    <article>
-      <h3>{{ permit_labels.get(permit_type, permit_type) }}</h3>
-      <p>Tila: <span class="status">{{ statuses.get(project.get("statuses", {}).get(permit_type), project.get("statuses", {}).get(permit_type)) }}</span></p>
+    <article class="hanke-application-row">
+      <div><h3>{{ permit_labels.get(permit_type, permit_type) }}</h3><p class="hanke-application-status">{{ statuses.get(project.get("statuses", {}).get(permit_type), project.get("statuses", {}).get(permit_type)) }}</p></div>
       {% if permit_type in project.get('permits', []) %}
-      <a class="button {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Avaa asiointi</a>
+      <a class="button secondary {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Avaa asiointi</a>
       {% else %}
       <form method="post" action="/projects/{{ case_id }}/applications">
         <input type="hidden" name="permit_type" value="{{ permit_type }}">
@@ -76,7 +80,7 @@
   </div>
 </section>
 
-<section>
+<section class="hanke-changes-section">
   <h2>Hankkeen ja hakemusten muutokset</h2>
     {% if sync.changes %}
       {% for change in sync.changes %}

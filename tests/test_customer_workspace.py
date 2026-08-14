@@ -76,7 +76,10 @@ class CustomerWorkspace(unittest.TestCase):
         review_id = find_material_package(db, package_id)["case_id"]
         self.assertIsNone(db.get_case(review_id))
         self.assertIsNone(db.get_artifact(review_id, "permit_application", "environmental_industrial"))
-        self.assertEqual(client.get(response.headers["location"]).status_code, 200)
+        workbench = client.get(response.headers["location"])
+        self.assertEqual(workbench.status_code, 200)
+        self.assertNotIn("Jatka nykyistä hakemusta", workbench.text)
+        self.assertNotIn("Avoin hanke", workbench.text)
         self.assertEqual(client.post(f"/applicant/packages/{package_id}/analyze").status_code, 303)
         self.assertIn("Aloita uusi hanke tarkastuksen pohjalta", client.get(response.headers["location"]).text)
         promoted = client.post(f"/applicant/packages/{package_id}/promote")
@@ -101,6 +104,53 @@ class CustomerWorkspace(unittest.TestCase):
         self.assertEqual(common["applicant_name"], "Sharpcell")
         self.assertEqual(common["municipality"], "")
         self.assertEqual(common["address"], "")
+
+    def test_new_hanke_prefills_editable_applicant(self) -> None:
+        client.post("/login", data={"customer_id": "ren-gas"})
+        form = client.get("/projects/new")
+        for field_name in (
+            "applicant_name",
+            "business_id",
+            "contact_person",
+            "phone",
+            "email",
+            "municipality",
+            "address",
+            "property_id",
+            "project_name",
+        ):
+            self.assertIn(f'name="{field_name}"', form.text)
+        for value in ("Ren-Gas Oy", "0000000-2", "Mikko Mäki", "+358 40 000 2002", "mikko.maki@ren-gas.example"):
+            self.assertIn(f'value="{value}"', form.text)
+        self.assertNotIn('type="hidden" name="applicant_name"', form.text)
+        self.assertNotIn(">Yritys</span>", form.text)
+
+        response = client.post(
+            "/projects/new",
+            data={
+                "project_name": "Muokattu hakija hanke",
+                "permit_type": "building_residential",
+                "applicant_name": "Muokattu hakija Oy",
+                "business_id": "9999999-9",
+                "contact_person": "Uusi yhteyshenkilö",
+                "phone": "+358 50 123 4567",
+                "email": "uusi@example.fi",
+                "municipality": "Kerava",
+                "address": "Uusi osoite 1",
+                "property_id": "123-456-7-89",
+                "start_at": "lv_project",
+            },
+        )
+        case_id = response.headers["location"].rsplit("/", 1)[-1]
+        common = artifact_json(db, case_id, "lv_common_data", "main", {})["data"]
+        self.assertEqual(common["applicant_name"], "Muokattu hakija Oy")
+        self.assertEqual(common["business_id"], "9999999-9")
+        self.assertEqual(common["contact_person"], "Uusi yhteyshenkilö")
+        self.assertEqual(common["phone"], "+358 50 123 4567")
+        self.assertEqual(common["email"], "uusi@example.fi")
+        self.assertEqual(common["municipality"], "Kerava")
+        self.assertEqual(common["address"], "Uusi osoite 1")
+        self.assertEqual(common["property_id"], "123-456-7-89")
 
 
 if __name__ == "__main__":

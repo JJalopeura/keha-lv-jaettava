@@ -124,27 +124,27 @@ keyed `permit_application:<permit_type>` with `form_data`, `field_sources`, and
 
 ### Two entry paths (do NOT mix-match)
 
-There are **two distinct ways to fill in an application**. They share the same
-underlying application state (`permit_application:<permit_type>`) and both
-converge on the wizard, but they are separate user journeys with separate
-routes, templates, and handlers. Keep them independent — do not merge, alias,
-or cross-wire them.
+There are **two distinct ways to work with an application**. The standalone
+package review is not an application or hanke until the user explicitly
+promotes it. The form-first journey creates the hanke and application first.
+Keep them independent — do not merge, alias, or cross-wire them.
 
 | | **A. Package workbench** (material-first) | **B. Wizard** (form-first) |
 |---|---|---|
 | Entry URL | `/applicant/packages/new` | `/projects/new` (with `start_at=wizard`) |
 | Template | `applicant/package_new.html` → `applicant/package_workbench.html` | `applicant/applicant_start.html` → `applicant/wizard.html` |
 | POST handler | `applicant_package_create` | `create_project` |
-| Starts with | Existing hanke/application + raw material | New hanke basics + permit type |
+| Starts with | Permit type + municipality + raw material | New hanke basics + permit type |
 | First step | AI ingest & analysis | Wizard step 1 (common data) |
 | Landing | `/applicant/packages/{package_id}` | `/cases/{case_id}/lupademo/application/{application_id}/wizard/1` |
-| Nav label | "Tarkista aineisto" | "Uusi hakemus" |
+| Promotion | `Aloita uusi hanke tarkastuksen pohjalta` | — |
+| Nav label | `Tarkista uusi hakemuspaketti` | `Uusi hanke` |
 
 - **Path A** (`/applicant/packages/*`) is the **package workbench** — choose an
-  existing customer-owned hanke/application, upload raw material, let AI
-  ingest/analyze it, then review the extraction queue and findings. It never
-  creates an unrelated case. Routes live in `routes/applicant.py` under the
-  `applicant_package_*` handlers.
+  permit type and municipality, upload raw material, and let AI run a
+  criteria-based review. It stores a standalone `package_reviews` session and
+  does not create a hanke or `permit_application` until promotion. Routes live
+  in `routes/applicant.py` under the `applicant_package_*` handlers.
 - **Path B** (`/projects/new` → wizard) is the **6-step wizard** — fill the form
   first, add materials in step 2. Routes live in `routes/applicant.py` under the
   `create_project` / `application_wizard` handlers.
@@ -224,6 +224,7 @@ Separate UI at `/cases/{case_id}/lupademo/authority/`:
 
 - Single SQLite file at `data/keha_lv.db`
 - Tables: `customers`, `cases`, `files`, `artifacts`, `app_settings`, `llm_overrides`, `ai_logs`
+- `package_reviews` stores standalone package-review sessions before promotion.
 - `cases.customer_id` is the customer-workspace ownership key. API `tenant_id`
   remains a separate external suggestion-service concept.
 - `artifacts` is the main document store: `id = case_id:type:name`, JSON in `data_json`

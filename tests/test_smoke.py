@@ -1139,13 +1139,13 @@ class Pages(unittest.TestCase):
         package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
         workbench = client.get(f"/applicant/packages/{package_id}")
         self.assertEqual(workbench.status_code, 200)
-        self.assertIn("Aineistotyöpöytä", workbench.text)
+        self.assertIn("Hakemuspaketin tarkistus", workbench.text)
         self.assertNotIn("Vaihe 2 / 6", workbench.text)
 
         wizard = client.get(f"{base}/wizard/2")
         self.assertEqual(wizard.status_code, 200)
         self.assertIn("Vaihe 2 / 6", wizard.text)
-        self.assertNotIn("Aineistotyöpöytä", wizard.text)
+        self.assertNotIn("Hakemuspaketin tarkistus", wizard.text)
 
     def test_package_workbench_renders_pending_extraction_without_accepted_value(self) -> None:
         package_id = svc.current_material_package(db, case, PERMIT)["package_id"]

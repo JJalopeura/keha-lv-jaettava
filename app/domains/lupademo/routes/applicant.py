@@ -453,9 +453,14 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         request: Request,
         project_name: str = Form("Uusi lupahanke"),
         permit_type: str = Form("building_residential"),
-        applicant_name: str = Form(""),
-        municipality: str = Form(""),
-        address: str = Form(""),
+        applicant_name: Optional[str] = Form(None),
+        business_id: Optional[str] = Form(None),
+        contact_person: Optional[str] = Form(None),
+        phone: Optional[str] = Form(None),
+        email: Optional[str] = Form(None),
+        municipality: Optional[str] = Form(None),
+        address: Optional[str] = Form(None),
+        property_id: Optional[str] = Form(None),
         tenant_id: str = Form(""),
         applicant_role: str = Form("company"),
         start_at: str = Form("lv_project"),
@@ -463,16 +468,30 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         customer = current_customer(request)
         if not customer:
             return RedirectResponse(url="/login", status_code=303)
+        project_profile = dict(customer.get("profile") or {})
+        submitted_profile = {
+            "applicant_name": applicant_name,
+            "business_id": business_id,
+            "contact_person": contact_person,
+            "phone": phone,
+            "email": email,
+            "municipality": municipality,
+            "address": address,
+            "property_id": property_id,
+        }
+        project_profile.update(
+            {key: str(value).strip() for key, value in submitted_profile.items() if value is not None}
+        )
         started = scenarios.create_generic_project(
             db(),
             project_name=project_name,
             permit_type=permit_type,
-            applicant_name=applicant_name,
-            municipality=municipality,
-            address=address,
+            applicant_name=str(applicant_name or "").strip(),
+            municipality=str(municipality or "").strip(),
+            address=str(address or "").strip(),
             tenant_id=tenant_id,
             customer_id=customer["id"],
-            customer_profile=customer["profile"],
+            customer_profile=project_profile,
             applicant_role=applicant_role,
             created_from="lv",
         )

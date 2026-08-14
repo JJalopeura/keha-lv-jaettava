@@ -26,6 +26,8 @@
     current_path.startswith('/integrations/') %} {# Case Workbench = completing
     one specific permit application (wizard + receipt). Everything else in the
     applicant flow is the Customer Workspace (manage projects/applications). #}
+    {% set package_review = is_package_review is defined and is_package_review %}
+    {% set case_context = case_id is defined and not package_review %}
     {% set case_workbench = not authority_workspace and not demo_workspace and
     '/lupademo/application/' in current_path %}
     {% set hide_brand_mark = case_workbench or current_path.startswith('/lv/projects/') %}
@@ -62,7 +64,7 @@
               <a class="sidebar-link{% if current_path == '/' %} active{% endif %}" href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Omat asiat</a>
               <a class="sidebar-link{% if current_path == '/projects/new' %} active{% endif %}" href="/projects/new" {% if current_path == '/projects/new' %}aria-current="page"{% endif %}>Uusi hanke</a>
               <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Tarkista uusi hakemuspaketti</a>
-              {% if case_id is defined %}
+              {% if case_context %}
               {% set sidebar_permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
               {% set sidebar_statuses = {'draft': 'Luonnos', 'not_started': 'Ei aloitettu', 'submitted': 'Lähetetty', 'application_draft': 'Luonnos'} %}
               {% set sidebar_permits = project.get('permits', []) %}
@@ -72,7 +74,7 @@
               {% endif %}
               <a class="sidebar-link{% if current_path.startswith('/lv/projects/') %} active{% endif %}" href="/lv/projects/{{ case_id }}" {% if current_path.startswith('/lv/projects/') %}aria-current="page"{% endif %}>Hanke</a>
               {% if sidebar_permits %}
-              <span class="sidebar-subheading">Lupakokonaisuuden asioinnit</span>
+              <span class="sidebar-subheading">Hakemukset</span>
               <div class="sidebar-applications">
                 {% for permit_type in sidebar_permits %}
                 <a class="sidebar-application-link{% if application is defined and application.application_id == permit_type %} active{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}">
@@ -155,13 +157,13 @@
           </form>
           {% endif %}
         </header>
-        {% if case_id is defined %}
+        {% if case_context %}
         <div
           class="project-context project-context--{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else 'application') }}"
-          aria-label="{{ 'LV:n lupakokonaisuus' if case_workbench else 'Avoin hanke' }}"
+          aria-label="{{ 'Hanke' if case_workbench else 'Avoin hanke' }}"
         >
           <div>
-            <span class="context-kicker">{{ 'LV:n lupakokonaisuus' if case_workbench else 'Avoin hanke' }}</span>
+            <span class="context-kicker">{{ 'Hanke' if case_workbench else 'Avoin hanke' }}</span>
             <strong>{{ project.name }}</strong>
           </div>
         </div>
