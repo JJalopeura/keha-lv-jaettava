@@ -854,6 +854,18 @@ def find_material_package(db: Any, package_id: str) -> dict[str, Any]:
             package = artifact_json(db, case_id, "material_package", permit_type, {})
             if isinstance(package, dict) and package.get("package_id") == package_id:
                 return {"case_id": case_id, "permit_type": permit_type, "package": package}
+    for review in db.list_package_reviews():
+        review_id = str(review.get("id") or "")
+        for permit_type in PERMIT_SCHEMAS:
+            package = artifact_json(db, review_id, "material_package", permit_type, {})
+            if isinstance(package, dict) and package.get("package_id") == package_id:
+                return {
+                    "case_id": review_id,
+                    "permit_type": permit_type,
+                    "package": package,
+                    "customer_id": str(review.get("customer_id") or ""),
+                    "review": review,
+                }
     raise KeyError(package_id)
 
 

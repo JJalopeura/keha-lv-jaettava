@@ -86,7 +86,18 @@ rules/                        ast-grep rules for pi-lens diagnostics
 
 ### Cases
 
-A case (`case_id`, UUID) is the top-level container — an "LV project." Everything lives under a case.
+A customer owns many cases (`case_id`, UUID), which are the durable LV projects or
+"hankkeet." Every customer-facing case has a `customer_id` owner.
+
+### Customers
+
+The mock applicant login selects one of three demo customers: P2X, Ren-Gas Oy,
+or Sharpcell. The signed browser session contains the selected `customer_id`.
+There is no customer switcher. Logout clears the session, and logging in again
+restores the selected customer's persisted hankkeet, applications, and packages.
+
+Customer profile data is reusable input for new hankkeet. Each hanke keeps its
+own `lv_common_data` snapshot so later profile edits do not rewrite old work.
 
 ### Permit types
 
@@ -98,7 +109,9 @@ Three demo permit types (`PERMIT_SCHEMAS`), each with a JSON form schema + crite
 
 ### Applications
 
-A case can hold multiple applications (one per permit type). Each is an artifact keyed `permit_application:<permit_type>` with `form_data`, `field_sources`, `status`.
+A hanke can hold multiple applications (one per permit type). Each is an artifact
+keyed `permit_application:<permit_type>` with `form_data`, `field_sources`, and
+`status`. Material packages and attachments belong to the selected application.
 
 ### Wizard (6 steps)
 
@@ -122,15 +135,16 @@ or cross-wire them.
 | Entry URL | `/applicant/packages/new` | `/projects/new` (with `start_at=wizard`) |
 | Template | `applicant/package_new.html` → `applicant/package_workbench.html` | `applicant/applicant_start.html` → `applicant/wizard.html` |
 | POST handler | `applicant_package_create` | `create_project` |
-| Starts with | Raw material (files / zip / text) | Project basics + permit type |
+| Starts with | Existing hanke/application + raw material | New hanke basics + permit type |
 | First step | AI ingest & analysis | Wizard step 1 (common data) |
 | Landing | `/applicant/packages/{package_id}` | `/cases/{case_id}/lupademo/application/{application_id}/wizard/1` |
 | Nav label | "Tarkista aineisto" | "Uusi hakemus" |
 
-- **Path A** (`/applicant/packages/*`) is the **package workbench** — upload raw
-  material first, AI ingests/analyzes it, then review the extraction queue and
-  findings. Routes live in `routes/applicant.py` under the `applicant_package_*`
-  handlers.
+- **Path A** (`/applicant/packages/*`) is the **package workbench** — choose an
+  existing customer-owned hanke/application, upload raw material, let AI
+  ingest/analyze it, then review the extraction queue and findings. It never
+  creates an unrelated case. Routes live in `routes/applicant.py` under the
+  `applicant_package_*` handlers.
 - **Path B** (`/projects/new` → wizard) is the **6-step wizard** — fill the form
   first, add materials in step 2. Routes live in `routes/applicant.py` under the
   `create_project` / `application_wizard` handlers.
@@ -209,9 +223,12 @@ Separate UI at `/cases/{case_id}/lupademo/authority/`:
 ## How the DB works
 
 - Single SQLite file at `data/keha_lv.db`
-- Tables: `cases`, `files`, `artifacts`, `app_settings`, `llm_overrides`, `ai_logs`
+- Tables: `customers`, `cases`, `files`, `artifacts`, `app_settings`, `llm_overrides`, `ai_logs`
+- `cases.customer_id` is the customer-workspace ownership key. API `tenant_id`
+  remains a separate external suggestion-service concept.
 - `artifacts` is the main document store: `id = case_id:type:name`, JSON in `data_json`
-- `app_settings` is a key-value store (used for active case/scenario tracking)
+- `app_settings` remains for demo/API scenario state; applicant customer identity
+  lives in the signed browser session, not in a global setting.
 - No migrations — schema created on first `DB.__init__`
 
 ## How the mock LLM works

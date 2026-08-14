@@ -117,9 +117,13 @@ def seed_scenario_attachments(db: Any, case_id: str, scenario: dict[str, Any]) -
     )
 
 
-def create_case_from_scenario(db: Any, scenario_id: str) -> dict[str, Any]:
+def create_case_from_scenario(db: Any, scenario_id: str, *, customer_id: str = "") -> dict[str, Any]:
     scenario = get_scenario(scenario_id)
-    case_id = db.create_case(f"Lupademo: {scenario.get('label', scenario_id)}", language="fi")
+    case_id = db.create_case(
+        f"Lupademo: {scenario.get('label', scenario_id)}",
+        language="fi",
+        customer_id=customer_id,
+    )
     db.set_case_status(case_id, "application_draft")
     common = scenario_common_data(scenario)
     svc.save_artifact(db, case_id, "lv_common_data", "main", {"data": common, "version": 1})
@@ -131,6 +135,7 @@ def create_case_from_scenario(db: Any, scenario_id: str) -> dict[str, Any]:
     now = time.time()
     project = {
         "project_id": f"lv-demo-{case_id[:8]}",
+        "customer_id": customer_id,
         "name": common["project_name"],
         "created_from": "lv",
         "applicant_role": "company",
@@ -178,6 +183,8 @@ def create_generic_project(
     municipality: str = "",
     address: str = "",
     tenant_id: str = "",
+    customer_id: str = "",
+    customer_profile: dict[str, str] | None = None,
     applicant_role: str = "company",
     created_from: str = "direct_demo",
 ) -> dict[str, Any]:
@@ -200,9 +207,11 @@ def create_generic_project(
         _real_llm = str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
     common = (
         {key: "" for key in svc.DEFAULT_COMMON_DATA}
-        if created_from == "package_workbench" or _real_llm
+        if created_from in {"package_workbench", "lv"} or _real_llm
         else dict(svc.DEFAULT_COMMON_DATA)
     )
+    if customer_profile:
+        common.update({key: value for key, value in customer_profile.items() if key in common})
     if project_name:
         common["project_name"] = project_name
     if applicant_name:
@@ -211,7 +220,11 @@ def create_generic_project(
         common["municipality"] = municipality
     if address:
         common["address"] = address
-    case_id = db.create_case(f"Lupademo: {common['project_name']}", language="fi")
+    case_id = db.create_case(
+        f"Lupademo: {common['project_name']}",
+        language="fi",
+        customer_id=customer_id,
+    )
     db.set_case_status(case_id, "application_draft")
     svc.save_artifact(db, case_id, "lv_common_data", "main", {"data": common, "version": 1})
     svc.save_artifact(db, case_id, "common_data_sync_state", "main", {"base": common.copy(), "changes": []})
@@ -219,6 +232,7 @@ def create_generic_project(
     now = time.time()
     project = {
         "project_id": f"lv-generic-{case_id[:8]}",
+        "customer_id": customer_id,
         "name": common["project_name"],
         "created_from": created_from,
         "applicant_role": applicant_role,

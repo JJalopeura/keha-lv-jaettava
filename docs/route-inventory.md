@@ -11,15 +11,18 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 ## `routes/applicant.py` — applicant wizard, intake, common data, chat
 
 > **Two entry paths (do NOT mix-match).** Routes under `/applicant/packages/*`
-> belong to **Path A — package workbench** (material-first). Routes under
-> `/projects/new` → `/cases/{case_id}/lupademo/application/*/wizard/*` belong to
-> **Path B — wizard** (form-first). They share application state but are separate
-> journeys; keep them independent. See `AGENTS.md` → "Two entry paths".
+> belong to **Path A — package workbench** (material-first), but require an
+> existing customer-owned hanke and application. Routes under `/projects/new`
+> → `/cases/{case_id}/lupademo/application/*/wizard/*` belong to **Path B —
+> wizard** (form-first). They share application state but are separate journeys;
+> keep them independent. See `AGENTS.md` → "Two entry paths".
 
 | Method | Path | Handler | Template | Path |
 |--------|------|---------|----------|------|
+| GET | `/login` | `login` | `applicant/login.html` | — |
+| POST | `/login` | `login_post` | — (redirect) | — |
+| POST | `/logout` | `logout` | — (redirect) | — |
 | GET | `/` | `landing` | `applicant/landing.html` | — |
-| POST | `/workspace/select` | `workspace_select` | — (redirect) | — |
 | GET | `/demo/scenarios` | `scenario_list` | `admin/scenarios.html` | — |
 | GET | `/demo-lab/presenter` | `presenter_lab` | `admin/presenter.html` | — |
 | GET | `/applicant` | `applicant_start` | `applicant/applicant_start.html` | — |
@@ -27,11 +30,13 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | POST | `/applicant/packages/new` | `applicant_package_create` | — (redirect) | **A** |
 | GET | `/applicant/packages/{package_id}` | `applicant_package_workbench` | `applicant/package_workbench.html` | **A** |
 | POST | `/applicant/packages/{package_id}/analyze` | `applicant_package_analyze` | — (redirect) | **A** |
+| POST | `/applicant/packages/{package_id}/promote` | `promote_package_review` | — (redirect) | **A** |
 | GET | `/projects/new` | `project_new` | `applicant/applicant_start.html` | **B** |
 | POST | `/demo/scenarios/start` | `scenario_start` | — (redirect) | — |
 | POST | `/demo/reset` | `demo_reset` | — (redirect) | — |
 | POST | `/projects/new` | `create_project` | — (redirect) | **B** |
 | GET | `/projects/{project_id}` | `project_workspace` | `applicant/lv_project.html` | **B** |
+| POST | `/projects/{project_id}/applications` | `create_application` | — (redirect) | **B** |
 | GET | `/projects/{project_id}/intake` | `project_intake` | — (redirect) | **B** |
 | POST | `/projects/{project_id}/intake` | `project_intake_post` | — (redirect) | **B** |
 | GET | `/projects/{project_id}/intake/{run_id}` | `project_intake_result` | — (redirect) | **B** |
@@ -39,6 +44,8 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | GET | `/demo/presenter` | `presenter` | — (redirect) | — |
 | GET | `/lv` | `lv` | — (redirect) | — |
 | GET | `/lv/projects/{case_id}` | `lv_project` | `applicant/lv_project.html` | — |
+| GET | `/customer/profile` | `customer_profile` | `applicant/customer_profile.html` | — |
+| POST | `/customer/profile` | `update_customer_profile` | — (redirect) | — |
 | POST | `/lv/projects/{case_id}/common-data` | `update_lv` | — (redirect) | — |
 | POST | `/lv/projects/{case_id}/sync` | `accept_sync` | — (redirect) | — |
 | GET | `/api/lv/projects/{case_id}/common-data` | `common_data` | JSON | — |

@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import app.domains.lupademo.services as svc  # noqa: E402
 from app.domains.lupademo.routes import create_lupademo_router  # noqa: E402
+from app.infra.session import DemoSessionMiddleware  # noqa: E402
 from app.infra.config import load_settings  # noqa: E402
 from app.infra.db import DB  # noqa: E402
 
@@ -42,6 +43,12 @@ Path(_flow_settings.uploads_dir).mkdir(parents=True, exist_ok=True)
 
 _flow_db = DB(_flow_settings.db_path)
 app = FastAPI(title="KEHA LV AI-demo (flow tests)")
+app.add_middleware(
+    DemoSessionMiddleware,
+    secret_key=_flow_settings.session_secret,
+    session_cookie="lv_session",
+    same_site="lax",
+)
 app.mount(
     "/static",
     StaticFiles(directory=str(Path(__file__).resolve().parents[1] / "app" / "domains" / "lupademo" / "static")),
@@ -69,6 +76,9 @@ def setUpModule() -> None:
 
 class ApplicantJourney(unittest.TestCase):
     """Full applicant path: common data -> materials -> check -> submit -> receipt."""
+
+    def setUp(self) -> None:
+        client.post("/logout")
 
     def test_building_check_uses_target_municipality_criteria(self) -> None:
         """A municipality-specific rule changes the deterministic check result."""
@@ -456,16 +466,19 @@ class ApplicantJourney(unittest.TestCase):
         Guard against mix-match: the two entry routes render different templates
         and must not be conflated. See AGENTS.md -> 'Two entry paths'.
         """
+        login = client.post("/login", data={"customer_id": "p2x"})
+        self.assertEqual(login.status_code, 303)
+
         # Path A: material-first package workbench entry
         workbench_entry = client.get("/applicant/packages/new")
         self.assertEqual(workbench_entry.status_code, 200)
-        self.assertIn("Lataa valmis hakemuspaketti AI-tarkistukseen", workbench_entry.text)
+        self.assertIn("Tarkista uusi hakemuspaketti", workbench_entry.text)
         self.assertNotIn("Hankkeen perustiedot", workbench_entry.text)
 
         # Path B: form-first wizard entry
         wizard_entry = client.get("/projects/new")
         self.assertEqual(wizard_entry.status_code, 200)
-        self.assertIn("Hankkeen perustiedot", wizard_entry.text)
+        self.assertIn("Hankkeen lähtötiedot", wizard_entry.text)
         self.assertNotIn("Lataa valmis hakemuspaketti AI-tarkistukseen", wizard_entry.text)
 
     def test_step1_saves_common_data_and_redirects(self) -> None:

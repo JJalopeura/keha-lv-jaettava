@@ -8,21 +8,74 @@ import uuid
 import zipfile
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
 from .. import scenarios, security, services as svc
-from .common import RouteContext, context_app_with_material, job_eta_seconds
+from ..services import customer_workspace as customer_ws
+from .common import RouteContext, ai_mode_status, context_app_with_material, job_eta_seconds
 from app.infra.llm_factory import create_llm_client
 
 logger = logging.getLogger(__name__)
 
 def create_applicant_router(ctx: RouteContext) -> APIRouter:
-    router = APIRouter()
     templates = ctx.templates
     db = ctx.db
     settings = ctx.settings
+
+    def current_customer_id(request: Request) -> str:
+        return str(request.scope.get("session", {}).get("customer_id") or "")
+
+    def current_customer(request: Request) -> dict[str, Any] | None:
+        customer_id = current_customer_id(request)
+        return db().get_customer(customer_id) if customer_id else None
+
+    def customer_guard(request: Request) -> None:
+        path = request.url.path
+        public_paths = {"/", "/login", "/logout"}
+        public_prefixes = (
+            "/api/",
+            "/authority",
+            "/admin",
+            "/demo",
+        )
+        if path in public_paths or path.startswith(public_prefixes) or "/authority/" in path or "/admin/" in path:
+            return
+
+        customer_id = current_customer_id(request)
+        case_id = str(request.path_params.get("case_id") or request.path_params.get("project_id") or "")
+        package_id = str(request.path_params.get("package_id") or "")
+        if package_id and not case_id:
+            try:
+                found_package = customer_ws.find_package_case(db(), package_id)
+                package_owner = str(
+                    found_package.get("customer_id")
+                    or (found_package.get("review") or {}).get("customer_id")
+                    or ""
+                )
+                if package_owner:
+                    if package_owner != customer_id:
+                        raise HTTPException(status_code=403, detail="customer_package_forbidden")
+                    return
+                case_id = str(found_package["case_id"])
+            except KeyError:
+                return
+        if case_id:
+            case = db().get_case(case_id)
+            review = db().get_package_review(case_id)
+            owner_id = str((case or {}).get("customer_id") or (review or {}).get("customer_id") or "")
+            if owner_id:
+                if owner_id != customer_id:
+                    raise HTTPException(status_code=403, detail="customer_case_forbidden")
+                return
+            if not customer_id:
+                return
+            raise HTTPException(status_code=403, detail="unowned_case_forbidden")
+        if not customer_id:
+            raise HTTPException(status_code=303, headers={"Location": "/login"})
+
+    router = APIRouter(dependencies=[Depends(customer_guard)])
 
     def ai_execution_label(case_id: str) -> str:
         configured = settings()
@@ -44,73 +97,39 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                 pass
         return f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2{fragment}"
 
-    def workspace_options() -> list[dict[str, str]]:
-        options = []
-        active_case_id = scenarios.active_case_id(db())
-        active_package_id = str(db().get_app_setting("lupademo_active_package_id") or "")
-        for case in db().list_cases():
-            case_id = str(case.get("id") or "")
-            project = svc.artifact_json(db(), case_id, "lv_project", "main", {})
-            common = svc.artifact_json(db(), case_id, "lv_common_data", "main", {"data": {}})
-            packages = [
-                item.get("data_json")
-                for item in db().list_artifacts(case_id)
-                if item.get("type") == "material_package" and isinstance(item.get("data_json"), dict)
-            ]
-            for package in packages or [{}]:
-                customer = str(common.get("data", {}).get("applicant_name") or "Hakija")
-                package_name = str(package.get("display_name") or project.get("name") or case.get("title") or "Lupahanke")
-                project_name = str(project.get("name") or case.get("title") or "Lupahanke")
-                permit_labels = {
-                    "building_residential": "Rakennuslupa",
-                    "environmental_industrial": "Ympäristölupa",
-                    "event_public": "Tapahtumalupa",
-                }
-                permit_context = permit_labels.get(str(package.get("permit_type") or ""), "")
-                workspace_context = f"{project_name} · {permit_context}" if permit_context else project_name
-                options.append(
-                    {
-                        "case_id": case_id,
-                        "package_id": str(package.get("package_id") or ""),
-                        "customer": customer,
-                        "package": package_name,
-                        "label": f"{customer} · {workspace_context}",
-                        "selected": case_id == active_case_id and (not active_package_id or package.get("package_id") == active_package_id),
-                    }
-                )
-        label_counts: dict[str, int] = {}
-        for option in options:
-            label = option["label"]
-            label_counts[label] = label_counts.get(label, 0) + 1
-        label_indexes: dict[str, int] = {}
-        for option in options:
-            label = option["label"]
-            if label_counts[label] > 1:
-                label_indexes[label] = label_indexes.get(label, 0) + 1
-                option["label"] = f"{label} · Aineisto {label_indexes[label]}"
-        return options
-
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
         return ctx.context(case_id, permit_type, app_ctx_builder=context_app_with_material)
 
+    @router.get("/login", response_class=HTMLResponse)
+    def login(request: Request):
+        customer_ws.ensure_customer_demo_data(db())
+        if current_customer(request):
+            return RedirectResponse(url="/", status_code=303)
+        return templates.TemplateResponse(request, "applicant/login.html", {"customers": customer_ws.customer_fixtures()})
+
+    @router.post("/login")
+    def login_post(request: Request, customer_id: str = Form(...)):
+        customer_ws.ensure_customer_demo_data(db())
+        customer = db().get_customer(customer_id)
+        if not customer:
+            raise HTTPException(status_code=404, detail="customer_not_found")
+        request.session.clear()
+        request.session["customer_id"] = customer["id"]
+        request.session["customer_name"] = customer["display_name"]
+        return RedirectResponse(url="/", status_code=303)
+
+    @router.post("/logout")
+    def logout(request: Request):
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=303)
+
     @router.get("/", response_class=HTMLResponse)
     def landing(request: Request):
-        return templates.TemplateResponse(
-            request,
-            "applicant/landing.html",
-            {"scenarios": scenarios.list_scenarios(), "workspace_options": workspace_options()},
-        )
-
-    @router.post("/workspace/select")
-    def workspace_select(workspace: str = Form(...)):
-        option = next((item for item in workspace_options() if f"{item['case_id']}:{item['package_id']}" == workspace), None)
-        if not option:
-            raise HTTPException(status_code=404, detail="Case not found")
-        case_id = option["case_id"]
-        scenario = svc.artifact_json(db(), case_id, "demo_scenario", "main", {}).get("scenario", {})
-        scenarios.set_active_scenario(db(), case_id, str(scenario.get("id") or "generic_project"))
-        db().set_app_setting("lupademo_active_package_id", option["package_id"])
-        return RedirectResponse(url="/", status_code=303)
+        customer = current_customer(request)
+        if not customer:
+            return RedirectResponse(url="/login", status_code=303)
+        customer_ws.ensure_customer_demo_data(db())
+        return templates.TemplateResponse(request, "applicant/landing.html", customer_ws.customer_dashboard(db(), customer["id"]))
 
     @router.get("/demo/scenarios", response_class=HTMLResponse)
     def scenario_list(request: Request):
@@ -122,11 +141,19 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/applicant", response_class=HTMLResponse)
     def applicant_start(request: Request):
-        return templates.TemplateResponse(request, "applicant/applicant_start.html")
+        return RedirectResponse(url="/", status_code=303)
 
     @router.get("/applicant/packages/new", response_class=HTMLResponse)
     def applicant_package_new(request: Request):
-        return templates.TemplateResponse(request, "applicant/package_new.html")
+        customer = current_customer(request)
+        return templates.TemplateResponse(
+            request,
+            "applicant/package_new.html",
+            {
+                "customer": customer,
+                "municipalities": svc.list_municipalities(db()),
+            },
+        )
 
     @router.post("/applicant/packages/new")
     async def applicant_package_create(
@@ -134,13 +161,17 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         background_tasks: BackgroundTasks,
         package_name: str = Form("Hakemusaineisto"),
         permit_type: str = Form("environmental_industrial"),
-        applicant_name: str = Form("Hakija Oy"),
-        municipality: str = Form("Vantaa"),
+        municipality: str = Form(""),
         files: list[UploadFile] = File(default=[]),
         zip_file: Optional[UploadFile] = File(default=None),
         text_body: str = Form(""),
     ):
         application_id = svc.application_id_for(permit_type)
+        if application_id not in svc.PERMIT_SCHEMAS:
+            raise HTTPException(status_code=422, detail="unknown_permit_type")
+        municipality = municipality.strip()
+        if not municipality:
+            raise HTTPException(status_code=422, detail="municipality_required")
         zip_payload: Optional[tuple[str, bytes]] = None
         document_count = 0
         if zip_file is not None and zip_file.filename:
@@ -173,17 +204,24 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         if not zip_payload and not upload_payload and not text_body.strip():
             raise HTTPException(status_code=422, detail="package_material_required")
 
-        started = scenarios.create_generic_project(
+        customer = current_customer(request)
+        if not customer:
+            return RedirectResponse(url="/login", status_code=303)
+        display_name = package_name or "Tarkistettava hakemuspaketti"
+        case_id = db().create_package_review(customer["id"], application_id, municipality, display_name)
+        svc.save_artifact(
             db(),
-            project_name=package_name or "Hakemusaineisto",
-            permit_type=application_id,
-            applicant_name=applicant_name,
-            municipality=municipality,
-            applicant_role="company",
-            created_from="package_workbench",
+            case_id,
+            "package_review_context",
+            "main",
+            {
+                "customer_id": customer["id"],
+                "permit_type": application_id,
+                "municipality": municipality,
+                "display_name": display_name,
+            },
         )
-        case_id = started["case_id"]
-        package = svc.create_pending_material_package(db(), case_id, application_id, package_name or "Hakemusaineisto", document_count)
+        package = svc.create_pending_material_package(db(), case_id, application_id, display_name, document_count)
         azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
         job = svc.start_material_ingest_job(
             db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
@@ -196,18 +234,79 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             application_id,
             package["package_id"],
             job["id"],
-            package_name or "Hakemusaineisto",
+            display_name,
             zip_payload=zip_payload,
             files_payload=upload_payload,
             text_body=text_body,
         )
         return RedirectResponse(url=f"/applicant/packages/{package['package_id']}", status_code=303)
 
+    def standalone_package_context(review_id: str, permit_type: str, review: dict[str, Any]) -> dict[str, Any]:
+        municipality = str(review.get("municipality") or "")
+        package = svc.current_material_package(db(), review_id, permit_type)
+        package_analysis = svc.artifact_json(db(), review_id, "package_analysis_result", permit_type, {})
+        criteria = svc.effective_criteria(db(), review_id, permit_type, municipality)
+        field_extraction_queue = svc.artifact_json(db(), review_id, "field_extraction_queue", permit_type, {"items": []})
+        ai_jobs = svc.list_ai_jobs(db(), review_id, permit_type)
+        app = {
+            "application_id": permit_type,
+            "permit_type": permit_type,
+            "status": "review_only",
+            "form_data": {"municipality": municipality},
+            "field_sources": {},
+        }
+        return {
+            "case_id": review_id,
+            "case": None,
+            "project": {"name": review.get("display_name") or "Hakemuspaketin tarkistus", "presenter_mode": False, "permits": [permit_type]},
+            "common": {"data": {"municipality": municipality}},
+            "sync": {"changes": []},
+            "ai_mode_status": ai_mode_status({}, settings()),
+            "application": app,
+            "schema": svc.load_form_schema(permit_type),
+            "criteria": criteria,
+            "criteria_municipality": str(criteria.get("municipality") or municipality or "Kansallinen oletus"),
+            "criteria_version": str(criteria.get("version") or "demo"),
+            "attachments": svc.list_attachments(db(), review_id, permit_type),
+            "suggestions": [],
+            "inline_field_suggestions": [],
+            "check_report": {},
+            "precheck_gate": {},
+            "package": {},
+            "receipt": {},
+            "wizard": {
+                "missing_attachments": package_analysis.get("missing_attachments", []),
+                "steps": [
+                    {"step": 1, "label": "Yhteiset tiedot"},
+                    {"step": 2, "label": "Aineisto"},
+                    {"step": 3, "label": "Hakemuksen tiedot"},
+                    {"step": 4, "label": "Tarkistus"},
+                    {"step": 5, "label": "Paketointi"},
+                    {"step": 6, "label": "Vastaanotto"},
+                ],
+            },
+            "structure_extraction": svc.artifact_json(db(), review_id, "structure_extraction_result", permit_type, {}),
+            "intake_analysis": svc.artifact_json(db(), review_id, "intake_analysis", permit_type, {}),
+            "material_package": package,
+            "package_analysis": package_analysis,
+            "package_analysis_stale": False,
+            "field_extraction_queue": field_extraction_queue,
+            "ai_jobs": ai_jobs,
+            "contextual_chat": {"messages": []},
+            "voice_state": svc.voice_feature_state(settings()),
+            "voice_chat": {"turns": []},
+            "environmental_story": {},
+            "is_package_review": True,
+        }
+
     def package_context(package_id: str) -> dict[str, Any]:
         found = svc.find_material_package(db(), package_id)
         case_id = found["case_id"]
         permit_type = found["permit_type"]
-        out = context(case_id, permit_type)
+        if found.get("review"):
+            out = standalone_package_context(case_id, permit_type, found["review"])
+        else:
+            out = context(case_id, permit_type)
         attachments = svc.list_attachments(db(), case_id, permit_type)
         ai_jobs = svc.list_ai_jobs(db(), case_id, permit_type)
         active_job = next(
@@ -233,6 +332,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         )
         out.update(
             {
+                "is_package_review": bool(found.get("review")),
                 "package_id": package_id,
                 "material_package": material_package,
                 "attachments": attachments,
@@ -277,6 +377,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             settings=settings(),
             managed_background=True,
             attachment_only=True,
+            review_only=bool(found.get("review")),
         )
         background_tasks.add_task(
             svc.execute_intake_analysis_job,
@@ -286,12 +387,53 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             job["id"],
             settings(),
             attachment_only=True,
+            review_only=bool(found.get("review")),
         )
         return RedirectResponse(url=f"/applicant/packages/{package_id}#analysis", status_code=303)
 
+    @router.post("/applicant/packages/{package_id}/promote")
+    def promote_package_review(request: Request, package_id: str):
+        try:
+            found = svc.find_material_package(db(), package_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Package not found")
+        review = found.get("review")
+        customer = current_customer(request)
+        if not review or not customer or review.get("customer_id") != customer["id"]:
+            raise HTTPException(status_code=409, detail="package_review_not_promotable")
+        permit_type = found["permit_type"]
+        started = scenarios.create_generic_project(
+            db(),
+            project_name=str(review.get("display_name") or "Uusi lupahanke"),
+            permit_type=permit_type,
+            applicant_name=str(customer["profile"].get("applicant_name") or ""),
+            municipality=str(review.get("municipality") or ""),
+            customer_id=customer["id"],
+            customer_profile=customer["profile"],
+            created_from="lv",
+        )
+        target_case_id = started["case_id"]
+        db().copy_artifacts(review["id"], target_case_id)
+        db().move_files(review["id"], target_case_id)
+        for artifact_name in ("material_package", "material_packages"):
+            copied = svc.artifact_json(db(), target_case_id, artifact_name, permit_type, {})
+            if artifact_name == "material_package" and copied:
+                copied["project_id"] = target_case_id
+            elif artifact_name == "material_packages":
+                for item in copied.get("packages", []):
+                    item["project_id"] = target_case_id
+            if copied:
+                svc.save_artifact(db(), target_case_id, artifact_name, permit_type, copied)
+        db().update_package_review(review["id"], status="promoted", promoted_case_id=target_case_id)
+        svc.event(db(), target_case_id, "materials.package.promoted", "Package review promoted to hanke", {"package_id": package_id})
+        return RedirectResponse(
+            url=f"/cases/{target_case_id}/lupademo/application/{permit_type}/wizard/2#materials",
+            status_code=303,
+        )
+
     @router.get("/projects/new", response_class=HTMLResponse)
     def project_new(request: Request):
-        return templates.TemplateResponse(request, "applicant/applicant_start.html")
+        return templates.TemplateResponse(request, "applicant/applicant_start.html", {"customer": current_customer(request)})
 
     @router.post("/demo/scenarios/start")
     def scenario_start(scenario_id: str = Form(...)):
@@ -308,6 +450,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.post("/projects/new")
     def create_project(
+        request: Request,
         project_name: str = Form("Uusi lupahanke"),
         permit_type: str = Form("building_residential"),
         applicant_name: str = Form(""),
@@ -315,9 +458,11 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         address: str = Form(""),
         tenant_id: str = Form(""),
         applicant_role: str = Form("company"),
-        created_from: str = Form("direct_demo"),
         start_at: str = Form("lv_project"),
     ):
+        customer = current_customer(request)
+        if not customer:
+            return RedirectResponse(url="/login", status_code=303)
         started = scenarios.create_generic_project(
             db(),
             project_name=project_name,
@@ -326,8 +471,10 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             municipality=municipality,
             address=address,
             tenant_id=tenant_id,
+            customer_id=customer["id"],
+            customer_profile=customer["profile"],
             applicant_role=applicant_role,
-            created_from=created_from,
+            created_from="lv",
         )
         if start_at == "package_review":
             application_id = svc.application_id_for(started["permit_type"])
@@ -339,7 +486,26 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/projects/{project_id}", response_class=HTMLResponse)
     def project_workspace(request: Request, project_id: str):
-        return templates.TemplateResponse(request, "applicant/lv_project.html", {**context(project_id)})
+        return templates.TemplateResponse(request, "applicant/lv_project.html", {**context(project_id), "customer": current_customer(request)})
+
+    @router.post("/projects/{project_id}/applications")
+    def create_application(project_id: str, permit_type: str = Form(...)):
+        permit_type = svc.application_id_for(permit_type)
+        if permit_type not in svc.PERMIT_SCHEMAS:
+            raise HTTPException(status_code=400, detail="unknown_permit_type")
+        project = svc.artifact_json(db(), project_id, "lv_project", "main", {})
+        permits = project.setdefault("permits", [])
+        if permit_type not in permits:
+            permits.append(permit_type)
+        applications = project.setdefault("applications", [])
+        if permit_type not in applications:
+            applications.append(permit_type)
+        project.setdefault("statuses", {})[permit_type] = "draft"
+        project["updated_at"] = time.time()
+        svc.save_artifact(db(), project_id, "lv_project", "main", project)
+        svc.ensure_application(db(), project_id, permit_type)
+        svc.event(db(), project_id, "application.created", "Application created", {"permit_type": permit_type})
+        return RedirectResponse(url=f"/cases/{project_id}/lupademo/application/{permit_type}/wizard/1", status_code=303)
 
     @router.get("/projects/{project_id}/intake", response_class=HTMLResponse)
     def project_intake(project_id: str, application_id: str = "building_residential"):
@@ -374,12 +540,28 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/lv", response_class=HTMLResponse)
     def lv(request: Request):
-        case_id = scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
-        return RedirectResponse(url=f"/lv/projects/{case_id}", status_code=303)
+        return RedirectResponse(url="/", status_code=303)
 
     @router.get("/lv/projects/{case_id}", response_class=HTMLResponse)
     def lv_project(request: Request, case_id: str):
-        return templates.TemplateResponse(request, "applicant/lv_project.html", {**context(case_id)})
+        return templates.TemplateResponse(request, "applicant/lv_project.html", {**context(case_id), "customer": current_customer(request)})
+
+    @router.get("/customer/profile", response_class=HTMLResponse)
+    def customer_profile(request: Request):
+        return templates.TemplateResponse(request, "applicant/customer_profile.html", {"customer": current_customer(request)})
+
+    @router.post("/customer/profile")
+    async def update_customer_profile(request: Request):
+        customer = current_customer(request)
+        if not customer:
+            return RedirectResponse(url="/login", status_code=303)
+        form = await request.form()
+        profile = dict(customer.get("profile") or {})
+        profile_fields = {"applicant_name", "business_id", "contact_person", "phone", "email"}
+        profile.update({key: str(form.get(key) or "").strip() for key in profile_fields})
+        db().upsert_customer(customer["id"], customer["display_name"], profile)
+        request.session["customer_name"] = customer["display_name"]
+        return RedirectResponse(url="/customer/profile?saved=1", status_code=303)
 
     @router.post("/lv/projects/{case_id}/common-data")
     async def update_lv(case_id: str, request: Request):

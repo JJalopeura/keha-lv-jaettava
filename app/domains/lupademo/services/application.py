@@ -299,20 +299,42 @@ def package_analysis_from_current_state(
     structure: Optional[dict[str, Any]] = None,
     settings: Any = None,
     attachment_only: bool = False,
+    review_only: bool = False,
+    review_form_data: Optional[dict[str, Any]] = None,
+    review_common_data: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     package = current_material_package(db, case_id, permit_type)
-    app = ensure_application(db, case_id, permit_type)
+    if review_only:
+        app = {
+            "application_id": permit_type,
+            "permit_type": permit_type,
+            "status": "review_only",
+            "form_data": dict(review_form_data or {}),
+        }
+    else:
+        app = ensure_application(db, case_id, permit_type)
     schema = load_form_schema(permit_type)
     attachments = list_attachments(db, case_id, permit_type)
-    wizard = wizard_step_status(db, case_id, permit_type)
+    if review_only:
+        official_types = {item.get("primary_type") for item in attachments if item.get("delivery_scope") == "official_submission"}
+        wizard = {
+            "missing_required_fields": [],
+            "missing_attachments": [item for item in schema.get("required_attachments", []) if item not in official_types],
+        }
+    else:
+        wizard = wizard_step_status(db, case_id, permit_type)
     field_extractions = list((structure or artifact_json(db, case_id, "structure_extraction_result", permit_type, {"field_extractions": []})).get("field_extractions", []))
     extracted_field_ids = {str(item.get("field_id")) for item in field_extractions if item.get("field_id") and _extraction_has_substantive_value(item)}
     effective_form_data = dict(app.get("form_data", {}))
     for item in field_extractions:
         if item.get("field_id") and _extraction_has_substantive_value(item) and not effective_form_data.get(item["field_id"]):
             effective_form_data[item["field_id"]] = item["extracted_value"]
-    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
+    common = (
+        {"data": dict(review_common_data or {})}
+        if review_only
+        else artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
+    )
     municipality = effective_form_data.get("municipality") or common.get("data", {}).get("municipality", "")
     active_criteria = effective_criteria(db, case_id, permit_type, municipality)
     deterministic = deterministic_issues(
@@ -491,6 +513,7 @@ def package_analysis_from_current_state(
     result["extraction_queue"] = extraction_queue
     result.update(
         {
+            "missing_attachments": wizard.get("missing_attachments", []),
             "criteria_set_id": str(active_criteria.get("criteria_set_id") or ""),
             "criteria_municipality": str(active_criteria.get("municipality") or municipality),
             "criteria_version": str(active_criteria.get("version") or "demo"),
@@ -511,9 +534,13 @@ def _build_intake_analysis_result(
     *,
     full_check: bool = True,
     attachment_only: bool = False,
+    review_only: bool = False,
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
-    if permit_type == "environmental_industrial":
+    review_context = artifact_json(db, case_id, "package_review_context", "main", {}) if review_only else {}
+    if review_only:
+        structure = artifact_json(db, case_id, "structure_extraction_result", permit_type, {"field_extractions": [], "updated_field_count": 0})
+    elif permit_type == "environmental_industrial":
         structure = structure_environmental_application_from_attachments(
             db,
             case_id,
@@ -526,11 +553,26 @@ def _build_intake_analysis_result(
     if job_id:
         mark_agent_complete(db, case_id, permit_type, job_id, "material_classifier", "Aineiston luokittelu valmis.")
         mark_agent_complete(db, case_id, permit_type, job_id, "structure_extractor", "Rakenteistus valmis.")
-    app = ensure_application(db, case_id, permit_type)
+    if review_only:
+        app = {
+            "application_id": permit_type,
+            "permit_type": permit_type,
+            "status": "review_only",
+            "form_data": {"municipality": str(review_context.get("municipality") or "")},
+        }
+    else:
+        app = ensure_application(db, case_id, permit_type)
     schema = load_form_schema(permit_type)
     attachments = list_attachments(db, case_id, permit_type)
-    wizard = wizard_step_status(db, case_id, permit_type)
-    questions = intake_analysis_questions(schema, app, attachments, include_fields=not attachment_only) if full_check else []
+    if review_only:
+        official_types = {item.get("primary_type") for item in attachments if item.get("delivery_scope") == "official_submission"}
+        wizard = {
+            "missing_required_fields": [],
+            "missing_attachments": [item for item in schema.get("required_attachments", []) if item not in official_types],
+        }
+    else:
+        wizard = wizard_step_status(db, case_id, permit_type)
+    questions = intake_analysis_questions(schema, app, attachments, include_fields=not attachment_only) if full_check and not review_only else []
     if job_id:
         mark_agent_complete(db, case_id, permit_type, job_id, "question_generator", "Kysymysten muodostus valmis.")
     field_extractions = list(structure.get("field_extractions", []))
@@ -566,6 +608,9 @@ def _build_intake_analysis_result(
             structure=structure,
             settings=settings,
             attachment_only=attachment_only,
+            review_only=review_only,
+            review_form_data=app.get("form_data", {}),
+            review_common_data={"municipality": str(review_context.get("municipality") or "")},
         )
         if job_id:
             mark_agent_complete(db, case_id, permit_type, job_id, "gap_analyzer", "Puutteiden tunnistus valmis.")
@@ -638,6 +683,7 @@ def start_intake_analysis_job(
     managed_background: bool = False,
     full_check: bool = True,
     attachment_only: bool = False,
+    review_only: bool = False,
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     # Light path (wizard/2 "Analysoi") only classifies, structures and asks
@@ -670,6 +716,7 @@ def execute_intake_analysis_job(
     *,
     full_check: bool = True,
     attachment_only: bool = False,
+    review_only: bool = False,
 ) -> None:
     permit_type = application_id_for(permit_type)
     try:
@@ -681,6 +728,7 @@ def execute_intake_analysis_job(
             settings=settings,
             full_check=full_check,
             attachment_only=attachment_only,
+            review_only=review_only,
         )
         summary = f"Analyysi valmis: {len(result.get('findings', []))} havaintoa, valmius {result.get('readiness_score', 0)}/100." if full_check else f"Aineisto käsitelty: {result.get('structured_field_count', 0)} kenttäehdotusta."
         complete_ai_job(

@@ -205,8 +205,9 @@ with a `?t=` cache-buster when all jobs reach a terminal state.
 ## Package workbench → API calls
 
 The package workbench (`/applicant/packages/*`) is a **separate path** from the
-wizard. It starts from raw material (no pre-seeded case) and runs the **full**
-analysis pipeline in sequence. Routes live in `routes/applicant.py`.
+wizard. It starts from an existing customer-owned hanke/application and runs
+the **full** analysis pipeline in sequence. Routes live in
+`routes/applicant.py`.
 
 > **Do not mix-match.** The workbench (Path A, material-first) and the wizard
 > (Path B, form-first) are two distinct entry flows into the same application
@@ -220,13 +221,14 @@ analysis pipeline in sequence. Routes live in `routes/applicant.py`.
 | Method | Path | Purpose | AI job |
 |--------|------|---------|--------|
 | `GET` | `/applicant/packages/new` | New-package form | — |
-| `POST` | `/applicant/packages/new` | Create case + pending package, start ingest | `material_ingest` |
+| `POST` | `/applicant/packages/new` | Create a pending package under the selected application, start ingest | `material_ingest` |
 | `GET` | `/applicant/packages/{package_id}` | Render workbench (polls active job) | — |
 
-`POST /applicant/packages/new` calls `scenarios.create_generic_project(...)`
-(creates a fresh case), then `start_material_ingest_job` +
-`execute_material_ingest_job` in the background. This builds the case vector
-store and marks the package `ready`.
+`POST /applicant/packages/new` validates the signed-in customer's selected
+`case_id` and application, then calls `create_pending_material_package(...)`
+and `start_material_ingest_job` + `execute_material_ingest_job` in the
+background. It never creates a case. This builds the selected case vector store
+and marks the package `ready`.
 
 ### Analyze (full pipeline)
 

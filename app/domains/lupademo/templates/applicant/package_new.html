@@ -1,5 +1,5 @@
 {% extends "shared/light_base.html" %}
-{% block title %}Tuo hakemuspaketti{% endblock %}
+{% block title %}Tarkista uusi hakemuspaketti{% endblock %}
 {% block content %}
 <nav class="flow-progress" aria-label="Hakemuspaketin tarkistuksen vaiheet">
   <span class="active"><b>1</b> Tuo aineisto</span>
@@ -10,8 +10,8 @@
 <section class="page-heading upload-heading">
   <a class="back-link" href="/">← Takaisin</a>
   <p class="section-kicker">Hakemuspaketin tarkistus</p>
-  <h1>Lataa valmis hakemuspaketti AI-tarkistukseen</h1>
-  <p>Voit tuoda useita tiedostoja tai yhden zip-paketin. Aineistoa ei lähetetä viranomaiselle tässä vaiheessa.</p>
+  <h1>Tarkista uusi hakemuspaketti</h1>
+  <p>Valitse lupatyyppi ja sijainti, tuo aineisto, ja tarkista paketin valmius ilman että hanke tai hakemus luodaan.</p>
 </section>
 
 <form method="post" enctype="multipart/form-data" action="/applicant/packages/new" class="upload-workspace" data-upload-form>
@@ -43,23 +43,29 @@
   </div>
 
   <aside class="upload-details">
-    <div class="aside-heading"><span>Hakemuksen tiedot</span><small>Voit muuttaa näitä myöhemmin</small></div>
+    <div class="aside-heading"><span>Tarkistuksen kohde</span><small>Hanke luodaan vasta tarkastuksen jälkeen</small></div>
     <label>Paketin nimi<input name="package_name" value="Uusi ympäristölupapaketti" required></label>
     <label>Lupatyyppi
-      <select name="permit_type">
+      <select name="permit_type" required>
         <option value="environmental_industrial" selected>Ympäristölupa</option>
         <option value="building_residential">Rakennuslupa</option>
         <option value="event_public">Tapahtuman luvat</option>
       </select>
     </label>
-    <label>Hakija tai organisaatio<input name="applicant_name" value="Hakija Oy"></label>
-    <label>Kunta<input name="municipality" value="Vantaa"></label>
+    <label>Kunnan kriteeristö
+      <select name="municipality" required>
+        <option value="" disabled selected>Valitse sijainti</option>
+        {% for municipality in municipalities %}
+        <option value="{{ municipality }}">{{ municipality }}</option>
+        {% endfor %}
+      </select>
+    </label>
     <div class="data-boundary">
       <strong>Mitä aineistolle tapahtuu?</strong>
       <p>AI erottaa hakemuksen, lähetettävät liitteet ja vain tarkistuksessa käytettävän tausta-aineiston.</p>
       <p><b>Viranomaisen omat asiakirjat ohitetaan</b>, eikä niitä tallenneta hakemuksen AI-hakukontekstiin.</p>
     </div>
-    <button class="primary-cta" data-submit-button disabled>Jatka AI-tarkistukseen <span aria-hidden="true">→</span></button>
+    <button class="primary-cta" data-submit-button disabled>Aloita tarkistus <span aria-hidden="true">→</span></button>
     <p class="submit-hint" data-submit-hint>Valitse vähintään yksi tiedosto tai lisää kuvaus.</p>
   </aside>
 </form>

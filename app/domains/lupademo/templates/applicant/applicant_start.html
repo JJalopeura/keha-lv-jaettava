@@ -1,15 +1,17 @@
 {% extends "shared/light_base.html" %}
 {% from "shared/_components.html" import page_header %}
-{% block title %}Uusi hakemus{% endblock %}
+{% set profile = customer.profile if customer is defined and customer else {} %}
+{% block title %}Uusi hanke{% endblock %}
 {% block content %}
-{{ page_header('Uusi hakemus', 'Luo hankkeelle hakemus perustiedoilla. Voit täydentää muita tietoja ja liitteitä seuraavissa vaiheissa.', 'Hakijan asiointi', [{'label': 'Etusivu', 'href': '/'}, {'label': 'Uusi hakemus', 'href': ''}]) }}
+{{ page_header('Uusi hanke', 'Luo uusi hanke ja valitse sille ensimmäinen lupahakemus.', 'Hakijan asiointi', [{'label': 'Etusivu', 'href': '/'}, {'label': 'Uusi hanke', 'href': ''}]) }}
 <form method="post" action="/projects/new" class="setup-layout">
   <input type="hidden" name="start_at" value="wizard">
+  <input type="hidden" name="applicant_name" value="{{ profile.get('applicant_name', customer.display_name if customer is defined and customer else '') }}">
   <section class="form-section" aria-labelledby="project-details">
-    <div class="form-section-heading"><div><h2 id="project-details">Hankkeen perustiedot</h2><p>Näitä käytetään hakemuksen otsikossa ja yhteisissä tiedoissa.</p></div></div>
+    <div class="form-section-heading"><div><h2 id="project-details">Hankkeen lähtötiedot</h2><p>Yrityksen tiedot tulevat Yhteisistä tiedoista. Täydennä tähän vain tätä hanketta koskevat tiedot.</p></div></div>
     <div class="field-grid">
       <label class="wide-field">Hankkeen nimi<input name="project_name" value="" placeholder="Esimerkiksi Koivutien pientalo" required></label>
-      <label>Hakija tai organisaatio<input name="applicant_name" value="" autocomplete="organization"></label>
+      <div class="field-readonly wide-field"><span>Yritys</span><strong>{{ profile.get('applicant_name', customer.display_name if customer is defined and customer else '') }}</strong><small>Yhteiset tiedot · <a href="/customer/profile">Muokkaa yrityksen tietoja</a></small></div>
       <label>Kunta<input name="municipality" value="" autocomplete="address-level2"></label>
       <label class="wide-field">Hankkeen osoite<input name="address" value="" autocomplete="street-address"></label>
     </div>
@@ -22,6 +24,6 @@
       <label class="choice-row"><input type="radio" name="permit_type" value="event_public"><span><strong>Tapahtuman luvat</strong><small>Yleisötapahtuman lupa- ja ilmoitustarpeet</small></span></label>
     </div>
   </section>
-  <div class="form-actions"><p>Seuraavaksi tarkistat yhteiset tiedot ja lisäät hankkeen aineiston.</p><button class="primary-cta">Luo hakemus <span aria-hidden="true">→</span></button></div>
+  <div class="form-actions"><p>Seuraavaksi tarkistat hankkeen lähtötiedot ja lisäät aineiston.</p><button class="primary-cta">Luo hanke <span aria-hidden="true">→</span></button></div>
 </form>
 {% endblock %}

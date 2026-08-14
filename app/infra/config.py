@@ -37,6 +37,7 @@ class Settings:
     azure_openai_timeout_s_core: float
     azure_openai_timeout_s_chat: float
     company_vector_store_ids: list[str]
+    session_secret: str = "keha-lv-demo-session-secret"
 
 
 def load_settings() -> Settings:
@@ -49,6 +50,7 @@ def load_settings() -> Settings:
     return Settings(
         db_path=os.getenv("KEHA_LV_DB_PATH", str(data_dir / "keha_lv.db")),
         uploads_dir=os.getenv("KEHA_LV_UPLOADS_DIR", str(data_dir / "uploads")),
+        session_secret=os.getenv("KEHA_LV_SESSION_SECRET", "keha-lv-demo-session-secret"),
         llm_provider=os.getenv("KEHA_LV_LLM_PROVIDER", "mock").strip().lower() or "mock",
         demo_mode=os.getenv("KEHA_LV_DEMO_MODE", "true").strip().lower() in {"1", "true", "yes", "on"},
         azure_openai_host_core=os.getenv("AZURE_OPENAI_HOST_CORE", ""),

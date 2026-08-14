@@ -1,0 +1,20 @@
+{% extends "shared/light_base.html" %}
+{% from "shared/_components.html" import page_header %}
+{% block title %}Yhteiset tiedot · {{ customer.display_name }}{% endblock %}
+{% block content %}
+{{ page_header('Yhteiset tiedot', 'Yrityksen perustiedot täytetään uusiin hankkeisiin automaattisesti.', customer.display_name, [{'label': 'Omat asiat', 'href': '/'}, {'label': 'Yhteiset tiedot', 'href': ''}]) }}
+{% if request.query_params.get('saved') %}<p class="form-notice success">Tiedot tallennettu.</p>{% endif %}
+<form method="post" action="/customer/profile" class="setup-layout profile-form">
+  <section class="form-section" aria-labelledby="company-details">
+    <div class="form-section-heading"><div><h2 id="company-details">Yrityksen tiedot</h2><p>Näitä tietoja käytetään uuden hankkeen lähtötietoina.</p></div></div>
+    <div class="field-grid">
+      <label class="wide-field">Yrityksen nimi<input name="applicant_name" value="{{ customer.profile.get('applicant_name', customer.display_name) }}" required></label>
+      <label>Y-tunnus<input name="business_id" value="{{ customer.profile.get('business_id', '') }}"></label>
+      <label>Yhteyshenkilö<input name="contact_person" value="{{ customer.profile.get('contact_person', '') }}"></label>
+      <label>Puhelin<input name="phone" value="{{ customer.profile.get('phone', '') }}"></label>
+      <label class="wide-field">Sähköposti<input type="email" name="email" value="{{ customer.profile.get('email', '') }}"></label>
+    </div>
+  </section>
+  <div class="form-actions"><p>Hankkeiden aiempia tietoja ei muuteta, kun yrityksen tietoja päivitetään.</p><button class="primary-cta">Tallenna tiedot <span aria-hidden="true">→</span></button></div>
+</form>
+{% endblock %}

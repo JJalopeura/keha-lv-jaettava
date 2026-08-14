@@ -18,7 +18,7 @@
   <body
     class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}"
   >
-    {% set current_path = request.url.path %} {% set authority_workspace =
+    {% set current_path = request.url.path %} {% set login_page = current_path == '/login' %} {% set session = request.scope.get('session', {}) %} {% set authority_workspace =
     '/authority/' in current_path %} {% set demo_workspace =
     current_path.startswith('/demo-lab') or current_path.startswith('/demo/') or
     '/admin/' in current_path or '/metrics' in current_path or
@@ -44,24 +44,24 @@
     {% set workspace_home = ('/lv/projects/' ~ case_id)
     if (case_workbench and case_id is defined) else '/' %}
     <a class="skip-link" href="#main-content">Siirry sisältöön</a>
-    <div class="app-shell">
+    <div class="app-shell{% if login_page %} app-shell--login{% endif %}">
+      {% if not login_page %}
       <aside class="app-sidebar" aria-label="Päävalikko">
         <nav class="sidebar-nav">
-          <section class="sidebar-section sidebar-workspace-section" aria-labelledby="workspace-heading">
-            <p class="sidebar-heading" id="workspace-heading">Työtilat</p>
-            <div class="sidebar-workspaces">
-              <a class="sidebar-workspace-link{% if not authority_workspace and not demo_workspace %} active{% endif %}" href="/" {% if not authority_workspace and not demo_workspace %}aria-current="page"{% endif %}>Hakija</a>
-              <a class="sidebar-workspace-link{% if authority_workspace %} active{% endif %}" href="/authority/queue" {% if authority_workspace %}aria-current="page"{% endif %}>Viranomainen</a>
-              <a class="sidebar-workspace-link{% if demo_workspace %} active{% endif %}" href="/demo-lab" {% if demo_workspace %}aria-current="page"{% endif %}>Demo Lab ja alusta</a>
-            </div>
-          </section>
-
           {% if not authority_workspace and not demo_workspace %}
+          {% if session.get('customer_id') %}
+          <section class="sidebar-section sidebar-customer-context" aria-labelledby="customer-context-heading">
+            <p class="sidebar-heading" id="customer-context-heading">Asioit yrityksenä</p>
+            <strong>{{ session.get('customer_name', 'Asiakas') }}</strong>
+            <a class="sidebar-customer-link{% if current_path == '/customer/profile' %} active{% endif %}" href="/customer/profile">Yhteiset tiedot</a>
+          </section>
+          {% endif %}
           <section class="sidebar-section" aria-labelledby="applicant-links-heading">
-            <p class="sidebar-heading" id="applicant-links-heading">Hakijan palvelut</p>
+            <p class="sidebar-heading" id="applicant-links-heading">Asiointi</p>
             <div class="sidebar-subnav">
-              <a class="sidebar-link{% if current_path == '/applicant' %} active{% endif %}" href="/applicant" {% if current_path == '/applicant' %}aria-current="page"{% endif %}>Uusi hakemus</a>
-              <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Tarkista aineisto</a>
+              <a class="sidebar-link{% if current_path == '/' %} active{% endif %}" href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Omat asiat</a>
+              <a class="sidebar-link{% if current_path == '/projects/new' %} active{% endif %}" href="/projects/new" {% if current_path == '/projects/new' %}aria-current="page"{% endif %}>Uusi hanke</a>
+              <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Tarkista uusi hakemuspaketti</a>
               {% if case_id is defined %}
               {% set sidebar_permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
               {% set sidebar_statuses = {'draft': 'Luonnos', 'not_started': 'Ei aloitettu', 'submitted': 'Lähetetty', 'application_draft': 'Luonnos'} %}
@@ -108,7 +108,19 @@
             </div>
           </section>
           {% endif %}
+
+          <section class="sidebar-section sidebar-workspace-section" aria-labelledby="workspace-heading">
+            <p class="sidebar-heading" id="workspace-heading">Muut työtilat</p>
+            <div class="sidebar-workspaces">
+              {% if authority_workspace or demo_workspace %}
+              <a class="sidebar-workspace-link{% if not authority_workspace and not demo_workspace %} active{% endif %}" href="/" {% if not authority_workspace and not demo_workspace %}aria-current="page"{% endif %}>Hakija</a>
+              {% endif %}
+              <a class="sidebar-workspace-link{% if authority_workspace %} active{% endif %}" href="/authority/queue" {% if authority_workspace %}aria-current="page"{% endif %}>Viranomainen</a>
+              <a class="sidebar-workspace-link{% if demo_workspace %} active{% endif %}" href="/demo-lab" {% if demo_workspace %}aria-current="page"{% endif %}>Demo Lab ja alusta</a>
+            </div>
+          </section>
       </aside>
+      {% endif %}
       <div class="app-stage">
         <header
           class="app-header"
@@ -137,33 +149,9 @@
             {% if request.query_params.get('present') == '1' %}<small class="presenter-tag">Esittäjätila</small>{% endif %}
           </div>
           {% endif %}
-          {% if workspace_options is defined and workspace_options %}
-          <form
-            class="workspace-picker"
-            method="post"
-            action="/workspace/select"
-            aria-label="Asiointikohde"
-          >
-            <label for="workspace">Asiointikohde</label>
-            <select
-              id="workspace"
-              name="workspace"
-              onchange="this.form.submit()"
-            >
-              {% for option in workspace_options %}
-              <option
-                value="{{ option.case_id }}:{{ option.package_id }}"
-                {%
-                if
-                option.selected
-                %}selected{%
-                endif
-                %}
-              >
-                {{ option.label }}
-              </option>
-              {% endfor %}
-            </select>
+          {% if session.get('customer_id') and not authority_workspace and not demo_workspace %}
+          <form method="post" action="/logout" class="logout-form">
+            <button class="text-button">Kirjaudu ulos</button>
           </form>
           {% endif %}
         </header>

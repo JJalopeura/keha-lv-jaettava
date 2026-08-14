@@ -1,0 +1,24 @@
+{% extends "shared/light_base.html" %}
+{% block title %}Kirjaudu LV:hen{% endblock %}
+{% block content %}
+<section class="login-page" aria-labelledby="login-heading">
+  <div class="login-intro">
+    <p class="section-kicker">LV · Luvat ja valvonta</p>
+    <h1 id="login-heading">Kirjaudu asiointiin</h1>
+    <p>Valitse demoasiakas nähdäksesi sen hankkeet, hakemukset ja tehtävät.</p>
+  </div>
+  <div class="customer-login-grid">
+    {% for customer in customers %}
+    <form method="post" action="/login" class="customer-login-card">
+      <input type="hidden" name="customer_id" value="{{ customer.id }}">
+      <div class="customer-monogram" aria-hidden="true">{{ customer.display_name[:1] }}</div>
+      <div>
+        <h2>{{ customer.display_name }}</h2>
+        <p>{{ customer.profile.get('business_id', 'Demoasiakas') }}</p>
+      </div>
+      <button class="primary-cta">Kirjaudu yrityksenä <span aria-hidden="true">→</span></button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

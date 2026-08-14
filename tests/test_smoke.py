@@ -1211,26 +1211,20 @@ class Pages(unittest.TestCase):
         self.assertIn('name="activity_description"', page.text)
         self.assertIn("Kenttäkohtaiset AI-ehdotukset näkyvät suoraan", page.text)
 
-    def test_front_page_picker_switches_customer_package(self) -> None:
-        package = svc.current_material_package(db, case, PERMIT)
-        common = svc.artifact_json(db, case, "lv_common_data", "main", {"data": {}})
-
+    def test_front_page_requires_customer_login_and_shows_customer_hankkeet(self) -> None:
+        client.post("/logout")
         page = client.get("/")
-        self.assertEqual(page.status_code, 200)
-        self.assertIn("Hakija", page.text)
-        self.assertIn(common["data"]["applicant_name"], page.text)
-        # The picker shows only the customer, not the package name
-        self.assertNotIn(package["display_name"], page.text)
+        self.assertEqual(page.status_code, 303)
+        self.assertEqual(page.headers["location"], "/login")
 
-        switched = client.post("/workspace/select", data={"workspace": f"{case}:{package['package_id']}"})
-        self.assertEqual(switched.status_code, 303)
-        self.assertEqual(switched.headers["location"], "/")
-        self.assertEqual(db.get_app_setting("lupademo_active_case_id"), case)
-        self.assertEqual(db.get_app_setting("lupademo_active_package_id"), package["package_id"])
-
-        selected_page = client.get("/")
-        self.assertIn(f'value="{case}:{package["package_id"]}"', selected_page.text)
-        self.assertIn("selected", selected_page.text)
+        login = client.post("/login", data={"customer_id": "p2x"})
+        self.assertEqual(login.status_code, 303)
+        dashboard = client.get("/")
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn("P2X", dashboard.text)
+        self.assertIn("Hankkeet", dashboard.text)
+        self.assertNotIn("Asiointikohde", dashboard.text)
+        client.post("/logout")
 
     def test_project_page_uses_shared_branding_without_mock_metadata(self) -> None:
         page = client.get(f"/lv/projects/{case}")
@@ -1555,13 +1549,20 @@ class Pages(unittest.TestCase):
         authority = client.get("/authority/queue").text
         demo_lab = client.get("/demo-lab").text
 
-        # Navigation sidebar shows workspace links for every page.
-        for page in (applicant, authority, demo_lab):
+        # Customer navigation leads with its own context; alternate workspaces
+        # retain a link back to the applicant workspace.
+        applicant_sidebar = applicant.split('<aside class="app-sidebar"', 1)[1].split("</aside>", 1)[0]
+        self.assertIn(">Omat asiat<", applicant_sidebar)
+        self.assertNotIn(">Hakija<", applicant_sidebar)
+        for page in (authority, demo_lab):
             sidebar = page.split('<aside class="app-sidebar"', 1)[1].split("</aside>", 1)[0]
             self.assertIn('>Hakija<', sidebar)
             self.assertIn('>Viranomainen<', sidebar)
             self.assertIn('>Demo Lab ja alusta<', sidebar)
             self.assertEqual(page.count('<footer class="service-footer">'), 1)
+        self.assertIn('>Viranomainen<', applicant_sidebar)
+        self.assertIn('>Demo Lab ja alusta<', applicant_sidebar)
+        self.assertEqual(applicant.count('<footer class="service-footer">'), 1)
 
         # Wizard page has the six-step stepper in the main content area (not sidebar).
         for label in ("Yhteiset tiedot", "Aineisto", "Hakemuksen tiedot", "Tarkistus", "Paketointi", "Vastaanotto"):

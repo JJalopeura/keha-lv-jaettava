@@ -115,8 +115,14 @@
       <div class="score-ring" style="--score: {{ package_analysis.readiness_score }}"><strong>{{ package_analysis.readiness_score }}</strong><span>/ 100</span></div>
       <div><p class="section-kicker">Valmius</p><h2>{% if package_analysis.readiness == 'contradictory' %}Tarkista ristiriidat ennen kuin jatkat{% elif package_analysis.readiness_score >= 80 %}Hakemus on lähes valmis{% elif package_analysis.readiness_score >= 50 %}Hakemus tarvitsee vielä täydennyksiä{% else %}Aloita estävistä puutteista{% endif %}</h2><p>{{ package_analysis.findings|length }} havaintoa ja {{ field_extraction_queue.get('items', [])|length }} tarkistettavaa poimintaa.</p></div>
       <div class="readiness-actions">
+        {% if is_package_review %}
+        <form method="post" action="/applicant/packages/{{ package_id }}/promote">
+          <button class="primary-cta">Aloita uusi hanke tarkastuksen pohjalta <span aria-hidden="true">→</span></button>
+        </form>
+        {% else %}
         <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#extraction-suggestions">Korjaa ja vahvista</a>
         <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/4">Katso kaikki tarkistukset</a>
+        {% endif %}
       </div>
     </section>
 
@@ -127,14 +133,14 @@
         <article class="task-row blocking missing-attachments-task">
           <span class="task-state" aria-hidden="true">!</span>
           <div><strong>Puuttuvat liitteet</strong><p>Lisää nämä asiakirjat tai tarkista, että ne on merkitty viranomaiselle toimitettaviksi.</p><ul>{% for attachment_type in wizard.missing_attachments %}<li>{{ document_type_labels.get(attachment_type, "Muu asiakirja") }}</li>{% endfor %}</ul></div>
-          <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa</a>
+          {% if is_package_review %}<a href="#documents">Katso aineisto</a>{% else %}<a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa</a>{% endif %}
         </article>
         {% endif %}
         {% for finding in package_analysis.findings[:6] %}
         <article class="task-row {{ finding.severity }}">
           <span class="task-state" aria-hidden="true">{% if finding.severity == 'blocking' %}!{% else %}i{% endif %}</span>
           <div><strong>{{ finding.title }}</strong><p>{{ finding.detail }}</p>{% if finding.suggested_fix %}<small>Ehdotus: {{ finding.suggested_fix }}</small>{% endif %}{% if finding.evidence_refs %}<details class="evidence-disclosure"><summary>Perusteet ja lähteet · luottamus {{ (finding.confidence * 100)|round|int }} %</summary>{% for ref in finding.evidence_refs %}<div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
-          <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2">Korjaa</a>
+          {% if is_package_review %}<a href="#documents">Katso aineisto</a>{% else %}<a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2">Korjaa</a>{% endif %}
         </article>
         {% else %}<div class="empty-success"><span>✓</span><div><strong>Ei avoimia puutteita</strong><p>Siirry tarkistamaan viranomaiselle lähtevä paketti.</p></div></div>{% endfor %}
       </div>
@@ -151,7 +157,7 @@
           {% for attachment in attachments %}{% if source_label.value.endswith(attachment.filename) %}{% set source_label.value = attachment.filename %}{% endif %}{% endfor %}
           <div class="extraction-label"><strong>{{ field_labels.get(item.field_id, "Valittu kenttä") }}</strong><small>{{ source_label.value }} · luottamus {{ (item.confidence * 100)|round|int if item.confidence <= 1 else item.confidence }} %</small></div>
           <div class="extraction-value">{{ item.get('accepted_value') or item.get('suggested_value') or item.get('extracted_value', '') }}{% if item.get('evidence_refs') %}<details class="evidence-disclosure compact"><summary>Näytä lähde</summary>{% for ref in item.get('evidence_refs', [])[:2] %}<div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
-          {% if item.status == 'accepted' %}<span class="status good">Hyväksytty</span>{% else %}<form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept"><input type="hidden" name="field_id" value="{{ item.field_id }}"><input type="hidden" name="edited_value" value="{{ item.suggested_value }}"><button class="secondary compact">Hyväksy</button></form>{% endif %}
+          {% if item.status == 'accepted' %}<span class="status good">Hyväksytty</span>{% elif is_package_review %}<span class="status">Siirtyy uuteen hankkeeseen</span>{% else %}<form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept"><input type="hidden" name="field_id" value="{{ item.field_id }}"><input type="hidden" name="edited_value" value="{{ item.suggested_value }}"><button class="secondary compact">Hyväksy</button></form>{% endif %}
         </article>
         {% else %}<p class="empty-copy">AI ei löytänyt vielä hyväksyttäviä lomaketietoja.</p>{% endfor %}
       </div>
@@ -184,7 +190,7 @@
     </div>
     {% endif %}
     <div class="inspector-note"><strong>Aineistorajat pidetään erillään</strong><p>Hakemusta arvioidaan hakijan aineiston ja voimassa olevan ohje- ja sääntötiedon perusteella.</p></div>
-    <a class="button secondary full-button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa aineistoa</a>
+    <a class="button secondary full-button" href="{% if is_package_review %}/applicant/packages/new{% else %}/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials{% endif %}">{% if is_package_review %}Tarkista toinen paketti{% else %}Muokkaa aineistoa{% endif %}</a>
       </div>
     </details>
   </aside>

@@ -32,8 +32,18 @@ class DB:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS cases (
-                    id TEXT PRIMARY KEY, title TEXT NOT NULL, language TEXT NOT NULL,
+                    id TEXT PRIMARY KEY, customer_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, language TEXT NOT NULL,
                     status TEXT NOT NULL, case_vector_store_id TEXT, research_vector_store_id TEXT,
+                    created_at REAL NOT NULL, updated_at REAL NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS customers (
+                    id TEXT PRIMARY KEY, display_name TEXT NOT NULL, profile_json TEXT NOT NULL,
+                    created_at REAL NOT NULL, updated_at REAL NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS package_reviews (
+                    id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, permit_type TEXT NOT NULL,
+                    municipality TEXT NOT NULL DEFAULT '', display_name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active', promoted_case_id TEXT,
                     created_at REAL NOT NULL, updated_at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS files (
@@ -57,17 +67,26 @@ class DB:
                     created_at REAL NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_files_case_id ON files(case_id);
+                CREATE INDEX IF NOT EXISTS idx_cases_customer_id ON cases(customer_id);
+                CREATE INDEX IF NOT EXISTS idx_package_reviews_customer_id ON package_reviews(customer_id);
                 CREATE INDEX IF NOT EXISTS idx_artifacts_case_updated ON artifacts(case_id, updated_at);
                 CREATE INDEX IF NOT EXISTS idx_ai_logs_case_created ON ai_logs(case_id, created_at);
                 """
             )
+            case_columns = {row["name"] for row in conn.execute("PRAGMA table_info(cases)")}
+            if "customer_id" not in case_columns:
+                conn.execute("ALTER TABLE cases ADD COLUMN customer_id TEXT NOT NULL DEFAULT ''")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_cases_customer_id ON cases(customer_id)")
 
-    def create_case(self, title: str, language: str = "fi") -> str:
+    def create_case(self, title: str, language: str = "fi", *, customer_id: str = "") -> str:
         case_id, now = str(uuid.uuid4()), time.time()
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (case_id, title, language, "new", None, None, now, now),
+                """INSERT INTO cases
+                (id, customer_id, title, language, status, case_vector_store_id,
+                 research_vector_store_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (case_id, customer_id, title, language, "new", None, None, now, now),
             )
         return case_id
 
@@ -83,14 +102,111 @@ class DB:
         with self._conn() as conn:
             conn.execute("UPDATE cases SET status=?, updated_at=? WHERE id=?", (status, time.time(), case_id))
 
-    def list_cases(self) -> list[dict[str, Any]]:
+    def list_cases(self, *, customer_id: Optional[str] = None) -> list[dict[str, Any]]:
         with self._conn() as conn:
-            return [dict(row) for row in conn.execute("SELECT * FROM cases ORDER BY updated_at DESC")]
+            if customer_id is None:
+                rows = conn.execute("SELECT * FROM cases ORDER BY updated_at DESC")
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM cases WHERE customer_id=? ORDER BY updated_at DESC",
+                    (customer_id,),
+                )
+            return [dict(row) for row in rows]
+
+    def list_cases_for_customer(self, customer_id: str) -> list[dict[str, Any]]:
+        return self.list_cases(customer_id=customer_id)
 
     def get_case(self, case_id: str) -> Optional[dict[str, Any]]:
         with self._conn() as conn:
             row = conn.execute("SELECT * FROM cases WHERE id=?", (case_id,)).fetchone()
         return dict(row) if row else None
+
+    def upsert_customer(self, customer_id: str, display_name: str, profile: dict[str, Any]) -> None:
+        now = time.time()
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO customers (id, display_name, profile_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,
+                profile_json=excluded.profile_json, updated_at=excluded.updated_at""",
+                (customer_id, display_name, json.dumps(profile, ensure_ascii=False), now, now),
+            )
+
+    def get_customer(self, customer_id: str) -> Optional[dict[str, Any]]:
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM customers WHERE id=?", (customer_id,)).fetchone()
+        if not row:
+            return None
+        customer = dict(row)
+        customer["profile"] = json.loads(customer.pop("profile_json") or "{}")
+        return customer
+
+    def list_customers(self) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT * FROM customers ORDER BY display_name").fetchall()
+        customers = []
+        for row in rows:
+            customer = dict(row)
+            customer["profile"] = json.loads(customer.pop("profile_json") or "{}")
+            customers.append(customer)
+        return customers
+
+    def create_package_review(
+        self,
+        customer_id: str,
+        permit_type: str,
+        municipality: str,
+        display_name: str,
+    ) -> str:
+        review_id, now = f"review_{uuid.uuid4().hex[:12]}", time.time()
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO package_reviews
+                (id, customer_id, permit_type, municipality, display_name, status, promoted_case_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 'active', NULL, ?, ?)""",
+                (review_id, customer_id, permit_type, municipality, display_name, now, now),
+            )
+        return review_id
+
+    def get_package_review(self, review_id: str) -> Optional[dict[str, Any]]:
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM package_reviews WHERE id=?", (review_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_package_reviews(self, customer_id: Optional[str] = None) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            if customer_id is None:
+                rows = conn.execute("SELECT * FROM package_reviews ORDER BY updated_at DESC").fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM package_reviews WHERE customer_id=? ORDER BY updated_at DESC",
+                    (customer_id,),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_package_review(self, review_id: str, *, status: str, promoted_case_id: str = "") -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE package_reviews SET status=?, promoted_case_id=?, updated_at=? WHERE id=?",
+                (status, promoted_case_id or None, time.time(), review_id),
+            )
+
+    def copy_artifacts(self, source_scope: str, target_case_id: str) -> None:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT type, name, data_json, data_text FROM artifacts WHERE case_id=?",
+                (source_scope,),
+            ).fetchall()
+        for row in rows:
+            data_json = json.loads(row["data_json"]) if row["data_json"] else None
+            self.upsert_artifact(target_case_id, row["type"], row["name"], data_json=data_json, data_text=row["data_text"])
+
+    def move_files(self, source_scope: str, target_case_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE files SET case_id=?, updated_at=? WHERE case_id=?",
+                (target_case_id, time.time(), source_scope),
+            )
 
     def add_file(self, case_id: str, filename: str, local_path: str, mime_type: str, size_bytes: int, *,
                  kind: str = "rfp", source_group: str = "rfp", type_primary: str = "",

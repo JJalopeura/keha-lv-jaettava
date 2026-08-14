@@ -10,8 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from app.infra.config import load_settings
 from app.infra.db import DB
 from app.infra.llm_factory import LLMUnavailableError
+from app.infra.session import DemoSessionMiddleware
 from app.domains.lupademo import services as svc
 from app.domains.lupademo.routes import create_lupademo_router
+from app.domains.lupademo.services.customer_workspace import ensure_customer_demo_data
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,13 @@ Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
 db = DB(settings.db_path)
 
 app = FastAPI(title="KEHA LV AI-demo")
+app.add_middleware(
+    DemoSessionMiddleware,
+    secret_key=settings.session_secret,
+    session_cookie="lv_session",
+    same_site="lax",
+    https_only=False,
+)
 app.mount(
     "/static",
     StaticFiles(directory=str(Path(__file__).resolve().parent / "domains" / "lupademo" / "static")),
@@ -52,6 +61,7 @@ def recover_orphaned_jobs(db_obj: DB) -> None:
 
 @app.on_event("startup")
 def startup_recover_orphaned_jobs():
+    ensure_customer_demo_data(db)
     recover_orphaned_jobs(db)
 
 
