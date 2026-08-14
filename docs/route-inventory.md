@@ -78,6 +78,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | GET | `/cases/{case_id}/lupademo/application/{application_id}/package` | `package` | — (redirect) | **B** |
 | GET | `/cases/{case_id}/lupademo/application/{application_id}/jobs/{job_id}` | `application_job_status` | JSON | **B** |
 | GET | `/cases/{case_id}/lupademo/application/{application_id}/jobs/{job_id}/stream` | `application_job_stream` | SSE | **B** |
+| POST | `/cases/{case_id}/lupademo/application/{application_id}/jobs/{job_id}/cancel` | `application_job_cancel` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/submit` | `submit` | — (redirect) | **B** |
 | GET | `/cases/{case_id}/lupademo/application/{application_id}/receipt` | `receipt` | `applicant/receipt.html` | **B** |
 

@@ -1699,8 +1699,8 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
         {"step": 2, "label": "Aineisto", "status": "done" if not missing_attachments else "attention"},
         {"step": 3, "label": "Hakemuksen tiedot", "status": "attention" if pending_suggestion_count or missing_required else "done"},
         {"step": 4, "label": "Tarkistus", "status": "done" if gate["is_fresh"] and blocking_count == 0 else "attention"},
-        {"step": 5, "label": "Paketointi", "status": "done" if gate["can_submit"] else "blocked"},
-        {"step": 6, "label": "Vastaanotto", "status": "done" if app.get("status") == "submitted" else "pending"},
+        {"step": 5, "label": "Lähetys", "status": "done" if gate["can_submit"] else "blocked"},
+        {"step": 6, "label": "Vahvistus", "status": "done" if app.get("status") == "submitted" else "pending"},
     ]
     step_status = {
         1: {
@@ -1811,6 +1811,37 @@ def compose_submission_package(db: Any, case_id: str, permit_type: str) -> dict[
     save_artifact(db, case_id, "submission_package", app["permit_type"], package)
     event(db, case_id, "submission.package.composed", "Submission package composed", {"application_id": app["permit_type"], "official_attachments": len(official), "excluded": len(excluded)})
     return package
+
+
+def submission_package_is_stale(
+    package: dict[str, Any],
+    application: dict[str, Any],
+    attachments: list[dict[str, Any]],
+) -> bool:
+    """Return whether the send preview no longer matches current application state."""
+    if not package or not package.get("package_id"):
+        return True
+
+    package_attachments = [
+        *package.get("official_attachments", []),
+        *package.get("excluded_ai_context_attachments", []),
+    ]
+
+    def attachment_signature(items: list[dict[str, Any]]) -> list[tuple[str, str, str, str]]:
+        return sorted(
+            (
+                str(item.get("id") or ""),
+                str(item.get("filename") or ""),
+                str(item.get("delivery_scope") or ""),
+                str(item.get("primary_type") or ""),
+            )
+            for item in items
+        )
+
+    return (
+        attachment_signature(package_attachments) != attachment_signature(attachments)
+        or dict(package.get("form_data") or {}) != dict(application.get("form_data") or {})
+    )
 
 
 def metrics_snapshot(db: Any, case_id: str) -> dict[str, Any]:

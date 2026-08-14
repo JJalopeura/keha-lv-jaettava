@@ -19,70 +19,39 @@
   "environmental_industrial": "Ympäristölupa",
   "event_public": "Tapahtumalupa"
 } %}
-{% set statuses = {
-  "draft": "Luonnos",
-  "not_started": "Ei aloitettu",
-  "submitted": "Lähetetty",
-  "application_draft": "Luonnos"
-} %}
 {% set active_permits = project.get('permits', []) %}
-{% set next_permit = active_permits|first if active_permits else 'building_residential' %}
+{% set all_permits = ["building_residential", "environmental_industrial", "event_public"] %}
 {% set hanke_fields = ['applicant_name', 'business_id', 'contact_person', 'phone', 'email', 'municipality', 'address', 'property_id', 'project_name'] %}
-{{ page_header(project.get("name") or "Lupahanke", (project.get("scenario_label") or "Lupahanke") ~ ' · ' ~ (project.get("location") or common.data.get("municipality") or "Kunta ei tiedossa"), 'Projektin tilanne') }}
-<section class="hanke-status-bar" aria-labelledby="project-status-heading">
-  <div>
-    <p class="section-kicker">Projektin tilanne</p>
-    <h2 id="project-status-heading">{{ 'Muutoksia tarkistettavana' if sync.changes else 'Valmis jatkamaan' }}</h2>
-    <p class="hanke-status-meta">{{ project.get('permits', [])|length }} lupahakemus{% if project.get('permits', [])|length != 1 %}ta{% endif %} · {{ sync.changes|length }} muutosta</p>
-  </div>
-  {% if sync.changes %}
-  <a class="button" href="#common-data-changes">Tarkista muutokset</a>
-  {% else %}
-  <a class="button" href="/cases/{{ case_id }}/lupademo/application/{{ next_permit }}/wizard/1">Avaa asiointi</a>
-  {% endif %}
-</section>
+{{ page_header(project.get("name") or "Lupahanke", '', 'Hanke', [{'label': 'Omat asiat', 'href': '/'}, {'label': project.get("name") or "Lupahanke", 'href': ''}]) }}
 
-<section class="hanke-data-section" aria-labelledby="hanke-data-heading">
+<section class="hanke-applications" id="applications" aria-labelledby="applications-heading">
   <div class="hanke-section-heading">
-    <h2 id="hanke-data-heading">Hankkeen tiedot</h2>
-    <a class="hanke-profile-link" href="/customer/profile">Yhteiset tiedot</a>
-  </div>
-  <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="hanke-form-grid">
-      {% for key in hanke_fields %}
-      {% set value = common.data.get(key, '') %}
-      <label class="{% if key in ['applicant_name', 'email', 'address', 'project_name'] %}hanke-field-wide{% endif %}">{{ labels.get(key, key) }}
-        <input name="{{ key }}" value="{{ value }}">
-      </label>
-      {% endfor %}
-    <div class="hanke-form-actions"><button class="button secondary">Tallenna hankkeen tiedot</button></div>
-  </form>
-</section>
-
-<section class="hanke-applications" id="common-data-changes">
-  <div class="hanke-section-heading">
-    <h2>Hakemukset</h2>
-    <span class="hanke-section-count">{{ project.get('permits', [])|length }} hakemus{% if project.get('permits', [])|length != 1 %}ta{% endif %}</span>
+    <h2 id="applications-heading">Hakemukset</h2>
   </div>
   <div class="hanke-application-list">
-    {% for permit_type in ["building_residential", "environmental_industrial", "event_public"] %}
+    {% for application in hanke_applications %}
     <article class="hanke-application-row">
-      <div><h3>{{ permit_labels.get(permit_type, permit_type) }}</h3><p class="hanke-application-status">{{ statuses.get(project.get("statuses", {}).get(permit_type), project.get("statuses", {}).get(permit_type)) }}</p></div>
-      {% if permit_type in project.get('permits', []) %}
-      <a class="button secondary {% if present %}next-action{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}{% if present %}?present=1{% endif %}">Avaa asiointi</a>
-      {% else %}
+      <div class="hanke-application-main"><h3><a href="{{ application.application_url }}{% if present %}?present=1{% endif %}">{{ application.label }}</a></h3><p class="hanke-application-status">{{ application.status_label }}</p></div>
+      <a class="button secondary {% if present %}next-action{% endif %}" href="{{ application.application_url }}{% if present %}?present=1{% endif %}">{{ 'Katso hakemus' if application.task_kind == 'done' else 'Jatka hakemusta' }} <span aria-hidden="true">→</span></a>
+    </article>
+    {% endfor %}
+    {% for permit_type in all_permits %}
+    {% if permit_type not in active_permits %}
+    <article class="hanke-application-row hanke-application-row--available">
+      <div class="hanke-application-main"><h3>{{ permit_labels.get(permit_type, permit_type) }}</h3><p class="hanke-application-status">Hakemusta ei ole vielä luotu tähän hankkeeseen.</p></div>
       <form method="post" action="/projects/{{ case_id }}/applications">
         <input type="hidden" name="permit_type" value="{{ permit_type }}">
         <button class="button secondary">Luo hakemus</button>
       </form>
-      {% endif %}
     </article>
+    {% endif %}
     {% endfor %}
   </div>
 </section>
 
-<section class="hanke-changes-section">
-  <h2>Hankkeen ja hakemusten muutokset</h2>
-    {% if sync.changes %}
+{% if sync.changes %}
+<section class="hanke-changes-section" id="common-data-changes" aria-labelledby="changes-heading">
+  <div class="hanke-section-heading"><div><p class="section-kicker">Huomiot</p><h2 id="changes-heading">Hankkeen ja hakemusten muutokset</h2></div><span class="hanke-section-count">{{ sync.changes|length }} tarkistettavaa</span></div>
       {% for change in sync.changes %}
       <div class="issue {{ change.direction }}">
         <strong>{{ labels.get(change.field_id, change.field_id) }}</strong>
@@ -108,9 +77,22 @@
         </form>
       </div>
       {% endfor %}
-    {% else %}
-      <p class="muted">Ei avoimia muutoksia.</p>
-    {% endif %}
  </section>
+{% endif %}
 
+<section class="hanke-details" id="hanke-details" aria-labelledby="hanke-details-heading">
+  <div class="hanke-section-heading">
+    <h2 id="hanke-details-heading">Hankkeen tiedot</h2>
+    <a class="hanke-profile-link" href="/customer/profile">Yhteiset tiedot</a>
+  </div>
+  <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="hanke-form-grid">
+    {% for key in hanke_fields %}
+    {% set value = common.data.get(key, '') %}
+    <label class="{% if key in ['applicant_name', 'email', 'address', 'project_name'] %}hanke-field-wide{% endif %}">{{ labels.get(key, key) }}
+      <input name="{{ key }}" value="{{ value }}">
+    </label>
+    {% endfor %}
+    <div class="hanke-form-actions"><button class="button secondary">Tallenna hankkeen tiedot</button></div>
+  </form>
+</section>
 {% endblock %}

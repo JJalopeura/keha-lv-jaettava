@@ -104,6 +104,17 @@ class ApplicantJourney(unittest.TestCase):
         self.assertIn("Tarkistuksessa käytetty kriteeristö", response.text)
         self.assertIn("Vantaa · 2026-06-demo-1", response.text)
 
+    def test_idle_check_action_stays_in_ai_panel(self) -> None:
+        fresh_case = db.create_case("Idle check action", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        fresh_base = f"/cases/{fresh_case}/lupademo/application/building_residential"
+        response = client.get(f"{fresh_base}/wizard/4")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text.count(f'action="{fresh_base}/ai/check"'), 1)
+        self.assertIn("Tekoälytoiminnot", response.text)
+        self.assertNotIn("analysis-panel", response.text)
+
     def test_application_check_persists_target_municipality_criteria_version(self) -> None:
         kerava_case = db.create_case("Kerava criteria check", language="fi")
         svc.ensure_seed_state(db, kerava_case)
@@ -538,9 +549,41 @@ class ApplicantJourney(unittest.TestCase):
                 self.assertIn(f"Vaihe {step} / 6", response.text)
 
         step_one = client.get(f"{base}/wizard/1")
-        self.assertIn("Palaa hankkeen tietoihin", step_one.text)
-        self.assertIn("Tarkista Yhteisistä tiedoista tuodut tiedot", step_one.text)
+        self.assertIn("← Hanke", step_one.text)
+        self.assertNotIn("Nämä tiedot muodostavat hakemuksen lähtökohdan", step_one.text)
+        self.assertNotIn('class="step-guidance"', step_one.text)
+        self.assertNotIn("Tarkista Yhteisistä tiedoista tuodut tiedot", step_one.text)
         self.assertNotIn("Muokkaa yhteisiä tietoja LV:ssä", step_one.text)
+
+    def test_send_step_shows_application_values_before_confirmation(self) -> None:
+        response = client.get(f"{base}/wizard/5")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Hakemuksen tiedot", response.text)
+        self.assertIn("Hakija", response.text)
+        self.assertIn("Y-tunnus", response.text)
+        self.assertIn("Lähetys", response.text)
+        self.assertNotIn("Paketointi", response.text)
+
+    def test_send_step_refreshes_stale_package_after_new_attachment(self) -> None:
+        fresh_case = db.create_case("Refresh stale submission package", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        svc.compose_submission_package(db, fresh_case, "building_residential")
+        attachment = svc.add_attachment(
+            db,
+            fresh_case,
+            "building_residential",
+            "new-plan.pdf",
+            4,
+            delivery_scope="official_submission",
+            text_excerpt="plan",
+            settings=_flow_settings,
+        )
+
+        response = client.get(f"/cases/{fresh_case}/lupademo/application/building_residential/wizard/5")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(attachment["filename"], response.text)
 
     def test_applicant_precheck_copy_uses_canonical_terms(self) -> None:
         response = client.get(f"{base}/wizard/4")

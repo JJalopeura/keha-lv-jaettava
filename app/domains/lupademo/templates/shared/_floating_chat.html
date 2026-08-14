@@ -6,12 +6,13 @@
 {% set has_analysis = package_analysis is defined and package_analysis and package_analysis.get('readiness_score') is not none %}
 {% set finding_count = package_analysis.get('findings', [])|length if has_analysis else 0 %}
 {% set extraction_count = field_extraction_queue.get('items', [])|length if field_extraction_queue is defined else 0 %}
+{% set chat_name = 'Tekoälyavustaja' if wizard_view|default(false) else 'AI-apuri' %}
 
-<div class="copilot-chat" data-copilot-chat aria-label="AI-apuri">
+<div class="copilot-chat" data-copilot-chat aria-label="{{ chat_name }}">
   <button
     class="copilot-launcher"
     data-copilot-launcher
-    aria-label="Avaa AI-apuri"
+    aria-label="Avaa {{ chat_name|lower }}"
     aria-expanded="false"
     aria-controls="copilot-panel"
   >
@@ -26,18 +27,18 @@
     id="copilot-panel"
     data-copilot-panel
     role="dialog"
-    aria-label="AI-apurin keskustelu"
+    aria-label="{{ chat_name }}n keskustelu"
     aria-hidden="true"
   >
     <header class="copilot-header">
       <div class="copilot-header-info">
-        <span class="copilot-status" aria-label="AI-apuri on käytettävissä"></span>
+        <span class="copilot-status" aria-label="{{ chat_name }} on käytettävissä"></span>
         <div>
-          <strong>AI-apuri</strong>
+          <strong>{{ chat_name }}</strong>
           <small>{{ permit_label }}</small>
         </div>
       </div>
-      <button class="copilot-minimize" data-copilot-minimize aria-label="Sulje AI-apuri">
+      <button class="copilot-minimize" data-copilot-minimize aria-label="Sulje {{ chat_name|lower }}">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M8 3v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" transform="rotate(45 8 8)"/></svg>
       </button>
     </header>
@@ -72,7 +73,7 @@
       <button class="copilot-prompt" data-prompt="Mitä liitteitä tarvitsen?">Mitä liitteitä tarvitsen?</button>
       <button class="copilot-prompt" data-prompt="Miten jaan liitteet virallisiin ja tausta-aineistoon?">Miten jaan liitteet?</button>
       {% elif current_step == 3 %}
-      <button class="copilot-prompt" data-prompt="Mitä AI-ehdotukset tarkoittavat?">Mitä AI-ehdotukset tarkoittavat?</button>
+      <button class="copilot-prompt" data-prompt="{{ 'Mitä tekoälyn ehdotukset tarkoittavat?' if wizard_view|default(false) else 'Mitä AI-ehdotukset tarkoittavat?' }}">{{ 'Mitä tekoälyn ehdotukset tarkoittavat?' if wizard_view|default(false) else 'Mitä AI-ehdotukset tarkoittavat?' }}</button>
       <button class="copilot-prompt" data-prompt="Mistä tiedän, mitkä ehdotukset hyväksyä?">Mistä tiedän mitkä hyväksyä?</button>
       {% elif current_step == 4 %}
       <button class="copilot-prompt" data-prompt="Mitä estävät puutteet tarkoittavat?">Mitä estävät puutteet tarkoittavat?</button>
@@ -88,7 +89,7 @@
       <button class="copilot-prompt" data-prompt="Selitä tärkeimmät havainnot">Selitä tärkeimmät havainnot</button>
       {% endif %}
       {% if extraction_count > 0 %}
-      <button class="copilot-prompt" data-prompt="Mitä poimintoja AI löysi?">Mitä poimintoja AI löysi?</button>
+      <button class="copilot-prompt" data-prompt="{{ 'Mitä poimintoja tekoäly löysi?' if wizard_view|default(false) else 'Mitä poimintoja AI löysi?' }}">{{ 'Mitä poimintoja tekoäly löysi?' if wizard_view|default(false) else 'Mitä poimintoja AI löysi?' }}</button>
       {% endif %}
     </div>
     {% endif %}
@@ -101,7 +102,7 @@
           rows="1"
           placeholder="Kysy tai kuvaile..."
           maxlength="2000"
-          aria-label="Kirjoita viesti AI-apurille"
+          aria-label="Kirjoita viesti {{ chat_name|lower }}lle"
         ></textarea>
         <div class="copilot-input-footer">
           <span class="copilot-char-count" data-copilot-charcount>0 / 2000</span>

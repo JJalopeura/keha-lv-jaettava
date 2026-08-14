@@ -1,0 +1,143 @@
+{% set wizard_ai_jobs = ai_jobs|selectattr('kind', 'in', ['material_ingest', 'intake_analysis', 'form_suggestions', 'application_check'])|list %}
+{% set active_wizard_jobs = wizard_ai_jobs|selectattr('status', 'in', ['queued', 'running'])|list %}
+{% set kind_labels = {
+  'material_ingest': 'Aineiston valmistelu',
+  'intake_analysis': 'Aineiston analyysi',
+  'form_suggestions': 'Hakemuksen ehdotukset',
+  'application_check': 'Hakemuksen tarkistus'
+} %}
+{% set status_labels = {
+  'queued': 'Jonossa',
+  'running': 'Käynnissä',
+  'succeeded': 'Valmis',
+  'failed': 'Epäonnistui',
+  'cancelled': 'Keskeytetty'
+} %}
+{% set wizard_ai_field_labels = {} %}
+{% for field in schema.fields %}{% set _ = wizard_ai_field_labels.update({field.id: field.label}) %}{% endfor %}
+{% macro wizard_ai_step_label(value) -%}
+{% set raw = value|string %}
+{% if raw in wizard_ai_field_labels %}{{ wizard_ai_field_labels.get(raw) }}{% elif '_' in raw %}{{ raw|replace('_', ' ')|capitalize }}{% else %}{{ raw }}{% endif %}
+{%- endmacro %}
+{% set material_job = namespace(item=none) %}
+{% set material_active = namespace(item=none) %}
+{% for job in wizard_ai_jobs if job.kind in ['material_ingest', 'intake_analysis'] %}
+  {% if material_job.item is none %}{% set material_job.item = job %}{% endif %}
+  {% if material_active.item is none and job.status in ['queued', 'running'] %}{% set material_active.item = job %}{% endif %}
+{% endfor %}
+{% set suggestion_job = namespace(item=none) %}
+{% set suggestion_active = namespace(item=none) %}
+{% for job in wizard_ai_jobs if job.kind == 'form_suggestions' %}
+  {% if suggestion_job.item is none %}{% set suggestion_job.item = job %}{% endif %}
+  {% if suggestion_active.item is none and job.status in ['queued', 'running'] %}{% set suggestion_active.item = job %}{% endif %}
+{% endfor %}
+{% set check_job = namespace(item=none) %}
+{% set check_active = namespace(item=none) %}
+{% for job in wizard_ai_jobs if job.kind == 'application_check' %}
+  {% if check_job.item is none %}{% set check_job.item = job %}{% endif %}
+  {% if check_active.item is none and job.status in ['queued', 'running'] %}{% set check_active.item = job %}{% endif %}
+{% endfor %}
+{% set has_material = attachments|length > 0 or intake_analysis %}
+
+<section class="sidebar-section wizard-ai-sidebar" aria-labelledby="wizard-ai-heading">
+  <div class="wizard-ai-sidebar__heading">
+    <p class="sidebar-heading" id="wizard-ai-heading">Tekoälytoiminnot</p>
+    {% if active_wizard_jobs %}<span class="wizard-ai-count">{{ active_wizard_jobs|length }}</span>{% endif %}
+  </div>
+  <div class="wizard-ai-actions">
+    <div class="wizard-ai-action">
+      <div><strong>Aineiston analyysi</strong><small>{% if material_active.item %}{{ status_labels.get(material_active.item.status, 'Käynnissä') }}{% elif material_job.item %}{{ status_labels.get(material_job.item.status, 'Valmis') }}{% else %}Ei aloitettu{% endif %}</small></div>
+      {% if material_active.item %}
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ material_active.item.id }}/cancel">
+        <input type="hidden" name="step" value="{{ step }}">
+        <button class="wizard-ai-action__button wizard-ai-action__button--stop" title="Keskeytä aineiston käsittely">Keskeytä</button>
+      </form>
+      {% elif has_material %}
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/intake-analysis">
+        <button class="wizard-ai-action__button" title="{{ 'Aja aineiston analyysi uudelleen' if material_job.item else 'Analysoi aineisto' }}">{{ 'Uudelleen' if material_job.item else 'Käynnistä' }}</button>
+      </form>
+      {% else %}<span class="wizard-ai-action__disabled">Lisää aineisto</span>{% endif %}
+    </div>
+    <div class="wizard-ai-action">
+      <div><strong>Hakemuksen ehdotukset</strong><small>{% if suggestion_active.item %}{{ status_labels.get(suggestion_active.item.status, 'Käynnissä') }}{% elif suggestion_job.item %}{{ status_labels.get(suggestion_job.item.status, 'Valmis') }}{% else %}Ei aloitettu{% endif %}</small></div>
+      {% if suggestion_active.item %}
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ suggestion_active.item.id }}/cancel">
+        <input type="hidden" name="step" value="{{ step }}">
+        <button class="wizard-ai-action__button wizard-ai-action__button--stop" title="Keskeytä ehdotusten muodostus">Keskeytä</button>
+      </form>
+      {% elif has_material %}
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-form">
+        <button class="wizard-ai-action__button" title="{{ 'Muodosta ehdotukset uudelleen' if suggestion_job.item else 'Muodosta ehdotukset' }}">{{ 'Uudelleen' if suggestion_job.item else 'Käynnistä' }}</button>
+      </form>
+      {% else %}<span class="wizard-ai-action__disabled">Lisää aineisto</span>{% endif %}
+    </div>
+    <div class="wizard-ai-action">
+      <div><strong>Hakemuksen tarkistus</strong><small>{% if check_active.item %}{{ status_labels.get(check_active.item.status, 'Käynnissä') }}{% elif check_job.item %}{{ status_labels.get(check_job.item.status, 'Valmis') }}{% else %}Ei aloitettu{% endif %}</small></div>
+      {% if check_active.item %}
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ check_active.item.id }}/cancel">
+        <input type="hidden" name="step" value="{{ step }}">
+        <button class="wizard-ai-action__button wizard-ai-action__button--stop" title="Keskeytä hakemuksen tarkistus">Keskeytä</button>
+      </form>
+      {% else %}
+      <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/check">
+        <button class="wizard-ai-action__button" title="{{ 'Aja tarkistus uudelleen' if check_job.item else 'Aja tarkistus' }}">{{ 'Uudelleen' if check_job.item else 'Käynnistä' }}</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if active_wizard_jobs %}
+  <div class="wizard-ai-active" aria-live="polite">
+    {% for job in active_wizard_jobs %}
+    <article class="wizard-ai-job" data-wizard-ai-job data-status-url="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ job.id }}">
+      <div class="wizard-ai-job__meta"><strong>{{ kind_labels.get(job.kind, 'Tekoälykäsittely') }}</strong><span><b data-wizard-ai-progress>{{ job.progress_percent }}</b>%</span></div>
+      <div class="progress-track"><span data-wizard-ai-progress-bar style="--p: {{ job.progress_percent }}"></span></div>
+      <small data-wizard-ai-step>{{ wizard_ai_step_label(job.current_step_label or 'valmistellaan') }}</small>
+      {% if job.events|length > 1 %}
+      <div class="wizard-ai-job__steps">
+        {% for event in job.events %}<span class="{% if event.progress_percent >= 100 %}completed{% endif %}">{{ wizard_ai_step_label(event.step) }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if wizard_ai_jobs %}
+  <details class="wizard-ai-history">
+    <summary>Viimeisimmät ajot <small>{{ wizard_ai_jobs|length }}</small></summary>
+    <ul>
+      {% for job in wizard_ai_jobs[:5] %}
+      <li><span>{{ kind_labels.get(job.kind, 'Tekoälykäsittely') }}</span><small>{{ status_labels.get(job.status, job.status) }}</small></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</section>
+
+{% if active_wizard_jobs %}
+<script>
+(function () {
+  var rows = document.querySelectorAll("[data-wizard-ai-job]");
+  if (!rows.length) return;
+  var terminal = new Set(["succeeded", "failed", "cancelled"]);
+  function refresh(row) {
+    fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } })
+      .then(function (response) { if (!response.ok) throw new Error("HTTP " + response.status); return response.json(); })
+      .then(function (payload) {
+        var progress = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
+        var value = row.querySelector("[data-wizard-ai-progress]");
+        var bar = row.querySelector("[data-wizard-ai-progress-bar]");
+        var step = row.querySelector("[data-wizard-ai-step]");
+        if (value) value.textContent = progress;
+        if (bar) bar.style.setProperty("--p", progress);
+        if (step && payload.current_step_label) step.textContent = payload.current_step_label;
+        if (terminal.has(payload.status)) window.location.reload();
+      })
+      .catch(function () {});
+  }
+  rows.forEach(refresh);
+  window.setInterval(function () { rows.forEach(refresh); }, 4000);
+})();
+</script>
+{% endif %}

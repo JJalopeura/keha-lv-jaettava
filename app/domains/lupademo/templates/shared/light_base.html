@@ -6,14 +6,14 @@
     <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"
-      content="Lupa-apuri — AI-avusteinen lupahakemuspalvelu. Laadi hakemus, tarkista aineisto ja seuraa käsittelyä."
+      content="Lupa-apuri — tekoälyavusteinen lupahakemuspalvelu. Laadi hakemus, tarkista aineisto ja seuraa käsittelyä."
     />
     <title>{% block title %}Lupa-apuri{% endblock %} · Luvat ja valvonta</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2212%22 fill=%22%23123a64%22/><text y=%22.65em%22 x=%2250%22 text-anchor=%22middle%22 font-size=%2260%22 font-weight=%22800%22 fill=%22white%22>L</text></svg>"
     />
-    <link rel="stylesheet" href="/static/style.css?v=20260814-v3" />
+    <link rel="stylesheet" href="/static/style.css?v=20260814-v5" />
   </head>
   <body
     class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}"
@@ -30,6 +30,7 @@
     {% set case_context = case_id is defined and not package_review %}
     {% set case_workbench = not authority_workspace and not demo_workspace and
     '/lupademo/application/' in current_path %}
+    {% set wizard_view = case_workbench and '/wizard/' in current_path %}
     {% set hide_brand_mark = case_workbench or current_path.startswith('/lv/projects/') %}
     {% set service_names = {
     'building_residential': 'Rakennusluvan asiointi',
@@ -87,6 +88,9 @@
               {% endif %}
             </div>
           </section>
+          {% if wizard_view and application is defined and ai_jobs is defined %}
+          {% include 'shared/_wizard_ai_sidebar.html' %}
+          {% endif %}
           {% endif %}
 
           {% if authority_workspace %}
@@ -140,7 +144,11 @@
               ><small>{{ workspace_brand_sub }}</small></span
             >
               {% if case_id is defined and ai_mode_status is defined %}
+              {% if wizard_view %}
+              <span class="ai-mode-status ai-mode-status--{{ ai_mode_status.kind }}">{{ 'Tekoälysimulaatio' if ai_mode_status.kind == 'simulation' else ('Tekoälypalvelu' if ai_mode_status.kind == 'azure' else 'Tekoäly ei käytettävissä') }}</span>
+              {% else %}
               <span class="ai-mode-status ai-mode-status--{{ ai_mode_status.kind }}">{{ ai_mode_status.label }}</span>
+              {% endif %}
               {% endif %}
           </a>
           {% if authority_workspace or demo_workspace %}
@@ -157,7 +165,7 @@
           </form>
           {% endif %}
         </header>
-        {% if case_context %}
+        {% if case_context and not wizard_view %}
         <div
           class="project-context project-context--{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else 'application') }}"
           aria-label="{{ 'Hanke' if case_workbench else 'Avoin hanke' }}"
@@ -170,9 +178,11 @@
         {% endif %}
         <main id="main-content">
           {% block content %}{% endblock %}
+          {% if not wizard_view %}
           <footer class="service-footer">
             <span>Demo: Luvat ja valvonta</span>
           </footer>
+          {% endif %}
         </main>
       </div>
     </div>

@@ -7,6 +7,7 @@
   "environmental_application": "Ympäristölupahakemus",
   "public_summary": "Julkinen yhteenveto",
   "site_map": "Asemapiirros / sijaintikartta",
+  "site_plan": "Asemapiirros / sijaintikartta",
   "zoning_extract": "Kaavaote",
   "main_drawings": "Pääpiirustukset",
   "facade_drawings": "Julkisivupiirustukset",
@@ -37,6 +38,12 @@
   "missing": "Ei saatavilla"
 } %}
 {% macro evidence_source_title(title, all_attachments) %}{% set label = namespace(value=title) %}{% for attachment in all_attachments %}{% if label.value.endswith(attachment.filename) %}{% set label.value = attachment.filename %}{% endif %}{% endfor %}{{ label.value }}{% endmacro %}
+{% macro humanize_finding(value) -%}
+{% set rendered = namespace(value=value|string) %}
+{% for field_id, label in field_labels.items() %}{% set rendered.value = rendered.value|replace(field_id, label) %}{% endfor %}
+{% for attachment_type, label in document_type_labels.items() %}{% set rendered.value = rendered.value|replace(attachment_type, label) %}{% endfor %}
+{{ rendered.value }}
+{%- endmacro %}
 
 <nav class="flow-progress" aria-label="Hakemuspaketin tarkistuksen vaiheet">
   <span class="complete"><b>1</b> Tuo aineisto</span>
@@ -140,7 +147,7 @@
         {% for finding in package_analysis.findings[:6] %}
         <article class="task-row {{ finding.severity }}">
           <span class="task-state" aria-hidden="true">{% if finding.severity == 'blocking' %}!{% else %}i{% endif %}</span>
-          <div><strong>{{ finding.title }}</strong><p>{{ finding.detail }}</p>{% if finding.suggested_fix %}<small>Ehdotus: {{ finding.suggested_fix }}</small>{% endif %}{% if finding.evidence_refs %}<details class="evidence-disclosure"><summary>Perusteet ja lähteet · luottamus {{ (finding.confidence * 100)|round|int }} %</summary>{% for ref in finding.evidence_refs %}<div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
+          <div><strong>{{ humanize_finding(finding.title) }}</strong><p>{{ humanize_finding(finding.detail) }}</p>{% if finding.suggested_fix %}<small>Ehdotus: {{ humanize_finding(finding.suggested_fix) }}</small>{% endif %}{% if finding.evidence_refs %}<details class="evidence-disclosure"><summary>Perusteet ja lähteet · luottamus {{ (finding.confidence * 100)|round|int }} %</summary>{% for ref in finding.evidence_refs %}<div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
           {% if is_package_review %}<a href="#documents">Katso aineisto</a>{% else %}<a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2">Korjaa</a>{% endif %}
         </article>
         {% else %}<div class="empty-success"><span>✓</span><div><strong>Ei avoimia puutteita</strong><p>Siirry tarkistamaan viranomaiselle lähtevä paketti.</p></div></div>{% endfor %}
@@ -148,7 +155,7 @@
     </section>
 
     <details class="extraction-section workbench-evidence-disclosure" id="extractions">
-      <summary class="workbench-evidence-summary"><span class="section-kicker">Aineisto</span><strong>Näytä aineisto ja AI:n löytämät lomaketiedot</strong><small>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</small></summary>
+      <summary class="workbench-evidence-summary"><span class="section-kicker">AI-poiminnat</span><strong>Näytä AI:n löytämät lomaketiedot</strong><small>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</small></summary>
       <div class="section-heading-line"><div><p class="section-kicker">Poiminnat</p><h2 id="extractions-heading">AI:n löytämät lomaketiedot</h2></div><span>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</span></div>
       <p class="section-description">Vertaa ehdotusta lähteeseen. Vasta hyväksyminen lisää tiedon hakemukselle.</p>
       <div class="extraction-list">

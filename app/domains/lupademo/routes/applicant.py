@@ -100,6 +100,17 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
         return ctx.context(case_id, permit_type, app_ctx_builder=context_app_with_material)
 
+    def hanke_context(request: Request, case_id: str) -> dict[str, Any]:
+        page_context = context(case_id)
+        applications = customer_ws.case_application_rows(db(), case_id, page_context.get("project", {}))
+        page_context.update(
+            {
+                "customer": current_customer(request),
+                "hanke_applications": applications,
+            }
+        )
+        return page_context
+
     @router.get("/login", response_class=HTMLResponse)
     def login(request: Request):
         customer_ws.ensure_customer_demo_data(db())
@@ -281,8 +292,8 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                     {"step": 2, "label": "Aineisto"},
                     {"step": 3, "label": "Hakemuksen tiedot"},
                     {"step": 4, "label": "Tarkistus"},
-                    {"step": 5, "label": "Paketointi"},
-                    {"step": 6, "label": "Vastaanotto"},
+                    {"step": 5, "label": "Lähetys"},
+                    {"step": 6, "label": "Vahvistus"},
                 ],
             },
             "structure_extraction": svc.artifact_json(db(), review_id, "structure_extraction_result", permit_type, {}),
@@ -505,7 +516,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/projects/{project_id}", response_class=HTMLResponse)
     def project_workspace(request: Request, project_id: str):
-        return templates.TemplateResponse(request, "applicant/lv_project.html", {**context(project_id), "customer": current_customer(request)})
+        return templates.TemplateResponse(request, "applicant/lv_project.html", hanke_context(request, project_id))
 
     @router.post("/projects/{project_id}/applications")
     def create_application(project_id: str, permit_type: str = Form(...)):
@@ -563,7 +574,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/lv/projects/{case_id}", response_class=HTMLResponse)
     def lv_project(request: Request, case_id: str):
-        return templates.TemplateResponse(request, "applicant/lv_project.html", {**context(case_id), "customer": current_customer(request)})
+        return templates.TemplateResponse(request, "applicant/lv_project.html", hanke_context(request, case_id))
 
     @router.get("/customer/profile", response_class=HTMLResponse)
     def customer_profile(request: Request):
@@ -630,8 +641,13 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         # it doesn't exist yet and there are attachments to package, so the
         # "Asiakirjaesitys" document list renders. Leave the empty state when
         # there is nothing to package yet.
-        if step in (5, 6) and not ctx.get("package"):
-            if svc.list_attachments(db(), case_id, application_id):
+        if step in (5, 6):
+            attachments = svc.list_attachments(db(), case_id, application_id)
+            if attachments and svc.submission_package_is_stale(
+                ctx.get("package", {}),
+                ctx.get("application", {}),
+                attachments,
+            ):
                 ctx["package"] = svc.compose_submission_package(db(), case_id, application_id)
         return templates.TemplateResponse(request, "applicant/wizard.html", {**ctx, "step": step})
 
@@ -660,6 +676,21 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         job = _case_scoped_job(case_id, application_id, job_id)
         payload = svc.ai_job_status_payload(job, case_id=case_id, application_id=svc.application_id_for(application_id))
         return Response("event: status\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n", media_type="text/event-stream")
+
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/jobs/{job_id}/cancel")
+    def application_job_cancel(case_id: str, application_id: str, job_id: str, step: int = Form(1)):
+        job = _case_scoped_job(case_id, application_id, job_id)
+        if job.get("status") not in {"pending", "running"}:
+            raise HTTPException(status_code=409, detail="job_not_cancellable")
+        try:
+            svc.cancel_ai_job(db(), job_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail="job_not_cancellable") from exc
+        safe_step = min(max(int(step), 1), 6)
+        return RedirectResponse(
+            url=f"/cases/{case_id}/lupademo/application/{svc.application_id_for(application_id)}/wizard/{safe_step}#ai-jobs",
+            status_code=303,
+        )
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/package")
     def create_application_material_package(case_id: str, application_id: str):

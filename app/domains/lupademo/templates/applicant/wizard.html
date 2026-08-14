@@ -3,8 +3,8 @@
 {% set present = request.query_params.get('present') == '1' %}
 {% set source_labels = {
   "lv_common_data": "LV:stä haettu",
-  "accepted_ai_suggestion": "Hyväksytty AI-ehdotus",
-  "accepted_ai_extraction": "Hyväksytty AI-ehdotus",
+  "accepted_ai_suggestion": "Hyväksytty tekoälyn ehdotus",
+  "accepted_ai_extraction": "Hyväksytty tekoälyn ehdotus",
   "käyttäjän syöttämä": "Käyttäjän syöttämä"
 } %}
 {% set field_labels = {} %}
@@ -23,6 +23,7 @@
 {% set pending_extraction_count = wizard.get('pending_extraction_count', field_extraction_queue.get('items', [])|selectattr('status', 'equalto', 'pending')|list|length) %}
 {% set pending_field_suggestion_count = wizard.get('pending_field_suggestion_count', suggestions|selectattr('status', 'equalto', 'pending')|list|length) %}
 {% set pending_field_suggestions = suggestions|selectattr('status', 'equalto', 'pending')|selectattr('suggested_value')|list %}
+{% set has_ai_review = pending_extraction_count or pending_field_suggestions|length %}
 {% set suggestion_status_labels = {'pending': 'Odottaa tarkistusta', 'accepted': 'Hyväksytty', 'rejected': 'Hylätty'} %}
 {% set current_step_status = wizard.step_status.get(step, {}) %}
 <header class="application-header">
@@ -44,17 +45,17 @@
   {% if step == 1 %}
   <p>LV:n yhteiset tiedot siirtyvät hakemuksen pohjaksi.</p>
   {% elif step == 2 %}
-  <p>Hakemuksen liitteet ja muu aineisto lisätään tänne. AI erottaa viranomaiselle toimitettavat liitteet tausta-aineistosta.</p>
+  <p>Hakemuksen liitteet ja muu aineisto lisätään tänne. Tekoäly erottaa viranomaiselle toimitettavat liitteet tausta-aineistosta.</p>
   {% elif step == 3 %}
-  <p>Täydennä hakemuksen tiedot ja tarkista AI:n lähteistetyt ehdotukset ennen hyväksymistä.</p>
+  <p>Täydennä hakemuksen tiedot ja tarkista tekoälyn lähteistetyt ehdotukset ennen hyväksymistä.</p>
   {% elif step == 4 %}
-  <p>Sääntö- ja AI-tarkistus muodostavat lähetysportin. Estävät puutteet pysäyttävät lähetyksen.</p>
+  <p>Sääntö- ja tekoälytarkistus muodostavat lähetysportin. Estävät puutteet pysäyttävät lähetyksen.</p>
   {% elif step == 5 %}
-  <p>Viranomaiselle lähtevä paketti on tarkistettavissa ja AI-only-aineisto jää pois.</p>
+  <p>Viranomaiselle lähtevä paketti on tarkistettavissa ja vain tekoälyn käytössä oleva aineisto jää pois.</p>
   {% else %}
   <p>Lähetetty hakemus näkyy LV:ssä ja viranomaisen työjonossa.</p>
   {% endif %}
-  <div class="integration-pills"><span class="pill">R4 hakemus</span><span class="pill">R5 AI-evidence</span><span class="pill">R6 tarkistusportti</span><span class="pill">R7 lähetys</span></div>
+  <div class="integration-pills"><span class="pill">R4 hakemus</span><span class="pill">R5 lähteet</span><span class="pill">R6 tarkistusportti</span><span class="pill">R7 lähetys</span></div>
 </section>
 {% endif %}
 
@@ -67,29 +68,7 @@
   {% endfor %}
 </nav>
 
-{% if step in [2, 3, 4] %}
-{% include 'shared/_ai_job_bar.html' %}
-{% endif %}
-
-<section class="step-guidance">
-  <div>
-    <p class="section-kicker">Vaihe {{ step }} / 6</p>
-    <h2>{{ wizard.steps[step - 1].label }}</h2>
-    {% if step == 1 %}
-    <p>Tarkista Yhteisistä tiedoista tuodut tiedot. Kaikki hakemuksen kentät täytetään vaiheessa 3.</p>
-    {% elif step == 2 %}
-    <p>Lisää hakemuksen liitteet ja tausta-aineisto. AI auttaa luokittelemaan dokumentit ja poimimaan niistä tietoja.</p>
-    {% elif step == 3 %}
-    <p>Täydennä hakemuksen tiedot ja hyväksy vain tarkistamasi AI-ehdotukset.</p>
-    {% elif step == 4 %}
-    <p>Aja AI- ja sääntötarkistus. Estävät puutteet estävät lähetyksen.</p>
-    {% elif step == 5 %}
-    <p>Tarkista viranomaiselle lähtevä asiakirjapaketti ennen lähetystä.</p>
-    {% else %}
-    <p>Katso lähetyskuitti ja siirry tarvittaessa viranomaisnäkymään.</p>
-    {% endif %}
-  </div>
-</section>
+<p class="visually-hidden">Vaihe {{ step }} / 6: {{ wizard.steps[step - 1].label }}</p>
 
 <div class="studio-layout">
 <div class="studio-main">
@@ -97,14 +76,12 @@
 {% if step == 1 %}
 <section class="context-section">
   <div>
-    <div class="section-heading-line"><div><p class="section-kicker">Hakemuksen lähtökohta</p><h2>Yhteiset tiedot</h2></div><span>Yhteisistä tiedoista</span></div>
+    <div class="section-heading-line"><h2>Yhteiset tiedot</h2></div>
     <dl class="data-list">
       {% for key, value in common.data.items() %}
       <div class="data-row"><dt>{{ common_labels.get(key, field_labels.get(key, "Muu tieto")) }}</dt><dd>{{ value or "-" }}</dd></div>
       {% endfor %}
     </dl>
-    <p class="section-description">Nämä tiedot muodostavat hakemuksen lähtökohdan. Täytä varsinainen hakemus aineiston jälkeen.</p>
-    <a class="context-edit-link" href="/lv/projects/{{ case_id }}">Palaa hankkeen tietoihin</a>
   </div>
 </section>
 {% endif %}
@@ -117,7 +94,6 @@
       <div><p class="section-kicker">Hakemuksen tiedot</p><h2>Hakemuslomake</h2></div>
       <span>{{ wizard.missing_required_fields|length }} täydennettävää kenttää</span>
     </div>
-    <p class="application-form-note">LV:n yhteiset tiedot näkyvät vaiheessa 1. Kenttäkohtaiset AI-ehdotukset näkyvät suoraan niiden kenttien alla.</p>
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/save">
       <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ step }}">
       {% for tab in schema.tabs if tab.id != 'attachments' and tab.id != 'summary' %}
@@ -138,7 +114,7 @@
           {% set source_key = application.field_sources.get(field.id, "käyttäjän syöttämä") %}
           <span class="field-note"><i aria-hidden="true"></i>{{ source_labels.get(source_key, source_key) }}{% if inline_suggestion %}
             <span class="field-suggestion-inline" data-inline-suggestion>
-              <button type="button" class="field-suggestion-trigger" aria-label="Avaa AI-ehdotus kentälle {{ field.label }}" title="Avaa AI-ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.get('suggested_value', ''), 'confidence': inline_suggestion.get('confidence', 0), 'fallback_used': inline_suggestion.get('fallback_used', false), 'rationale': inline_suggestion.get('rationale', 'Aineistosta poimittu ehdotus.'), 'evidence_refs': inline_suggestion.get('evidence_refs', []), 'accept_url': inline_suggestion.get('accept_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/accept'), 'reject_url': inline_suggestion.get('reject_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/reject'), 'accept_field_id': inline_suggestion.get('field_id', '') if inline_suggestion.get('source_kind') == 'extraction' else ''} | tojson | forceescape }}">AI-ehdotus</button>
+              <button type="button" class="field-suggestion-trigger" aria-label="Avaa tekoälyn ehdotus kentälle {{ field.label }}" title="Avaa tekoälyn ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.get('suggested_value', ''), 'confidence': inline_suggestion.get('confidence', 0), 'fallback_used': inline_suggestion.get('fallback_used', false), 'rationale': inline_suggestion.get('rationale', 'Aineistosta poimittu ehdotus.'), 'evidence_refs': inline_suggestion.get('evidence_refs', []), 'accept_url': inline_suggestion.get('accept_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/accept'), 'reject_url': inline_suggestion.get('reject_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/reject'), 'accept_field_id': inline_suggestion.get('field_id', '') if inline_suggestion.get('source_kind') == 'extraction' else ''} | tojson | forceescape }}">Tekoälyn ehdotus</button>
             </span>
           {% endif %}</span>
           {% for change in sync.changes if change.field_id == field.id %}
@@ -161,11 +137,11 @@
     <div class="result-item" id="materials">
       <form method="post" enctype="multipart/form-data" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/materials/upload-files" data-upload-form>
         <h3>Lisää hakemuksen aineisto</h3>
-        <p class="muted">Lataa kaikki hakemukseen liittyvät dokumentit tai tuo valmis aineisto zip-pakettina.</p>
         {% if wizard.missing_attachments %}
         {% set upload_attachment_labels = {
           "environmental_application": "Ympäristölupahakemus",
           "site_map": "Asemapiirros / sijaintikartta",
+          "site_plan": "Asemapiirros / sijaintikartta",
           "zoning_extract": "Kaavaote",
           "public_summary": "Julkinen yhteenveto",
           "main_drawings": "Pääpiirustukset",
@@ -214,14 +190,14 @@
 
         <details class="text-material">
           <summary>Lisää myös hankkeen kuvaus tekstinä</summary>
-          <label>Vapaa kuvaus<textarea name="text_body" rows="5" placeholder="Kuvaile hanketta tai lisää saate. Teksti merkitään AI:n tausta-aineistoksi."></textarea></label>
+          <label>Vapaa kuvaus<textarea name="text_body" rows="5" placeholder="Kuvaile hanketta tai lisää saate. Teksti merkitään tekoälyn tausta-aineistoksi."></textarea></label>
         </details>
 
-        <label>Paketin nimi<input name="package_name" value="{{ material_package.get('display_name') or 'Hakemusaineisto' }}"></label>
+        <input type="hidden" name="package_name" value="{{ material_package.get('display_name') or 'Hakemusaineisto' }}">
         <button class="{% if present %}next-action{% endif %}" style="margin-top:12px">Lataa dokumentit</button>
       </form>
     </div>
-    {% for scope, title in [("official_submission", "Hakemuksen liitteet - toimitetaan viranomaiselle"), ("ai_context_only", "Tausta-aineistot - vain AI:n käytössä")] %}
+    {% for scope, title in [("official_submission", "Hakemuksen liitteet - toimitetaan viranomaiselle"), ("ai_context_only", "Tausta-aineistot - vain tekoälyn käytössä")] %}
     <h3 class="document-group-title">{{ title }}</h3>
     <div class="managed-document-list">
     {% for att in attachments if att.delivery_scope == scope %}
@@ -270,8 +246,8 @@
                   </select>
                 </label>
                 <select class="attachment-scope-control" name="delivery_scope" aria-label="Dokumentin käyttötarkoitus">
-                  {% for option, label in [("official_submission", "Viranomaiselle"), ("ai_context_only", "Vain AI:lle")] %}
-                  <option value="{{ option }}" {% if option == att.delivery_scope %}selected{% endif %}>{{ label }}</option>
+                  {% for option, label in [("official_submission", "Viranomaiselle"), ("ai_context_only", "Vain tekoälylle")] %}
+                  <option value="{{ option }}" {% if option == att.delivery_scope %}selected{% endif %}>{{ "Vain tekoälylle" if option == "ai_context_only" else label }}</option>
                   {% endfor %}
                 </select>
                 <button class="secondary compact">Tallenna</button>
@@ -294,16 +270,6 @@
     <p class="muted">{{ hidden_authority_count }} viranomais- tai eval-aineiston dokumenttia on rajattu pois hakijan normaalista aineistonäkymästä.</p>
     {% endif %}
     </div>
-  </section>
-  {% endif %}
-  {% if step == 2 %}
-  <section class="material-analysis-result">
-    <div>
-      <p class="section-kicker">Aineiston analyysi</p>
-      <h2>{% if pending_extraction_count %}{{ pending_extraction_count }} ehdotusta odottaa hakemuksessa{% else %}Aineisto on käsitelty{% endif %}</h2>
-      <p>{% if pending_extraction_count %}AI löysi aineistosta tietoja, jotka voit tarkistaa ja hyväksyä hakemuksen yhteydessä.{% else %}Voit siirtyä hakemuslomakkeelle täydentämään ja tarkistamaan tiedot.{% endif %}</p>
-    </div>
-    <a class="button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3#ai-suggestions">Siirry hakemukseen</a>
   </section>
   {% endif %}
 </section>
@@ -340,21 +306,19 @@
 </script>
 {% endif %}
 
-{% if step == 3 %}
+{% if step == 3 and has_ai_review %}
 <section class="extraction-section" id="ai-suggestions">
   <div class="section-heading-line">
     <div>
-      <p class="section-kicker">AI-ehdotukset</p>
-      <h2>Arvioi aineistosta löytyneet tiedot</h2>
+      <p class="section-kicker">Kenttäkohtaiset ehdotukset</p>
+      <h2>Poimitut tiedot</h2>
     </div>
     <div class="field-suggestion-summary">
-      <span>{{ pending_extraction_count + pending_field_suggestions|length }} avointa ehdotusta</span>
       <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/accept-all">
-        <button class="secondary compact" {% if not pending_extraction_count and not pending_field_suggestions %}disabled{% endif %}>Hyväksy kaikki AI-ehdotukset</button>
+        <button class="secondary compact" {% if not pending_extraction_count and not pending_field_suggestions %}disabled{% endif %}>Hyväksy kaikki tekoälyn ehdotukset</button>
       </form>
     </div>
   </div>
-  <p class="section-description">Kenttäehdotukset näkyvät lomakkeessa niiden omilla paikoilla. Tässä tarkistat aineistosta poimitut tiedot ja niiden lähteet.</p>
   <div class="field-suggestion-request">
     <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-field">
       <label for="suggest-field-select">Pyydä ehdotus yhdelle kentälle
@@ -366,8 +330,8 @@
       </label>
       <button class="secondary">Pyydä yksittäinen ehdotus</button>
     </form>
-    <span>Hakija ja Y-tunnus haetaan aina LV:stä.</span>
   </div>
+  {% if pending_extraction_count %}
   <div class="extraction-list">
     {% for item in field_extraction_queue.get('items', []) if item.status == 'pending' %}
     <article class="extraction-row">
@@ -392,32 +356,24 @@
       </details>
       {% endif %}
     </article>
-    {% else %}
-    <div class="empty-success"><span>✓</span><div><strong>Kaikki aineistosta poimitut ehdotukset on käsitelty</strong><p>Voit pyytää alta uusia kenttäkohtaisia ehdotuksia.</p></div></div>
     {% endfor %}
   </div>
-  <section class="field-suggestions-history" id="field-suggestions">
-    <div class="section-heading-line">
-      <div>
-        <p class="section-kicker">Kenttäkohtaiset ehdotukset</p>
-        <h3>AI:n ehdotushistoria</h3>
-      </div>
-      <span>{{ suggestions|selectattr('suggested_value')|list|length }} ehdotusta</span>
-    </div>
+  {% endif %}
+  {% if suggestions|selectattr('suggested_value')|list %}
+  <div class="field-suggestions-history" id="field-suggestions">
     <div class="field-suggestions-history-list">
       {% for suggestion in suggestions if suggestion.suggested_value %}
       <article class="field-suggestion-history-row">
         <div class="field-suggestion-history-copy">
           <strong>{{ field_labels.get(suggestion.field_id, "Valittu kenttä") }}</strong>
-          <small>{{ suggestion_status_labels.get(suggestion.status, "Tarkistettava") }}{% if suggestion.fallback_used %} · Paikallinen AI-simulaatio{% endif %}</small>
+          <small>{{ suggestion_status_labels.get(suggestion.status, "Tarkistettava") }}{% if suggestion.fallback_used %} · Paikallinen tekoälysimulaatio{% endif %}</small>
         </div>
         <div class="field-suggestion-history-value">
-          <span>{{ "Hyväksytty arvo" if suggestion.status == "accepted" else "AI-ehdotus" }}</span>
+          <span>{{ "Hyväksytty arvo" if suggestion.status == "accepted" else "Tekoälyn ehdotus" }}</span>
           <p>{{ suggestion.get('accepted_value') or suggestion.suggested_value }}</p>
         </div>
         <div class="field-suggestion-history-status">
           <span class="status {% if suggestion.status == 'accepted' %}good{% elif suggestion.status == 'rejected' %}warn{% endif %}">{{ suggestion_status_labels.get(suggestion.status, "Tarkistettava") }}</span>
-          {% if suggestion.status == "pending" %}<a href="#field-{{ suggestion.field_id }}">Avaa kenttä</a>{% endif %}
         </div>
         {% if suggestion.evidence_refs %}
         <details class="evidence-disclosure compact">
@@ -428,11 +384,10 @@
         </details>
         {% endif %}
       </article>
-      {% else %}
-      <p class="muted">Ei kenttäehdotuksia vielä.</p>
       {% endfor %}
     </div>
-  </section>
+  </div>
+  {% endif %}
 </section>
 <script>
 (function () {
@@ -483,11 +438,11 @@
 {% endif %}
 <section class="grid two" id="check">
   <div>
-    <h2>AI- ja sääntötarkistus</h2>
+    <h2>Tekoäly- ja sääntötarkistus</h2>
     <div class="criteria-context" aria-label="Tarkistuksessa käytetty kriteeristö">
       <div>
         <strong>{{ criteria_municipality }} · {{ criteria_version }}</strong>
-        <p>AI tarkistaa hakemuksen tämän kohteen kunnan aktiivisia vaatimuksia vasten.</p>
+        <p>Tekoäly tarkistaa hakemuksen tämän kohteen kunnan aktiivisia vaatimuksia vasten.</p>
       </div>
     </div>
     <div class="issue {% if precheck_gate.can_submit %}minor{% else %}blocking{% endif %}">
@@ -615,10 +570,17 @@
   "waste_plan": "Jätehuoltosuunnitelma",
   "other": "Muu asiakirja"
 } %}
-{% set package_scope_labels = {"official_submission": "Viranomaiselle toimitettava", "ai_context_only": "Vain AI:n käytössä", "ephemeral": "Tilapäinen aineisto"} %}
+{% set package_scope_labels = {"official_submission": "Viranomaiselle toimitettava", "ai_context_only": "Vain tekoälyn käytössä", "ephemeral": "Tilapäinen aineisto"} %}
 <section class="grid two">
   <div>
-    <h2>Asiakirjaesitys</h2>
+    <h2>Hakemuksen tiedot</h2>
+    <dl class="data-list submission-values">
+    {% for field in schema.fields %}
+      {% set field_value = application.form_data.get(field.id, '') %}
+      <div class="data-row"><dt>{{ field.label }}</dt><dd>{{ field_value if field_value else "Ei täytetty" }}</dd></div>
+    {% endfor %}
+    </dl>
+    <h3>Asiakirjaesitys</h3>
     {% if package %}
     <p>Vastaanottaja: {{ package.authority }}</p>
     <div class="package-official">
@@ -632,9 +594,9 @@
     <div class="package-excluded">
     <h3>Tausta-aineistot, joita ei lähetetä</h3>
     {% for att in package.excluded_ai_context_attachments %}
-    <div class="attachment-card">{{ att.filename }} · {{ package_document_type_labels.get(att.primary_type, "Muu asiakirja") }} · {{ package_scope_labels.get(att.delivery_scope, "Vain AI:n käytössä") }}</div>
+    <div class="attachment-card">{{ att.filename }} · {{ package_document_type_labels.get(att.primary_type, "Muu asiakirja") }} · {{ package_scope_labels.get(att.delivery_scope, "Vain tekoälyn käytössä") }}</div>
     {% else %}
-    <p class="muted">Ei erillisiä AI-tausta-aineistoja.</p>
+    <p class="muted">Ei erillisiä tekoälyn tausta-aineistoja.</p>
     {% endfor %}
     </div>
     {% else %}
@@ -657,23 +619,18 @@
 {% endif %}
 
 {% if step == 6 %}
-<section class="grid two">
-  <div>
-    <h2>Lähetys ja kuitti</h2>
-    {% if receipt %}
-    <dl class="data-list">
-      <div class="data-row"><dt>Kuitti</dt><dd>{{ receipt.receipt_id }}</dd></div>
-      <div class="data-row"><dt>Vastaanotettu</dt><dd>{{ receipt.received_at }}</dd></div>
-      <div class="data-row"><dt>Viranomainen</dt><dd>{{ receipt.authority }}</dd></div>
-    </dl>
-    {% else %}
-    <p class="muted">Hakemusta ei ole vielä lähetetty.</p>
-    {% endif %}
-  </div>
-  <div>
-    <h2>Seuraavat näkymät</h2>
-    <a class="button secondary" href="/authority/queue{% if present %}?present=1{% endif %}">Viranomaisnäkymä</a>
-  </div>
+<section class="receipt-step">
+  <h2>Lähetys ja kuitti</h2>
+  {% if receipt %}
+  <dl class="data-list">
+    <div class="data-row"><dt>Kuitti</dt><dd>{{ receipt.receipt_id }}</dd></div>
+    <div class="data-row"><dt>Vastaanotettu</dt><dd>{{ receipt.received_at }}</dd></div>
+    <div class="data-row"><dt>Viranomainen</dt><dd>{{ receipt.authority }}</dd></div>
+  </dl>
+  <a class="button secondary" href="/authority/queue{% if present %}?present=1{% endif %}">Viranomaisnäkymä</a>
+  {% else %}
+  <p class="muted">Hakemusta ei ole vielä lähetetty.</p>
+  {% endif %}
 </section>
 {% endif %}
 
@@ -681,7 +638,7 @@
   {% if step > 1 %}
   <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ step - 1 }}{% if present %}?present=1{% endif %}">← Edellinen vaihe</a>
   {% endif %}
-  {% if step < 6 %}
+  {% if step < 6 and step != 5 %}
   <a class="button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/{{ step + 1 }}{% if present %}?present=1{% endif %}">Seuraava: {{ wizard.steps[step].label }} →</a>
   {% endif %}
 </nav>

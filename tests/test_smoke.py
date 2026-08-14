@@ -923,7 +923,7 @@ class Pages(unittest.TestCase):
         )
 
         response = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/3")
-        panel = response.text.split('<section class="analysis-panel', 1)[1].split("</section>", 1)[0]
+        panel = response.text.split('class="wizard-ai-sidebar', 1)[1].split("</section>", 1)[0]
 
         self.assertIn("Toiminnan nimi", panel)
         self.assertIn("BAT-arviointi", panel)
@@ -943,19 +943,21 @@ class Pages(unittest.TestCase):
 
         materials_page = client.get(f"{base}/wizard/2")
         self.assertEqual(materials_page.status_code, 200)
+        self.assertIn("Seuraava: Hakemuksen tiedot", materials_page.text)
+        self.assertIn("Tekoälytoiminnot", materials_page.text)
         self.assertIn("Aineiston analyysi", materials_page.text)
-        self.assertIn(f"{pending_count} ehdotusta odottaa hakemuksessa", materials_page.text)
-        self.assertIn("Siirry hakemukseen", materials_page.text)
+        self.assertNotIn('class="analysis-panel', materials_page.text)
+        self.assertNotIn("Siirry hakemukseen", materials_page.text)
         self.assertNotIn("Tarkista AI-ehdotukset", materials_page.text)
 
         form_page = client.get(f"{base}/wizard/3")
         self.assertEqual(form_page.status_code, 200)
-        self.assertIn("AI-ehdotukset", form_page.text)
+        self.assertIn("Kenttäkohtaiset ehdotukset", form_page.text)
         self.assertIn("ai-suggestions", form_page.text)
 
         check_page = client.get(f"{base}/wizard/4")
         self.assertEqual(check_page.status_code, 200)
-        self.assertIn("AI- ja sääntötarkistus", check_page.text)
+        self.assertIn("Tekoäly- ja sääntötarkistus", check_page.text)
 
     def test_missing_official_attachments_link_to_materials_step(self) -> None:
         fresh_case = db.create_case("Missing official attachments", language="fi")
@@ -1058,15 +1060,19 @@ class Pages(unittest.TestCase):
             svc.save_artifact(db, case, "ai_suggestions", PERMIT, original_suggestions)
             svc.save_artifact(db, case, "field_extraction_queue", PERMIT, original_queue)
 
-        self.assertNotIn("Hyväksy kaikki AI-ehdotukset", materials_page.text)
-        self.assertIn("Hyväksy kaikki AI-ehdotukset", form_page.text)
+        self.assertNotIn("Hyväksy kaikki tekoälyn ehdotukset", materials_page.text)
+        self.assertIn("Hyväksy kaikki tekoälyn ehdotukset", form_page.text)
         self.assertIn("/suggestions/accept-all", form_page.text)
         self.assertIn("data-suggestion-open", form_page.text)
         self.assertIn("Pyydä yksittäinen ehdotus", form_page.text)
         self.assertIn('option value="activity_name"', form_page.text)
         self.assertNotIn('option value="applicant_name"', form_page.text)
         self.assertNotIn('option value="business_id"', form_page.text)
-        self.assertIn("AI:n ehdotushistoria", form_page.text)
+        self.assertIn("Kenttäkohtaiset ehdotukset", form_page.text)
+        self.assertNotIn("Avaa kenttä", form_page.text)
+        self.assertNotIn("avointa ehdotusta", form_page.text)
+        self.assertNotIn("Hakija ja Y-tunnus haetaan aina LV:stä", form_page.text)
+        self.assertNotIn('class="empty-success"', form_page.text)
         self.assertIn("Hyväksytty tuotantolaitos", form_page.text)
 
     def test_accept_all_extractions_updates_application_values(self) -> None:
@@ -1140,12 +1146,37 @@ class Pages(unittest.TestCase):
         workbench = client.get(f"/applicant/packages/{package_id}")
         self.assertEqual(workbench.status_code, 200)
         self.assertIn("Hakemuspaketin tarkistus", workbench.text)
+        self.assertNotIn("Tekoälytoiminnot", workbench.text)
         self.assertNotIn("Vaihe 2 / 6", workbench.text)
 
         wizard = client.get(f"{base}/wizard/2")
         self.assertEqual(wizard.status_code, 200)
         self.assertIn("Vaihe 2 / 6", wizard.text)
+        self.assertIn("Tekoälytoiminnot", wizard.text)
         self.assertNotIn("Hakemuspaketin tarkistus", wizard.text)
+
+    def test_wizard_ai_job_can_be_cancelled_from_sidebar(self) -> None:
+        fresh_case = db.create_case("Wizard AI sidebar cancellation", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        job = svc.start_ai_job(
+            db,
+            fresh_case,
+            PERMIT,
+            "application_check",
+            "AI- ja sääntötarkistus",
+            ["deterministic_checks"],
+            managed_background=True,
+        )
+
+        response = client.post(
+            f"/cases/{fresh_case}/lupademo/application/{PERMIT}/jobs/{job['id']}/cancel",
+            data={"step": 4},
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/4#ai-jobs")
+        cancelled = next(item for item in svc.list_ai_jobs(db, fresh_case, PERMIT) if item["id"] == job["id"])
+        self.assertEqual(cancelled["status"], "cancelled")
 
     def test_package_workbench_renders_pending_extraction_without_accepted_value(self) -> None:
         package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
@@ -1167,7 +1198,21 @@ class Pages(unittest.TestCase):
             case,
             "package_analysis_result",
             PERMIT,
-            {"summary": "Analyysi valmis", "readiness": "incomplete", "readiness_score": 60, "findings": []},
+            {
+                "summary": "Analyysi valmis",
+                "readiness": "incomplete",
+                "readiness_score": 60,
+                "findings": [
+                    {
+                        "severity": "major",
+                        "title": "Liite environmental_application puuttuu",
+                        "detail": "zoning_extract puuttuu lähetyspaketista.",
+                        "suggested_fix": "Lisää environmental_application.",
+                        "confidence": 0.9,
+                        "evidence_refs": [],
+                    }
+                ],
+            },
         )
         try:
             response = client.get(f"/applicant/packages/{package_id}")
@@ -1178,6 +1223,10 @@ class Pages(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Esimerkki Oy", response.text)
+        self.assertIn("Ympäristölupahakemus", response.text)
+        self.assertIn("Kaavaote", response.text)
+        self.assertNotIn("environmental_application", response.text)
+        self.assertNotIn("zoning_extract", response.text)
 
     def test_step_two_focuses_materials_and_defers_form_review(self) -> None:
         page = client.get(f"{base}/wizard/2")
@@ -1190,18 +1239,24 @@ class Pages(unittest.TestCase):
         self.assertNotIn("Hakemuslomake", page.text)
         self.assertNotIn("Pyydä ehdotus", page.text)
         self.assertNotIn("Hyväksy lomakkeelle", page.text)
+        self.assertNotIn("Paketin nimi", page.text)
+        self.assertNotIn("AI valmiina", page.text)
+        self.assertIn('type="hidden" name="package_name"', page.text)
 
         form_page = client.get(f"{base}/wizard/3")
         self.assertEqual(form_page.status_code, 200)
         self.assertIn("Hakemuslomake", form_page.text)
 
     def test_step_three_does_not_repeat_step_one_fields(self) -> None:
-        overview = client.get(f"{base}/wizard/1")
-        page = client.get(f"{base}/wizard/3")
+        fresh_case = db.create_case("Empty application form", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        fresh_base = f"/cases/{fresh_case}/lupademo/application/{PERMIT}"
+        overview = client.get(f"{fresh_base}/wizard/1")
+        page = client.get(f"{fresh_base}/wizard/3")
 
         self.assertEqual(overview.status_code, 200)
         self.assertEqual(page.status_code, 200)
-        self.assertIn("Hakemuksen lähtökohta", overview.text)
+        self.assertIn("Yhteiset tiedot", overview.text)
         self.assertIn('class="context-section"', overview.text)
         self.assertNotIn("Avaa hakemuslomake", overview.text)
         self.assertNotIn('name="applicant_name"', overview.text)
@@ -1209,7 +1264,9 @@ class Pages(unittest.TestCase):
         self.assertIn('name="applicant_name"', page.text)
         self.assertIn('name="business_id"', page.text)
         self.assertIn('name="activity_description"', page.text)
-        self.assertIn("Kenttäkohtaiset AI-ehdotukset näkyvät suoraan", page.text)
+        self.assertNotIn("Aineistosta löytyvät ehdotukset näkyvät suoraan", page.text)
+        self.assertNotIn('id="ai-suggestions"', page.text)
+        self.assertNotIn("Hyväksy kaikki tekoälyn ehdotukset", page.text)
 
     def test_front_page_requires_customer_login_and_shows_customer_hankkeet(self) -> None:
         client.post("/logout")
@@ -1280,6 +1337,7 @@ class Pages(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Lähetyspakettia ei ole vielä muodostettu", response.text)
         self.assertIn("disabled", response.text)
+        self.assertNotIn("Seuraava: Vastaanotto", response.text)
 
     def test_demo_lab_links_to_standalone_tools(self) -> None:
         response = client.get("/demo-lab")
@@ -1562,10 +1620,10 @@ class Pages(unittest.TestCase):
             self.assertEqual(page.count('<footer class="service-footer">'), 1)
         self.assertIn('>Viranomainen<', applicant_sidebar)
         self.assertIn('>Demo Lab ja alusta<', applicant_sidebar)
-        self.assertEqual(applicant.count('<footer class="service-footer">'), 1)
+        self.assertEqual(applicant.count('<footer class="service-footer">'), 0)
 
         # Wizard page has the six-step stepper in the main content area (not sidebar).
-        for label in ("Yhteiset tiedot", "Aineisto", "Hakemuksen tiedot", "Tarkistus", "Paketointi", "Vastaanotto"):
+        for label in ("Yhteiset tiedot", "Aineisto", "Hakemuksen tiedot", "Tarkistus", "Lähetys", "Vahvistus"):
             self.assertIn(f">{label}</strong>", applicant)
         self.assertIn('aria-label="Hakemuksen vaiheet"', applicant)
 

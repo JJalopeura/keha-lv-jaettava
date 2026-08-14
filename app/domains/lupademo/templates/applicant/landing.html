@@ -2,66 +2,78 @@
 {% from "shared/_components.html" import page_header %}
 {% block title %}{{ customer.display_name }} · LV{% endblock %}
 {% block content %}
-{{ page_header('Omat asiat', 'Seuraa asiointisi etenemistä', 'LV:n asiointipalvelu') }}
+{{ page_header('Omat asiat', '', 'Hakijan työtila') }}
 
-<section class="start-workspace dashboard-start" aria-labelledby="start-heading">
-  <div class="dashboard-start-heading">
-    <h2 id="start-heading">Uusi asiointi</h2>
+<section class="home-start-links" aria-labelledby="start-heading">
+  <div class="section-heading-row">
+    <div><p class="section-kicker">Uusi asiointi</p><h2 id="start-heading">Valitse lähtökohta</h2></div>
   </div>
-  <div class="start-options">
-    <a href="/applicant/packages/new" class="start-option start-option--primary">
-      <span class="start-option-copy"><strong>Tarkista uusi hakemuspaketti</strong></span>
-      <span class="start-option-arrow" aria-hidden="true">→</span>
+  <div class="home-start-links__list">
+    <a href="/projects/new" class="home-start-link">
+      <span><strong>Uusi hanke</strong><small>Luo hanke ja sille ensimmäinen hakemus.</small></span>
+      <span aria-hidden="true">→</span>
     </a>
-    <a href="/projects/new" class="start-option">
-      <span class="start-option-copy"><strong>Aloita uusi hanke</strong></span>
-      <span class="start-option-arrow" aria-hidden="true">→</span>
+    <a href="/applicant/packages/new" class="home-start-link">
+      <span><strong>Tarkista uusi hakemuspaketti</strong><small>Tuo valmis aineisto tarkistettavaksi ennen hankkeen aloittamista.</small></span>
+      <span aria-hidden="true">→</span>
     </a>
   </div>
 </section>
 
-<div class="dashboard-layout">
-  <section class="dashboard-main hanke-section" aria-labelledby="projects-heading">
+<section class="dashboard-main dashboard-main--full hanke-section" aria-labelledby="projects-heading">
     <div class="section-heading-row">
-      <div><p class="section-kicker">{{ case_count }} hanke{% if case_count != 1 %}tta{% endif %}</p><h2 id="projects-heading">Hankkeet</h2></div>
+      <h2 id="projects-heading">Hankkeet</h2>
     </div>
     {% if cases %}
-    <div class="case-grid">
+    <div class="case-list">
       {% for case in cases %}
-      <article class="case-card hanke-card">
-        <div class="case-card-heading">
-          <div><p class="eyebrow">Hanke · {{ case.status_label }}</p><h3>{{ case.name }}</h3><p class="muted">{{ case.location }}</p></div>
-          <span class="case-count">{{ case.application_count }} hakemus{% if case.application_count != 1 %}ta{% endif %}</span>
+      <article class="case-list-row">
+        <div class="case-list-row__identity">
+          <p class="eyebrow">Hanke</p>
+          <h3><a href="{{ case.project_url }}">{{ case.name }}</a></h3>
+          <p class="muted">{{ case.location }} · {{ case.application_count }} hakemus{% if case.application_count != 1 %}ta{% endif %}</p>
         </div>
-        <div class="application-list">
-          <p class="application-list-label">Hakemukset</p>
-          {% for application in case.applications %}
-          <div class="application-row">
-            <span>{{ application.label }}</span><span class="status">{{ application.status_label }}</span>
-          </div>
-          {% endfor %}
+        <div class="case-list-row__status">
+          <span class="case-list-label">Hankkeen tila</span>
+          <strong>{{ case.status_label }}</strong>
+        </div>
+        <div class="case-list-row__next">
+          <span class="case-list-label">Seuraavaksi</span>
+          {% if case.next_task %}<a href="{{ case.next_task.application_url }}">{{ case.next_task.task }}</a>{% else %}<span>Ei avoimia tehtäviä</span>{% endif %}
         </div>
         <a class="button secondary" href="{{ case.project_url }}">Avaa hanke <span aria-hidden="true">→</span></a>
+        <div class="case-list-row__applications" aria-label="Hankkeen hakemukset">
+          {% for application in case.applications %}
+          <span class="application-summary"><span>{{ application.label }}</span><small>{{ application.status_label }}</small></span>
+          {% endfor %}
+        </div>
       </article>
       {% endfor %}
     </div>
     {% else %}
     <div class="empty-state"><h3>Ei vielä hankkeita</h3><p>Aloita luomalla ensimmäinen hanke.</p><a class="primary-cta" href="/projects/new">Uusi hanke <span aria-hidden="true">→</span></a></div>
     {% endif %}
-  </section>
 
-  <aside class="dashboard-tasks" aria-labelledby="tasks-heading">
-    <div class="section-heading-row"><div><p class="section-kicker">{{ tasks|length }} avointa</p><h2 id="tasks-heading">Tehtävät</h2></div></div>
-    {% if tasks %}
-    <ul class="task-list">
-      {% for task in tasks %}
-      <li><a href="{{ task.url }}"><span class="task-kind">{{ task.permit_label }}</span><strong>{{ task.label }}</strong><small>{{ task.case_name }}</small><span aria-hidden="true">→</span></a></li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <p class="muted">Ei avoimia tehtäviä.</p>
+    {% if package_reviews %}
+    <section class="package-section" aria-labelledby="packages-heading">
+      <div class="section-heading-row">
+        <div><p class="section-kicker">Aineisto ennen hanketta</p><h2 id="packages-heading">Hakemuspaketin tarkistukset</h2></div>
+      </div>
+      <p class="section-description">Nämä tarkistukset eivät ole vielä hankkeita. Voit jatkaa niitä tai aloittaa hankkeen tarkistuksen pohjalta.</p>
+      <div class="package-list">
+        {% for package in package_reviews %}
+        <article class="package-list-row">
+          <div>
+            <p class="eyebrow">{{ package.permit_label }} · {{ package.municipality }}</p>
+            <h3><a href="{{ package.url }}">{{ package.name }}</a></h3>
+          </div>
+          <div class="package-list-row__status"><span class="case-list-label">Tila</span><strong>{{ package.status_label }}</strong></div>
+          <a class="button secondary" href="{{ package.url }}">{{ package.next_action }} <span aria-hidden="true">→</span></a>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
     {% endif %}
-  </aside>
-</div>
+</section>
 
 {% endblock %}

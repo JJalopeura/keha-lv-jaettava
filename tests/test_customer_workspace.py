@@ -48,6 +48,10 @@ class CustomerWorkspace(unittest.TestCase):
         dashboard = client.get("/")
         self.assertEqual(dashboard.status_code, 200)
         self.assertIn("Ren-Gas Oy", dashboard.text)
+        self.assertIn("Valitse lähtökohta", dashboard.text)
+        self.assertIn("Hankkeet", dashboard.text)
+        self.assertNotIn("Hallitse hankkeita ja jatka keskeneräisiä asiointeja", dashboard.text)
+        self.assertNotIn("Tehtävät", dashboard.text)
         self.assertNotIn("P2X:n vetylaitos", dashboard.text)
         self.assertEqual(client.post("/logout").status_code, 303)
         self.assertEqual(client.post("/login", data={"customer_id": "ren-gas"}).status_code, 303)
@@ -57,6 +61,25 @@ class CustomerWorkspace(unittest.TestCase):
         client.post("/login", data={"customer_id": "ren-gas"})
         other_case_id = db.list_cases_for_customer("p2x")[0]["id"]
         self.assertEqual(client.get(f"/projects/{other_case_id}").status_code, 403)
+
+    def test_hanke_page_prioritizes_applications_and_next_action(self) -> None:
+        client.post("/login", data={"customer_id": "ren-gas"})
+        case_id = next(
+            case["id"]
+            for case in db.list_cases_for_customer("ren-gas")
+            if "environmental_industrial" in artifact_json(db, case["id"], "lv_project", "main", {}).get("permits", [])
+        )
+        page = client.get(f"/lv/projects/{case_id}")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('aria-label="Murupolku"', page.text)
+        self.assertIn("Hakemukset", page.text)
+        self.assertEqual(page.text.count("Jatka hakemusta"), 1)
+        self.assertIn("Luo hakemus", page.text)
+        self.assertNotIn("hanke-status-bar", page.text)
+        self.assertNotIn("Seuraavaksi", page.text)
+        self.assertNotIn("Lisätiedot", page.text)
+        self.assertNotIn("Hankkeen perustiedot", page.text)
+        self.assertIn("Hankkeen tiedot", page.text)
 
     def test_package_upload_does_not_create_another_hanke(self) -> None:
         client.post("/login", data={"customer_id": "ren-gas"})
@@ -80,6 +103,9 @@ class CustomerWorkspace(unittest.TestCase):
         self.assertEqual(workbench.status_code, 200)
         self.assertNotIn("Jatka nykyistä hakemusta", workbench.text)
         self.assertNotIn("Avoin hanke", workbench.text)
+        home = client.get("/")
+        self.assertIn("Hakemuspaketin tarkistukset", home.text)
+        self.assertIn("Ren-Gas aineisto", home.text)
         self.assertEqual(client.post(f"/applicant/packages/{package_id}/analyze").status_code, 303)
         self.assertIn("Aloita uusi hanke tarkastuksen pohjalta", client.get(response.headers["location"]).text)
         promoted = client.post(f"/applicant/packages/{package_id}/promote")

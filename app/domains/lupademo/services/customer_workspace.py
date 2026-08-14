@@ -6,6 +6,7 @@ from typing import Any
 
 from .core import PERMIT_SCHEMAS, artifact_json, ensure_application, save_artifact
 from .intake import find_material_package, list_attachments
+from .jobs import list_ai_jobs
 
 PERMIT_LABELS = {
     "building_residential": "Rakennuslupa",
@@ -19,6 +20,13 @@ STATUS_LABELS = {
     "submitted": "Lähetetty",
     "application_draft": "Luonnos",
     "new": "Aloittamatta",
+}
+
+PACKAGE_STATUS_LABELS = {
+    "processing": "Aineistoa käsitellään",
+    "ready": "Valmis analysoitavaksi",
+    "analysis_ready": "Analyysi valmis",
+    "failed": "Käsittely epäonnistui",
 }
 
 CUSTOMER_FIXTURES: tuple[dict[str, Any], ...] = (
@@ -234,6 +242,50 @@ def _application_row(db: Any, case_id: str, permit_type: str, project: dict[str,
     }
 
 
+def _package_review_row(db: Any, review: dict[str, Any]) -> dict[str, Any]:
+    review_id = str(review.get("id") or "")
+    permit_type = str(review.get("permit_type") or "")
+    package = artifact_json(db, review_id, "material_package", permit_type, {})
+    analysis = artifact_json(db, review_id, "package_analysis_result", permit_type, {})
+    jobs = [
+        job
+        for job in list_ai_jobs(db, review_id, permit_type)
+        if job.get("kind") in {"material_ingest", "intake_analysis"}
+    ]
+    active_job = next((job for job in jobs if job.get("status") in {"pending", "running"}), None)
+    if active_job:
+        status_key = "processing"
+        next_action = "Seuraa käsittelyä"
+    elif package.get("status") == "failed" or any(job.get("status") == "failed" for job in jobs):
+        status_key = "failed"
+        next_action = "Avaa paketti ja yritä uudelleen"
+    elif analysis:
+        status_key = "analysis_ready"
+        next_action = "Katso tarkistuksen tulokset"
+    elif package.get("status") == "ready":
+        status_key = "ready"
+        next_action = "Aloita analyysi"
+    else:
+        status_key = "processing"
+        next_action = "Avaa paketti"
+    return {
+        "review_id": review_id,
+        "name": str(review.get("display_name") or "Hakemuspaketin tarkistus"),
+        "permit_label": PERMIT_LABELS.get(permit_type, permit_type),
+        "municipality": str(review.get("municipality") or "Kunta ei tiedossa"),
+        "status": status_key,
+        "status_label": PACKAGE_STATUS_LABELS[status_key],
+        "next_action": next_action,
+        "url": f"/applicant/packages/{package.get('package_id')}" if package.get("package_id") else "/applicant/packages/new",
+    }
+
+
+def case_application_rows(db: Any, case_id: str, project: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    project = project or artifact_json(db, case_id, "lv_project", "main", {})
+    permit_types = list(project.get("permits") or project.get("applications") or [])
+    return [_application_row(db, case_id, permit_type, project) for permit_type in permit_types]
+
+
 def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
     """Build the complete LV home view for one signed-in customer."""
     customer = db.get_customer(customer_id)
@@ -248,7 +300,7 @@ def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
         permit_types = list(project.get("permits") or project.get("applications") or [])
         applications = [_application_row(db, case_id, permit_type, project) for permit_type in permit_types]
         actionable = [item for item in applications if item["task_kind"] != "done"]
-        next_task = actionable[0] if actionable else (applications[0] if applications else None)
+        next_task = actionable[0] if actionable else None
         case_row = {
             "case_id": case_id,
             "name": str(project.get("name") or case.get("title") or "Lupahanke"),
@@ -271,10 +323,17 @@ def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
                 "url": application["application_url"],
                 "kind": application["task_kind"],
             })
+    package_reviews = [
+        _package_review_row(db, review)
+        for review in db.list_package_reviews(customer_id)
+        if str(review.get("status") or "active") == "active"
+    ]
     return {
         "customer": customer,
         "cases": cases,
         "tasks": tasks,
+        "primary_task": tasks[0] if tasks else None,
+        "package_reviews": package_reviews,
         "case_count": len(cases),
         "application_count": sum(case["application_count"] for case in cases),
     }
