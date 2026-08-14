@@ -120,25 +120,16 @@
       </div>
     </section>
 
-    {% if wizard.missing_attachments %}
-    <section class="missing-attachments-panel" aria-labelledby="missing-attachments-heading">
-      <div>
-        <p class="section-kicker">Täydennettävä aineisto</p>
-        <h2 id="missing-attachments-heading">Puuttuvat liitteet</h2>
-        <p>Lisää nämä asiakirjat tai tarkista, että ne on merkitty viranomaiselle toimitettaviksi.</p>
-      </div>
-      <ul>
-        {% for attachment_type in wizard.missing_attachments %}
-        <li>{{ document_type_labels.get(attachment_type, "Muu asiakirja") }}</li>
-        {% endfor %}
-      </ul>
-      <a class="button secondary" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa aineistoa</a>
-    </section>
-    {% endif %}
-
     <section class="task-section" id="findings" aria-labelledby="tasks-heading">
       <div class="section-heading-line"><div><p class="section-kicker">Seuraavaksi</p><h2 id="tasks-heading">Tee nämä ennen lähettämistä</h2></div><span>{{ package_analysis.findings|length }} tehtävää</span></div>
       <div class="task-list">
+        {% if wizard.missing_attachments %}
+        <article class="task-row blocking missing-attachments-task">
+          <span class="task-state" aria-hidden="true">!</span>
+          <div><strong>Puuttuvat liitteet</strong><p>Lisää nämä asiakirjat tai tarkista, että ne on merkitty viranomaiselle toimitettaviksi.</p><ul>{% for attachment_type in wizard.missing_attachments %}<li>{{ document_type_labels.get(attachment_type, "Muu asiakirja") }}</li>{% endfor %}</ul></div>
+          <a href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa</a>
+        </article>
+        {% endif %}
         {% for finding in package_analysis.findings[:6] %}
         <article class="task-row {{ finding.severity }}">
           <span class="task-state" aria-hidden="true">{% if finding.severity == 'blocking' %}!{% else %}i{% endif %}</span>
@@ -149,7 +140,8 @@
       </div>
     </section>
 
-    <section class="extraction-section" id="extractions" aria-labelledby="extractions-heading">
+    <details class="extraction-section workbench-evidence-disclosure" id="extractions">
+      <summary class="workbench-evidence-summary"><span class="section-kicker">Aineisto</span><strong>Näytä aineisto ja AI:n löytämät lomaketiedot</strong><small>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</small></summary>
       <div class="section-heading-line"><div><p class="section-kicker">Poiminnat</p><h2 id="extractions-heading">AI:n löytämät lomaketiedot</h2></div><span>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</span></div>
       <p class="section-description">Vertaa ehdotusta lähteeseen. Vasta hyväksyminen lisää tiedon hakemukselle.</p>
       <div class="extraction-list">
@@ -163,12 +155,14 @@
         </article>
         {% else %}<p class="empty-copy">AI ei löytänyt vielä hyväksyttäviä lomaketietoja.</p>{% endfor %}
       </div>
-    </section>
+    </details>
     {% endif %}
   </div>
 
   <aside class="document-inspector">
-    <div class="inspector-heading"><p class="section-kicker">Aineisto</p><h2>Dokumentit</h2><span>{{ attachments|length }} käytössä</span></div>
+    <details class="inspector-disclosure" open>
+      <summary class="inspector-heading"><span class="inspector-heading-copy"><span class="section-kicker">Aineisto</span><strong>Näytä aineisto</strong></span><span>{{ attachments|length }} käytössä</span></summary>
+      <div class="inspector-body">
     <div class="scope-group">
       <div class="scope-heading"><span><i class="scope-dot official"></i><strong>Viranomaiselle</strong></span><b>{{ official_attachments|length }}</b></div>
       <div class="document-list">
@@ -191,6 +185,8 @@
     {% endif %}
     <div class="inspector-note"><strong>Aineistorajat pidetään erillään</strong><p>Hakemusta arvioidaan hakijan aineiston ja voimassa olevan ohje- ja sääntötiedon perusteella.</p></div>
     <a class="button secondary full-button" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Muokkaa aineistoa</a>
+      </div>
+    </details>
   </aside>
 </div>
 

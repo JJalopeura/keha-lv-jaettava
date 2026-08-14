@@ -24,17 +24,9 @@
   ) }}
 </div>
 
-<section aria-labelledby="impact-summary-heading">
-  <h2 id="impact-summary-heading">Keskeiset tulokset</h2>
-  <div class="proof-dashboard">
-  {% for card in metrics.proof_cards %}
-  <div class="proof-card {{ card.status }}">
-    <span>{{ card.title }}</span>
-    <strong>{{ card.value }}</strong>
-    <p>{{ card.detail }}</p>
-  </div>
-  {% endfor %}
-  </div>
+<section aria-labelledby="observed-events-heading">
+  <h2 id="observed-events-heading">Havaitut tapahtumat</h2>
+  <p class="section-description">Nämä luvut ovat tämän hankkeen tallennettuja hakemus-, tarkistus- ja ehdotustapahtumia.</p>
   <div class="metric-grid">
     <div><strong>{{ metrics.application_count }}</strong><span>Hakemuksia</span></div>
     <div><strong>{{ metrics.submitted_count }}</strong><span>Lähetetty</span></div>
@@ -43,7 +35,10 @@
   </div>
 </section>
 
-<section class="grid three" aria-label="Vaikutusten erittely">
+<section aria-labelledby="derived-metrics-heading">
+  <h2 id="derived-metrics-heading">Johdetut mittarit</h2>
+  <p class="section-description">Nämä arvot lasketaan havaituista tapahtumista ja tarkistusraporttien tallennetuista tuloksista.</p>
+  <div class="grid two">
   <div>
     <h2>Laatu</h2>
     <dl class="data-list">
@@ -62,6 +57,13 @@
       <div class="data-row"><dt>Lähteistettyjen osuus</dt><dd>{{ (metrics.source_backed_suggestion_ratio * 100)|round|int }} %</dd></div>
     </dl>
   </div>
+  </div>
+</section>
+
+<section aria-labelledby="simulated-estimates-heading">
+  <h2 id="simulated-estimates-heading">Simuloidut arviot</h2>
+  <p class="section-description">Nämä luvut perustuvat demovertailutasoon. Ne eivät ole tuotantokäytöstä mitattuja vaikutuksia.</p>
+  <div class="grid two">
   <div>
     <h2>Arvioitu työvaikutus</h2>
     <dl class="data-list">
@@ -71,12 +73,16 @@
       <div class="data-row"><dt>Vältettyjä täydennyksiä</dt><dd>{{ metrics.simulated_avoided_info_requests }}</dd></div>
     </dl>
   </div>
+  <div class="issue minor">
+    <strong>Arvion rajaus</strong>
+    <p>Käsittelijäajan säästö ja täydennyspyynnön todennäköisyys ovat simuloituja vertailulukuja. Niitä ei pidä lukea havaittujen tapahtumamäärien tavoin.</p>
+  </div>
+  </div>
 </section>
 
 <section id="methodology" aria-labelledby="methodology-heading">
   <h2 id="methodology-heading">Menetelmä ja rajaukset</h2>
   <p>Hakemus-, tarkistus- ja ehdotusmäärät muodostetaan tämän hankkeen tapahtumista ja tallennetuista päätöksistä. Laadun muutos lasketaan ensimmäisen ja viimeisimmän tarkistuksen välillä.</p>
-  <div class="issue minor"><strong>Demoarvio</strong><p>Käsittelijäajan säästö ja täydennyspyynnön todennäköisyys perustuvat simuloituun vertailutasoon. Ne eivät ole tuotantokäytöstä mitattuja vaikutuksia.</p></div>
   <p class="button-row">
     <a class="button secondary" href="/metrics/report.html">Avaa tulosraportti</a>
     <a class="button secondary" href="/metrics/report.json">Lataa raakadata</a>

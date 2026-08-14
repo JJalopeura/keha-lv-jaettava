@@ -44,17 +44,43 @@
 
 <section aria-labelledby="platform-capabilities-heading">
   <h2 id="platform-capabilities-heading">Alustan toiminnot</h2>
-  <div class="grid three">
-    <article><h3>Vaikuttavuus</h3><p>Hakemusten laatu, AI-avustuksen vaikutus ja arvioitu ajansäästö.</p><a href="/metrics">Avaa vaikuttavuus</a></article>
-    <article><h3>Kriteeristöt</h3><p>Aktiiviset sääntöversiot, testit ja muutoshistoria.</p><a href="/admin/criteria">Avaa kriteeristöt</a></article>
-    <article><h3>Integraatiot</h3><p>AI-ehdotuspalvelun API ja virkailijan ehdotustyökalu.</p><a href="/admin/suggestion-service">Avaa integraatiot</a></article>
-    <article><h3>Arviointi</h3><p>Vertailuaineiston kattavuus ja arviointikohteet.</p><a href="/admin/benchmarks">Avaa arviointi</a></article>
-    <article><h3>Tapahtumaloki</h3><p>Hankkeen toimet ja AI-ajojen jäljitettävyys.</p><a href="/admin/audit-trail">Avaa tapahtumaloki</a></article>
-    <article><h3>Tuotantovalmius</h3><p>Valmiusvaatimukset, näyttö ja keskeneräiset tarkistukset.</p><a href="/admin/production-hardening">Avaa tuotantovalmius</a></article>
+  <p class="section-description">Valitse aihe ensin. Jokainen kokonaisuus kokoaa saman tavoitteen ympärille liittyvät työkalut.</p>
+  <div class="grid three platform-topic-grid">
+    <article class="platform-topic">
+      <p class="section-kicker">Valmius ja arviointi</p>
+      <h3>Voiko demon tulokset perustella?</h3>
+      <p>Arvioi aineiston kattavuus, tapahtumat ja tuotantovalmiuden avoimet kohdat.</p>
+      <div class="platform-topic-links">
+        <a class="platform-topic-link" href="/admin/production-hardening"><strong>Tuotantovalmius</strong><small>Valmiusvaatimukset ja keskeneräiset tarkistukset</small></a>
+        <a class="platform-topic-link" href="/admin/benchmarks"><strong>Arviointi</strong><small>Vertailuaineisto ja arviointikohteet</small></a>
+        <a class="platform-topic-link" href="/admin/audit-trail"><strong>Tapahtumaloki</strong><small>Toimet ja AI-ajojen jäljitettävyys</small></a>
+      </div>
+    </article>
+    <article class="platform-topic">
+      <p class="section-kicker">Vaikuttavuus ja säännöt</p>
+      <h3>Mitä järjestelmä auttaa tekemään?</h3>
+      <p>Seuraa hakemusten vaikutusta ja tarkista, millä vaatimuksilla tulokset muodostuvat.</p>
+      <div class="platform-topic-links">
+        <a class="platform-topic-link" href="/metrics"><strong>Vaikuttavuus</strong><small>Laatu, ehdotuspäätökset ja työvaikutus</small></a>
+        <a class="platform-topic-link" href="/admin/criteria"><strong>Kriteeristöt</strong><small>Sääntöversiot, testit ja muutoshistoria</small></a>
+      </div>
+    </article>
+    <article class="platform-topic">
+      <p class="section-kicker">Integraatiot</p>
+      <h3>Miten AI-palvelu liittyy työhön?</h3>
+      <p>Tarkastele samaa ehdotuspalvelua teknisen rajapinnan ja virkailijan työkalun kautta.</p>
+      <div class="platform-topic-links">
+        <a class="platform-topic-link" href="/integrations/api-playground"><strong>API-työkalu</strong><small>Rajapintapyyntö, vastaus ja lähdeviitteet</small></a>
+        <a class="platform-topic-link" href="/suggestion-service/ui-only"><strong>Virkailijan ehdotustyökalu</strong><small>Ehdotusten tarkistus ja siirto omaan järjestelmään</small></a>
+      </div>
+    </article>
   </div>
 </section>
 
-<section class="grid two" aria-label="Demon ohjaus">
+<section class="demo-control-section" aria-labelledby="demo-control-heading">
+  <h2 id="demo-control-heading">Demon ohjaus</h2>
+  <p class="section-description">Valitse esityksen lähtötilanne tai ohjattu esityspolku.</p>
+  <div class="grid two">
   <article>
     <h2>Demo-skenaariot</h2>
     <p>Valitse valmis hakemuspolku demon lähtötilanteeksi.</p>
@@ -65,6 +91,7 @@
     <p>Esityspolut demon keskeisiin käyttötilanteisiin.</p>
     <a class="button secondary" href="/demo-lab/presenter">Avaa esitystila</a>
   </article>
+  </div>
 </section>
 {% call technical_details("Yleiskuvan tietolähteet") %}
 <p>Tilannekuva muodostetaan vaikutusmittareista, arviointiaineiston kattavuudesta ja tuotantovalmiuden tarkistuksista. Yleiskuva ei käynnistä uusia ajoja eikä muuta hankkeen tilaa.</p>

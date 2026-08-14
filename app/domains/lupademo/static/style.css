@@ -3303,6 +3303,39 @@ button:disabled {
   border-bottom: 1px solid #d8dee6;
 }
 
+.workbench-evidence-disclosure {
+  margin: 0;
+  padding: 24px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #d8dee6;
+  border-radius: 0;
+}
+
+.workbench-evidence-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 0 0 16px;
+  list-style: none;
+}
+
+.workbench-evidence-summary::-webkit-details-marker,
+.inspector-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.workbench-evidence-summary strong,
+.workbench-evidence-summary small {
+  display: block;
+}
+
+.workbench-evidence-summary small {
+  color: #667085;
+  font-size: 12px;
+}
+
 .section-heading-line,
 .column-heading {
   display: flex;
@@ -3411,6 +3444,62 @@ button:disabled {
   color: #667085;
 }
 
+.platform-topic-grid {
+  align-items: start;
+}
+
+.platform-topic {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 20px;
+  background: #fff;
+  border-top: 4px solid #b8d8d0;
+  border-radius: var(--radius-panel);
+}
+
+.platform-topic h3,
+.platform-topic p {
+  margin: 0;
+}
+
+.platform-topic > p:not(.section-kicker) {
+  color: #667085;
+}
+
+.platform-topic-links {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.platform-topic-link {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  color: #182230;
+  background: #f7faf9;
+  border: 1px solid #dce8e4;
+  border-radius: var(--radius-control);
+  text-decoration: none;
+}
+
+.platform-topic-link:hover,
+.platform-topic-link:focus-visible {
+  color: #0d675d;
+  background: #edf6f3;
+  border-color: #b8d8d0;
+}
+
+.platform-topic-link small {
+  color: #667085;
+  font-size: 11px;
+}
+
+.demo-control-section {
+  margin-top: 32px;
+}
+
 .empty-success {
   display: flex;
   gap: 14px;
@@ -3429,6 +3518,32 @@ button:disabled {
   background: #fff;
   border: 1px solid #d8dee6;
   border-radius: var(--radius-panel);
+}
+
+.inspector-disclosure {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.inspector-disclosure > summary {
+  list-style: none;
+}
+
+.inspector-heading-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.inspector-heading-copy strong {
+  color: #182230;
+  font-size: 18px;
+}
+
+.inspector-body {
+  padding: 0 20px 20px;
 }
 
 .inspector-heading {
@@ -4737,6 +4852,55 @@ button:disabled {
   border-radius: var(--radius-panel);
 }
 
+.authority-review-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.authority-review-flow .casework-grid {
+  display: contents;
+}
+
+.authority-review-flow .application-material {
+  order: 1;
+  margin: 0;
+}
+
+.authority-review-flow .review-column {
+  order: 2;
+}
+
+.authority-review-flow .authority-brief {
+  order: 3;
+  margin: 0;
+}
+
+.authority-review-flow .casework-tools {
+  order: 4;
+  position: static;
+  width: min(100%, 720px);
+}
+
+.authority-review-flow .drafts-section {
+  order: 5;
+  margin: 0;
+}
+
+.authority-brief--supporting {
+  background: #f8fafb;
+  border-color: #d8dee6;
+}
+
+.authority-brief--supporting .brief-heading {
+  padding: 16px 20px;
+  background: #f8fafb;
+}
+
+.authority-brief--supporting .brief-content > div {
+  padding: 16px 20px;
+}
+
 .brief-heading {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -5266,7 +5430,7 @@ button:disabled {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 1000;
+  z-index: 20;
   font-family: inherit;
 }
 
@@ -5274,12 +5438,12 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
+  width: 46px;
+  height: 46px;
   padding: 0;
-  background: var(--color-text-strong, #0f1720);
-  color: var(--color-on-strong, #fff);
-  border: 0;
+  background: #f2f8f6;
+  color: #0d675d;
+  border: 1px solid #b8d8d0;
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
@@ -5316,12 +5480,13 @@ button:disabled {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 500px;
-  height: 680px;
+  width: 380px;
+  height: 560px;
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
   background: var(--color-surface, #fff);
+  border: 1px solid #d8dee6;
   border-radius: var(--radius-dialog, 8px);
   box-shadow:
     0 0 0 1px rgba(15, 23, 42, 0.04),

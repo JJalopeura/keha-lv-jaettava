@@ -60,16 +60,34 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             for package in packages or [{}]:
                 customer = str(common.get("data", {}).get("applicant_name") or "Hakija")
                 package_name = str(package.get("display_name") or project.get("name") or case.get("title") or "Lupahanke")
+                project_name = str(project.get("name") or case.get("title") or "Lupahanke")
+                permit_labels = {
+                    "building_residential": "Rakennuslupa",
+                    "environmental_industrial": "Ympäristölupa",
+                    "event_public": "Tapahtumalupa",
+                }
+                permit_context = permit_labels.get(str(package.get("permit_type") or ""), "")
+                workspace_context = f"{project_name} · {permit_context}" if permit_context else project_name
                 options.append(
                     {
                         "case_id": case_id,
                         "package_id": str(package.get("package_id") or ""),
                         "customer": customer,
                         "package": package_name,
-                        "label": f"{customer} · {package_name}",
+                        "label": f"{customer} · {workspace_context}",
                         "selected": case_id == active_case_id and (not active_package_id or package.get("package_id") == active_package_id),
                     }
                 )
+        label_counts: dict[str, int] = {}
+        for option in options:
+            label = option["label"]
+            label_counts[label] = label_counts.get(label, 0) + 1
+        label_indexes: dict[str, int] = {}
+        for option in options:
+            label = option["label"]
+            if label_counts[label] > 1:
+                label_indexes[label] = label_indexes.get(label, 0) + 1
+                option["label"] = f"{label} · Aineisto {label_indexes[label]}"
         return options
 
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:

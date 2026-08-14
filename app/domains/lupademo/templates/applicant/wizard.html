@@ -24,15 +24,16 @@
 {% set pending_field_suggestion_count = wizard.get('pending_field_suggestion_count', suggestions|selectattr('status', 'equalto', 'pending')|list|length) %}
 {% set pending_field_suggestions = suggestions|selectattr('status', 'equalto', 'pending')|selectattr('suggested_value')|list %}
 {% set suggestion_status_labels = {'pending': 'Odottaa tarkistusta', 'accepted': 'Hyväksytty', 'rejected': 'Hylätty'} %}
+{% set current_step_status = wizard.step_status.get(step, {}) %}
 <header class="application-header">
   <div>
     <h1>{{ schema.title }}</h1>
   </div>
   <div class="application-readiness">
-    <span class="readiness-dot {% if step >= 4 and wizard.blocking_count %}blocked{% elif (step == 1 and wizard.missing_common_data) or (step == 2 and wizard.missing_attachments) or (step == 3 and wizard.missing_required_fields) %}attention{% else %}ready{% endif %}"></span>
+    <span class="readiness-dot {{ current_step_status.get('state', 'ready') }}"></span>
     <div>
-      <strong>{% if step == 1 %}{{ "Yhteisiä tietoja täydennettävä" if wizard.missing_common_data else "Lähtökohta tarkistettu" }}{% elif step == 2 %}{{ "Aineistoa täydennettävä" if wizard.missing_attachments else "Aineisto valmis" }}{% elif step == 3 %}{{ "Hakemusta täydennettävä" if wizard.missing_required_fields else "Hakemus valmis tarkistukseen" }}{% elif wizard.blocking_count %}Lähetys estetty{% elif wizard.missing_required_fields %}Täydennettävää{% else %}Valmis tarkistukseen{% endif %}</strong>
-      <small>{% if step == 1 %}{{ wizard.missing_common_data|length }} yhteistä tietoa puuttuu{% elif step == 2 %}{{ wizard.missing_attachments|length }} liitettä puuttuu · {{ wizard.pending_suggestion_count }} AI-ehdotusta{% elif step == 3 %}{{ wizard.missing_required_fields|length }} kenttää puuttuu · {{ wizard.pending_suggestion_count }} AI-ehdotusta{% else %}{{ wizard.missing_required_fields|length }} puuttuvaa kenttää · {{ wizard.pending_suggestion_count }} AI-ehdotusta{% endif %}</small>
+      <strong>{{ current_step_status.get('label', '') }}</strong>
+      <small>{{ current_step_status.get('detail', '') }}</small>
     </div>
   </div>
 </header>
@@ -65,7 +66,7 @@
   {% endfor %}
 </nav>
 
-{% if step > 1 %}
+{% if step in [2, 3, 4] %}
 {% include 'shared/_ai_job_bar.html' %}
 {% endif %}
 

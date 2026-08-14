@@ -1590,6 +1590,10 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     pending_suggestion_count = len(pending_suggestions) + len(pending_extractions)
     issues = check_report.get("issues") or []
     blocking_count = sum(1 for issue in issues if issue.get("severity") == "blocking" and not issue.get("resolved"))
+    submission_package = artifact_json(db, case_id, "submission_package", permit_type, {})
+    receipt = artifact_json(db, case_id, "receipt", permit_type, {})
+    package_ready = bool(submission_package.get("package_id"))
+    submitted = app.get("status") == "submitted" or bool(receipt.get("receipt_id"))
     steps = [
         {"step": 1, "label": "Yhteiset tiedot", "status": "done" if not missing_common_data else "attention"},
         {"step": 2, "label": "Aineisto", "status": "done" if not missing_attachments else "attention"},
@@ -1598,8 +1602,57 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
         {"step": 5, "label": "Paketointi", "status": "done" if gate["can_submit"] else "blocked"},
         {"step": 6, "label": "Vastaanotto", "status": "done" if app.get("status") == "submitted" else "pending"},
     ]
+    step_status = {
+        1: {
+            "state": "attention" if missing_common_data else "ready",
+            "label": "Yhteisiä tietoja täydennettävä" if missing_common_data else "Lähtökohta tarkistettu",
+            "detail": f"{len(missing_common_data)} yhteistä tietoa puuttuu",
+        },
+        2: {
+            "state": "attention" if missing_attachments else "ready",
+            "label": "Aineistoa täydennettävä" if missing_attachments else "Aineisto valmis",
+            "detail": f"{len(missing_attachments)} liitettä puuttuu · {pending_suggestion_count} AI-ehdotusta",
+        },
+        3: {
+            "state": "attention" if missing_required or pending_suggestion_count else "ready",
+            "label": "Hakemusta täydennettävä" if missing_required else "Hakemus valmis tarkistukseen",
+            "detail": f"{len(missing_required)} kenttää puuttuu · {pending_suggestion_count} AI-ehdotusta",
+        },
+        4: {
+            "state": "attention" if not gate["is_fresh"] else ("blocked" if blocking_count else "ready"),
+            "label": (
+                "Tarkistus päivitettävä"
+                if not gate["is_fresh"]
+                else ("Lähetys estetty" if blocking_count else "Tarkistus valmis")
+            ),
+            "detail": (
+                "Aja tarkistus uudelleen ennen lähettämistä."
+                if not gate["is_fresh"]
+                else (f"{blocking_count} estävää puutetta" if blocking_count else "Lähetys on mahdollinen")
+            ),
+        },
+        5: {
+            "state": "blocked" if not package_ready or not gate["can_submit"] else "ready",
+            "label": (
+                "Paketti muodostamatta"
+                if not package_ready
+                else ("Lähetys estetty" if not gate["can_submit"] else "Paketti valmis lähetykseen")
+            ),
+            "detail": (
+                "Muodosta paketti tuoreen tarkistuksen jälkeen."
+                if not package_ready
+                else ("Tuore tarkistus ja estävät puutteet pitää ratkaista." if not gate["can_submit"] else "Viranomaiselle lähtevä sisältö on tarkistettavissa")
+            ),
+        },
+        6: {
+            "state": "ready" if submitted else "attention",
+            "label": "Hakemus vastaanotettu" if submitted else "Odottaa lähetystä",
+            "detail": "Lähetyskuitti on saatavilla" if submitted else "Lähetä hakemus vaiheessa 5",
+        },
+    }
     return {
         "steps": steps,
+        "step_status": step_status,
         "missing_common_data": missing_common_data,
         "missing_required_fields": missing_required,
         "missing_attachments": missing_attachments,
@@ -1608,6 +1661,8 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
         "pending_field_suggestion_count": len(pending_suggestions),
         "blocking_count": blocking_count,
         "can_submit": gate["can_submit"],
+        "package_ready": package_ready,
+        "submitted": submitted,
         "gate": gate,
     }
 
