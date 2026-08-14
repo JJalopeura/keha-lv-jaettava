@@ -58,8 +58,8 @@
     <section class="analysis-panel {% if active_job %}is-running{% elif package_analysis %}is-complete{% endif %}" id="analysis" aria-live="polite" data-ai-jobs-panel data-analysis-ready="{{ 'true' if package_analysis else 'false' }}">
       {% if package_analysis_stale %}
       <div class="issue blocking" role="status">
-        <strong>Analyysi on vanhentunut</strong>
-        <p>Kohteen kunta tai sen kriteeristö on muuttunut. Aja aineiston analyysi uudelleen ennen johtopäätösten käyttämistä.</p>
+        <strong>Analyysi pitää päivittää</strong>
+        <p>Analyysi perustuu kriteeristöön {{ package_analysis.get('criteria_version', 'tuntematon') }} ({{ package_analysis.get('criteria_municipality') or 'kansallinen' }}). Käytössä on nyt kriteeristö {{ criteria_version }} ({{ criteria_municipality or 'kansallinen' }}). Aja aineiston analyysi uudelleen ennen johtopäätösten käyttämistä.</p>
       </div>
       {% endif %}
       <div class="analysis-lead">

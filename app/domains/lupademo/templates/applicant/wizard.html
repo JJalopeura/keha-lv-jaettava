@@ -137,7 +137,7 @@
           {% set source_key = application.field_sources.get(field.id, "käyttäjän syöttämä") %}
           <span class="field-note"><i aria-hidden="true"></i>{{ source_labels.get(source_key, source_key) }}{% if inline_suggestion %}
             <span class="field-suggestion-inline" data-inline-suggestion>
-              <button type="button" class="field-suggestion-trigger" aria-label="Avaa AI-ehdotus kentälle {{ field.label }}" title="Avaa AI-ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.suggested_value, 'confidence': inline_suggestion.confidence, 'fallback_used': inline_suggestion.fallback_used if inline_suggestion.fallback_used is defined else false, 'rationale': inline_suggestion.rationale, 'evidence_refs': inline_suggestion.evidence_refs, 'accept_url': inline_suggestion.accept_url if inline_suggestion.accept_url is defined else '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.id ~ '/accept', 'reject_url': inline_suggestion.reject_url if inline_suggestion.reject_url is defined else '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.id ~ '/reject', 'accept_field_id': inline_suggestion.field_id if inline_suggestion.source_kind == 'extraction' else ''} | tojson | forceescape }}">AI-ehdotus</button>
+              <button type="button" class="field-suggestion-trigger" aria-label="Avaa AI-ehdotus kentälle {{ field.label }}" title="Avaa AI-ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.get('suggested_value', ''), 'confidence': inline_suggestion.get('confidence', 0), 'fallback_used': inline_suggestion.get('fallback_used', false), 'rationale': inline_suggestion.get('rationale', 'Aineistosta poimittu ehdotus.'), 'evidence_refs': inline_suggestion.get('evidence_refs', []), 'accept_url': inline_suggestion.get('accept_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/accept'), 'reject_url': inline_suggestion.get('reject_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/reject'), 'accept_field_id': inline_suggestion.get('field_id', '') if inline_suggestion.get('source_kind') == 'extraction' else ''} | tojson | forceescape }}">AI-ehdotus</button>
             </span>
           {% endif %}</span>
           {% for change in sync.changes if change.field_id == field.id %}
@@ -172,8 +172,22 @@
           "energy_report": "Energiaselvitys"
         } %}
         <div class="upload-missing-list" role="status">
-          <strong>Puuttuvat liitteet</strong>
+          <strong>Puuttuvat viranomaisliitteet</strong>
+          <p>Nämä kriteeristön vaatimat liitteet puuttuvat tai niitä ei ole merkitty viranomaiselle toimitettaviksi.</p>
           <ul>{% for attachment_type in wizard.missing_attachments %}<li>{{ upload_attachment_labels.get(attachment_type, attachment_type|replace('_', ' ')|capitalize) }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+        {% set criteria_missing_attachments = namespace(items=[]) %}
+        {% set criteria_attachment_labels = {"monitoring_plan": "Tarkkailu ja raportointi", "confidential_attachment": "Luottamuksellinen liite", "bat_assessment": "BAT-arviointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "stormwater_plan": "Hulevesisuunnitelma"} %}
+        {% for issue in check_report.get('issues', []) %}
+        {% set attachment_type = issue.get('attachment_id') %}
+        {% if attachment_type and not issue.get('resolved') and attachment_type not in wizard.missing_attachments and attachment_type not in criteria_missing_attachments.items %}{% set _ = criteria_missing_attachments.items.append(attachment_type) %}{% endif %}
+        {% endfor %}
+        {% if criteria_missing_attachments.items %}
+        <div class="upload-missing-list" role="status">
+          <strong>Tarkistuksessa havaitut lisäliitteet</strong>
+          <p>Nämä liitteet nousivat esiin aktiivisen kriteeristön tarkistuksessa. Lisää ne vain, jos vaatimus koskee tätä hakemusta.</p>
+          <ul>{% for attachment_type in criteria_missing_attachments.items %}<li>{{ criteria_attachment_labels.get(attachment_type, "Muu viranomaisliite") }}</li>{% endfor %}</ul>
         </div>
         {% endif %}
 
@@ -496,17 +510,19 @@
     {% if check_report %}
     <p>Laatupisteet {{ check_report.score }} · {{ check_report.get('summary', '') }}</p>
     {% set severity_labels = {"blocking": "Estävä", "major": "Merkittävä", "minor": "Vähäinen", "recommendation": "Suositus"} %}
-    {% set check_attachment_labels = {"site_plan": "Asemapiirros / sijaintikartta", "main_drawings": "Pääpiirustukset", "facade_drawings": "Julkisivupiirustukset", "stormwater_plan": "Hulevesisuunnitelma", "environmental_application": "Ympäristölupahakemus"} %}
+    {% set check_attachment_labels = {"site_map": "Asemapiirros / sijaintikartta", "zoning_extract": "Kaavaote", "public_summary": "Julkinen yhteenveto", "site_plan": "Asemapiirros / sijaintikartta", "main_drawings": "Pääpiirustukset", "facade_drawings": "Julkisivupiirustukset", "stormwater_plan": "Hulevesisuunnitelma", "environmental_application": "Ympäristölupahakemus", "bat_assessment": "BAT-arviointi", "monitoring_plan": "Tarkkailu ja raportointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "confidential_attachment": "Luottamuksellinen liite"} %}
+    {% set check_field_labels = {"location_environment": "Sijainti ja ympäristö", "confidential_attachment": "Luottamuksellinen liite"} %}
     {% for issue in check_report.issues %}
     <div class="issue {{ issue.severity }}" id="{% if issue.severity == 'blocking' %}check-blocking{% endif %}">
       {% set issue_fields = schema.fields|selectattr('id', 'equalto', issue.field_id)|list if issue.field_id else [] %}
       {% set issue_title = issue.title %}
-      {% if issue.field_id %}{% set issue_title = issue_title|replace(issue.field_id, issue_fields[0].label if issue_fields else "Valittu kenttä") %}{% endif %}
+      {% if issue.field_id %}{% set issue_title = issue_title|replace(issue.field_id, issue_fields[0].label if issue_fields else check_field_labels.get(issue.field_id, "Valittu kenttä")) %}{% endif %}
       {% set issue_attachment_type = issue.get('attachment_id') %}
       {% if issue_attachment_type %}{% set issue_title = issue_title|replace(issue_attachment_type, check_attachment_labels.get(issue_attachment_type, "liite")) %}{% endif %}
       <strong>{{ severity_labels.get(issue.severity, "Tarkistettava") }} · {{ issue_title }}</strong>
       <p>{{ issue.detail }}</p>
       {% if issue.suggested_fix %}<small>Ehdotus: {{ issue.suggested_fix }}</small>{% endif %}
+      {% if issue_attachment_type %}<a class="issue-follow-up" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/2#materials">Lisää tai tarkista tämä liite vaiheessa 2</a>{% endif %}
       {% if issue.evidence_refs %}
       <details class="evidence-disclosure"><summary>Perusteet ja lähteet · luottamus {{ (issue.confidence * 100)|round|int }} %</summary>
         {% for ref in issue.evidence_refs[:3] %}

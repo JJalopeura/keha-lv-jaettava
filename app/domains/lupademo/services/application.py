@@ -66,13 +66,16 @@ PACKAGE_ANALYSIS_TIMEOUT_SECONDS = 300.0
 
 def is_package_analysis_stale(package_analysis: dict[str, Any], active_criteria: dict[str, Any]) -> bool:
     """True when the stored package analysis was produced against a different criteria set."""
+    active_municipality = _normalize_municipality(active_criteria.get("municipality"))
     return bool(
         package_analysis
         and (
             str(package_analysis.get("criteria_set_id") or "") != str(active_criteria.get("criteria_set_id") or "")
             or str(package_analysis.get("criteria_version") or "") != str(active_criteria.get("version") or "")
-            or _normalize_municipality(package_analysis.get("criteria_municipality"))
-            != _normalize_municipality(active_criteria.get("municipality"))
+            or (
+                bool(active_municipality)
+                and _normalize_municipality(package_analysis.get("criteria_municipality")) != active_municipality
+            )
         )
     )
 
@@ -219,19 +222,26 @@ def explicit_contradiction_findings(attachments: list[dict[str, Any]]) -> list[P
     return findings
 
 
-def intake_analysis_questions(schema: dict[str, Any], app: dict[str, Any], attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def intake_analysis_questions(
+    schema: dict[str, Any],
+    app: dict[str, Any],
+    attachments: list[dict[str, Any]],
+    *,
+    include_fields: bool = True,
+) -> list[dict[str, Any]]:
     form_data = app.get("form_data", {})
     questions: list[dict[str, Any]] = []
-    for schema_field in schema.get("fields", []):
-        if schema_field.get("required") and not str(form_data.get(schema_field["id"], "") or "").strip():
-            questions.append(
-                {
-                    "field_id": schema_field["id"],
-                    "question": f"Täydennä kenttä: {schema_field.get('label', schema_field['id'])}.",
-                    "reason": "Pakollinen tieto puuttuu hakemusluonnoksesta.",
-                    "source": "gap_analyzer",
-                }
-            )
+    if include_fields:
+        for schema_field in schema.get("fields", []):
+            if schema_field.get("required") and not str(form_data.get(schema_field["id"], "") or "").strip():
+                questions.append(
+                    {
+                        "field_id": schema_field["id"],
+                        "question": f"Täydennä kenttä: {schema_field.get('label', schema_field['id'])}.",
+                        "reason": "Pakollinen tieto puuttuu hakemusluonnoksesta.",
+                        "source": "gap_analyzer",
+                    }
+                )
     for required in schema.get("required_attachments", []):
         if not attachment_requirement_covered(required, attachments):
             questions.append(
@@ -288,6 +298,7 @@ def package_analysis_from_current_state(
     job_id: str = "",
     structure: Optional[dict[str, Any]] = None,
     settings: Any = None,
+    attachment_only: bool = False,
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     package = current_material_package(db, case_id, permit_type)
@@ -304,15 +315,18 @@ def package_analysis_from_current_state(
     common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
     municipality = effective_form_data.get("municipality") or common.get("data", {}).get("municipality", "")
     active_criteria = effective_criteria(db, case_id, permit_type, municipality)
+    deterministic = deterministic_issues(
+        permit_type,
+        effective_form_data,
+        attachments,
+        municipality=municipality,
+        criteria=active_criteria,
+    )
+    if attachment_only:
+        deterministic = [issue for issue in deterministic if issue.attachment_id]
     issues = [
         issue
-        for issue in deterministic_issues(
-            permit_type,
-            effective_form_data,
-            attachments,
-            municipality=municipality,
-            criteria=active_criteria,
-        )
+        for issue in deterministic
         if not (
             issue.id.startswith("missing_attachment_")
             and attachment_requirement_covered(str(issue.attachment_id or issue.id.removeprefix("missing_attachment_")), attachments)
@@ -320,8 +334,8 @@ def package_analysis_from_current_state(
     ]
     question_app = dict(app)
     question_app["form_data"] = effective_form_data
-    questions = intake_analysis_questions(schema, question_app, attachments)
-    if _real_llm_enabled_for_case(db, case_id, settings):
+    questions = intake_analysis_questions(schema, question_app, attachments, include_fields=not attachment_only)
+    if _real_llm_enabled_for_case(db, case_id, settings) and not attachment_only:
         criteria = effective_criteria(db, case_id, permit_type, municipality)
         retrieval = build_retrieval_context(
             db,
@@ -379,24 +393,25 @@ def package_analysis_from_current_state(
         )
     fallback_contradictions = [] if specific_contradictions else explicit_contradiction_findings(attachments)
     findings.extend(fallback_contradictions)
-    for field_id in wizard.get("missing_required_fields", []):
-        if field_id in extracted_field_ids:
-            continue
-        field = next((item for item in schema.get("fields", []) if item.get("id") == field_id), {"label": field_id})
-        findings.append(
-            PackageFinding(
-                id=f"missing_field_{field_id}",
-                severity="major",
-                category="missing_required_info",
-                title=f"Pakollinen tieto puuttuu: {field.get('label', field_id)}",
-                detail="Hakemuspaketin analyysi ei löytänyt tälle kentälle riittävää tietoa.",
-                field_id=field_id,
-                suggested_fix="Hyväksy AI-poiminta, lisää tieto käsin tai täydennä aineistoa.",
-                question_to_applicant=f"Täydennätkö tiedon: {field.get('label', field_id)}?",
-                confidence=0.82,
-                evidence_refs=[EvidenceRef(source_id="form_schema", title="Lomakevaatimus", locator=field_id, quote=str(field.get("label", field_id)), confidence=0.85)],
+    if not attachment_only:
+        for field_id in wizard.get("missing_required_fields", []):
+            if field_id in extracted_field_ids:
+                continue
+            field = next((item for item in schema.get("fields", []) if item.get("id") == field_id), {"label": field_id})
+            findings.append(
+                PackageFinding(
+                    id=f"missing_field_{field_id}",
+                    severity="major",
+                    category="missing_required_info",
+                    title=f"Pakollinen tieto puuttuu: {field.get('label', field_id)}",
+                    detail="Hakemuspaketin analyysi ei löytänyt tälle kentälle riittävää tietoa.",
+                    field_id=field_id,
+                    suggested_fix="Hyväksy AI-poiminta, lisää tieto käsin tai täydennä aineistoa.",
+                    question_to_applicant=f"Täydennätkö tiedon: {field.get('label', field_id)}?",
+                    confidence=0.82,
+                    evidence_refs=[EvidenceRef(source_id="form_schema", title="Lomakevaatimus", locator=field_id, quote=str(field.get("label", field_id)), confidence=0.85)],
+                )
             )
-        )
     if contradictory and not specific_contradictions and not fallback_contradictions:
         findings.append(
             PackageFinding(
@@ -457,6 +472,8 @@ def package_analysis_from_current_state(
         "needs_completion": "Paketista puuttuu olennaisia tietoja tai liitteitä ennen lähetystä.",
         "contradictory": "Paketti sisältää ristiriitaisia tietoja ja vaatii hakijan tarkistuksen.",
     }[readiness]
+    if attachment_only:
+        summary = "Tarkistus kertoo, ovatko vaaditut viranomaisliitteet mukana. Hakemuksen kentät täydennetään myöhemmin asioinnissa."
     result = asdict(PackageAnalysisResult(
         package_id=str(package.get("package_id") or f"pkg_current_{permit_type}"),
         permit_type=permit_type,
@@ -485,7 +502,16 @@ def package_analysis_from_current_state(
     return result
 
 
-def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None, *, full_check: bool = True) -> dict[str, Any]:
+def _build_intake_analysis_result(
+    db: Any,
+    case_id: str,
+    permit_type: str,
+    job_id: str,
+    settings: Any = None,
+    *,
+    full_check: bool = True,
+    attachment_only: bool = False,
+) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     if permit_type == "environmental_industrial":
         structure = structure_environmental_application_from_attachments(
@@ -504,7 +530,7 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
     schema = load_form_schema(permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     wizard = wizard_step_status(db, case_id, permit_type)
-    questions = intake_analysis_questions(schema, app, attachments) if full_check else []
+    questions = intake_analysis_questions(schema, app, attachments, include_fields=not attachment_only) if full_check else []
     if job_id:
         mark_agent_complete(db, case_id, permit_type, job_id, "question_generator", "Kysymysten muodostus valmis.")
     field_extractions = list(structure.get("field_extractions", []))
@@ -513,7 +539,7 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
         "job_id": job_id,
         "structured_field_count": len(field_extractions),
         "field_extractions": field_extractions,
-        "missing_required_fields": wizard.get("missing_required_fields", []),
+        "missing_required_fields": [] if attachment_only else wizard.get("missing_required_fields", []),
         "missing_attachments": wizard.get("missing_attachments", []),
         "questions": questions,
         "attachment_count": len(attachments),
@@ -532,7 +558,15 @@ def _build_intake_analysis_result(db: Any, case_id: str, permit_type: str, job_i
     result["extraction_queue"] = extraction_queue
 
     if full_check:
-        package_result = package_analysis_from_current_state(db, case_id, permit_type, job_id=job_id, structure=structure, settings=settings)
+        package_result = package_analysis_from_current_state(
+            db,
+            case_id,
+            permit_type,
+            job_id=job_id,
+            structure=structure,
+            settings=settings,
+            attachment_only=attachment_only,
+        )
         if job_id:
             mark_agent_complete(db, case_id, permit_type, job_id, "gap_analyzer", "Puutteiden tunnistus valmis.")
         result["readiness"] = package_result["readiness"]
@@ -603,6 +637,7 @@ def start_intake_analysis_job(
     *,
     managed_background: bool = False,
     full_check: bool = True,
+    attachment_only: bool = False,
 ) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     # Light path (wizard/2 "Analysoi") only classifies, structures and asks
@@ -626,10 +661,27 @@ def start_intake_analysis_job(
     )
 
 
-def execute_intake_analysis_job(db: Any, case_id: str, permit_type: str, job_id: str, settings: Any = None, *, full_check: bool = True) -> None:
+def execute_intake_analysis_job(
+    db: Any,
+    case_id: str,
+    permit_type: str,
+    job_id: str,
+    settings: Any = None,
+    *,
+    full_check: bool = True,
+    attachment_only: bool = False,
+) -> None:
     permit_type = application_id_for(permit_type)
     try:
-        result = _build_intake_analysis_result(db, case_id, permit_type, job_id, settings=settings, full_check=full_check)
+        result = _build_intake_analysis_result(
+            db,
+            case_id,
+            permit_type,
+            job_id,
+            settings=settings,
+            full_check=full_check,
+            attachment_only=attachment_only,
+        )
         summary = f"Analyysi valmis: {len(result.get('findings', []))} havaintoa, valmius {result.get('readiness_score', 0)}/100." if full_check else f"Aineisto käsitelty: {result.get('structured_field_count', 0)} kenttäehdotusta."
         complete_ai_job(
             db,

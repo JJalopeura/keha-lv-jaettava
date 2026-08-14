@@ -223,6 +223,24 @@ def context_app(
         if refs:
             item["evidence_refs"] = refs[:3]
     inline_field_suggestions = [dict(item, source_kind="suggestion") for item in ai_suggestions]
+    inline_suggestion_fields = {str(item.get("field_id") or "") for item in inline_field_suggestions}
+    for item in extraction_items:
+        field_id = str(item.get("field_id") or "")
+        if (
+            field_id
+            and field_id not in inline_suggestion_fields
+            and item.get("status") == "pending"
+            and item.get("suggested_value")
+        ):
+            inline_field_suggestions.append(
+                {
+                    **item,
+                    "source_kind": "extraction",
+                    "accept_url": f"/cases/{case_id}/lupademo/application/{app['application_id']}/extractions/accept",
+                    "reject_url": f"/cases/{case_id}/lupademo/application/{app['application_id']}/extractions/reject",
+                    "accept_field_id": field_id,
+                }
+            )
     return {
         "application": app,
         "schema": svc.load_form_schema(app["permit_type"]),

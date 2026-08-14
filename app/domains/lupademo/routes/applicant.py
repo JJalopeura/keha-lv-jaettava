@@ -270,7 +270,14 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             for job in svc.list_ai_jobs(db(), found["case_id"], found["permit_type"])
         ):
             raise HTTPException(status_code=409, detail="analysis_already_running")
-        job = svc.start_intake_analysis_job(db(), found["case_id"], found["permit_type"], settings=settings(), managed_background=True)
+        job = svc.start_intake_analysis_job(
+            db(),
+            found["case_id"],
+            found["permit_type"],
+            settings=settings(),
+            managed_background=True,
+            attachment_only=True,
+        )
         background_tasks.add_task(
             svc.execute_intake_analysis_job,
             db(),
@@ -278,6 +285,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             found["permit_type"],
             job["id"],
             settings(),
+            attachment_only=True,
         )
         return RedirectResponse(url=f"/applicant/packages/{package_id}#analysis", status_code=303)
 

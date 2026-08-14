@@ -33,7 +33,7 @@ from app.infra.llm_utils import call_llm_json, vector_store_ids  # noqa: E402
 from app.infra.mock_llm import MockLLMClient  # noqa: E402
 from app.domains.lupademo.services.application import deterministic_suggestion  # noqa: E402
 from app.domains.lupademo.services.intake import azure_vector_store_ids, build_retrieval_context  # noqa: E402
-from app.main import app, db as app_db  # noqa: E402
+from app.main import app, db as app_db, recover_orphaned_jobs  # noqa: E402
 
 PERMIT = "environmental_industrial"
 KEY = {"X-Lupademo-Api-Key": "demo-avi-key"}
@@ -81,6 +81,17 @@ class AgentPipeline(unittest.TestCase):
 
         self.assertIn('"suggestions"', prompt)
         self.assertIn('"field_id": "activity_description"', prompt)
+
+    def test_server_restart_marks_orphaned_jobs_failed(self) -> None:
+        fresh_case = db.create_case("Orphaned job recovery", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        job = svc.start_ai_job(db, fresh_case, PERMIT, "application_check", "Tarkistus", ["deterministic_checks"])
+
+        recover_orphaned_jobs(db)
+
+        recovered = next(item for item in svc.list_ai_jobs(db, fresh_case, PERMIT) if item["id"] == job["id"])
+        self.assertEqual(recovered["status"], "failed")
+        self.assertIn("palvelimen uudelleenkäynnistyksen vuoksi", recovered["summary"])
 
     def test_authority_agents_load_their_authored_prompts(self) -> None:
         cases = {
@@ -854,6 +865,24 @@ class Uploads(unittest.TestCase):
         self.assertIn("Analysoi hakemuspaketti", response.text)
         self.assertNotIn("Hakukontekstin valmistelu käynnissä", response.text)
 
+    def test_package_analysis_route_uses_attachment_only_validation(self) -> None:
+        package = svc.save_material_package(db, case, PERMIT, "Attachment-only analysis", [])
+        existing_job_ids = {job["id"] for job in svc.list_ai_jobs(db, case, PERMIT)}
+        original_executor = svc.execute_intake_analysis_job
+        calls = []
+        svc.execute_intake_analysis_job = lambda *args, **kwargs: calls.append(kwargs)
+        try:
+            response = client.post(f"/applicant/packages/{package['package_id']}/analyze")
+        finally:
+            svc.execute_intake_analysis_job = original_executor
+            for job in svc.list_ai_jobs(db, case, PERMIT):
+                if job.get("id") not in existing_job_ids and job.get("kind") == "intake_analysis" and job.get("status") in {"pending", "running"}:
+                    svc.cancel_ai_job(db, job["id"])
+
+        self.assertEqual(response.status_code, 303)
+        self.assertTrue(calls)
+        self.assertTrue(calls[0]["attachment_only"])
+
     def test_intake_analysis_rejects_duplicate_active_job(self) -> None:
         job = svc.start_intake_analysis_job(db, case, PERMIT, managed_background=True)
         try:
@@ -881,6 +910,26 @@ class Pages(unittest.TestCase):
         self.assertEqual(job["status"], "running")
         self.assertTrue(job["managed_background"])
 
+    def test_wizard_job_panel_translates_field_ids(self) -> None:
+        fresh_case = db.create_case("Human readable job steps", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        svc.start_ai_job(
+            db,
+            fresh_case,
+            PERMIT,
+            "form_suggestions",
+            "Lomake-ehdotuksia valmistellaan",
+            ["activity_name", "bat_assessment"],
+        )
+
+        response = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/3")
+        panel = response.text.split('<section class="analysis-panel', 1)[1].split("</section>", 1)[0]
+
+        self.assertIn("Toiminnan nimi", panel)
+        self.assertIn("BAT-arviointi", panel)
+        self.assertNotIn("activity_name", panel)
+        self.assertNotIn("bat_assessment", panel)
+
     def test_wizard_reviews_all_ai_suggestions_in_application_step(self) -> None:
         queue = svc.artifact_json(db, case, "field_extraction_queue", PERMIT, {"items": []})["items"]
         pending_count = sum(item.get("status") == "pending" for item in queue)
@@ -907,6 +956,51 @@ class Pages(unittest.TestCase):
         check_page = client.get(f"{base}/wizard/4")
         self.assertEqual(check_page.status_code, 200)
         self.assertIn("AI- ja sääntötarkistus", check_page.text)
+
+    def test_missing_official_attachments_link_to_materials_step(self) -> None:
+        fresh_case = db.create_case("Missing official attachments", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        svc.run_application_check(db, fresh_case, PERMIT, settings=load_settings())
+
+        check_page = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/4")
+        materials_page = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/2")
+
+        self.assertIn("Asemapiirros / sijaintikartta", check_page.text)
+        self.assertIn("Kaavaote", check_page.text)
+        self.assertIn("Julkinen yhteenveto", check_page.text)
+        self.assertNotIn("Liite liite", check_page.text)
+        self.assertIn("/wizard/2#materials", check_page.text)
+        self.assertIn("Puuttuvat viranomaisliitteet", materials_page.text)
+        self.assertIn("Tarkkailu ja raportointi", materials_page.text)
+
+    def test_extraction_suggestion_is_available_under_matching_form_field(self) -> None:
+        fresh_case = db.create_case("Inline extraction suggestion", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        svc.save_artifact(db, fresh_case, "ai_suggestions", PERMIT, {"suggestions": []})
+        svc.save_artifact(
+            db,
+            fresh_case,
+            "field_extraction_queue",
+            PERMIT,
+            {
+                "items": [{
+                    "field_id": "production_capacity",
+                    "suggested_value": "Suunniteltu tuotantoteho 25 MW.",
+                    "source_document": "aineisto.txt",
+                    "confidence": 0.9,
+                    "evidence_refs": [],
+                    "status": "pending",
+                }],
+            },
+        )
+
+        response = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/3")
+
+        self.assertEqual(response.status_code, 200)
+        field_block = response.text.split('id="field-production_capacity"', 1)[1].split("</label>", 1)[0]
+        self.assertIn('data-suggestion-open', field_block)
+        self.assertIn('Suunniteltu tuotantoteho 25 MW.', field_block)
+        self.assertIn('data-suggestion-dialog', response.text)
 
     def test_bulk_ai_approval_controls_are_step_specific(self) -> None:
         original_suggestions = json.loads(json.dumps(svc.artifact_json(db, case, "ai_suggestions", PERMIT, {"suggestions": []})))

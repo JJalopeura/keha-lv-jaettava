@@ -6,6 +6,28 @@
 {% set last_fail = last_job[0] if last_job and last_job[0].get('status') == 'failed' else none %}
 {% set state = 'running' if active_jobs else ('ok' if last_ok else ('failed' if last_fail else 'idle')) %}
 {% set primary_job = active_jobs[0] if active_jobs else none %}
+{% set job_field_labels = {} %}
+{% if schema is defined and schema %}
+{% for field in schema.fields %}{% set _ = job_field_labels.update({field.id: field.label}) %}{% endfor %}
+{% endif %}
+{% set job_agent_labels = {
+  'archive_validator': 'Paketin tarkistus',
+  'text_extractor': 'Tekstin poiminta',
+  'material_classifier': 'Aineiston luokittelu',
+  'vector_indexer': 'Hakukontekstin valmistelu',
+  'structure_extractor': 'Rakenteistus',
+  'gap_analyzer': 'Puutteiden tunnistus',
+  'question_generator': 'Täydennyskysymysten muodostus',
+  'field_suggestion_agent': 'Kenttäehdotus',
+  'form_suggestion_agent': 'Lomake-ehdotus',
+  'field_extraction_agent': 'Kenttätietojen poiminta',
+  'retrieval_context': 'Hakukontekstin kokoaminen',
+  'validate_suggestion': 'Ehdotuksen tarkistus',
+  'persist_pending_suggestion': 'Ehdotuksen tallennus',
+  'document_classifier': 'Asiakirjojen luokittelu',
+  'attachment_classifier': 'Aineiston luokittelu'
+} %}
+{% macro job_step_label(value) %}{% set raw = value|string %}{% if raw in job_field_labels %}{{ job_field_labels.get(raw) }}{% elif raw in job_agent_labels %}{{ job_agent_labels.get(raw) }}{% elif '_' in raw %}{{ raw|replace('_', ' ')|capitalize }}{% else %}{{ raw }}{% endif %}{% endmacro %}
 
 {# Human-friendly contextual copy per job kind #}
 {% set job_kind_copy = {
@@ -25,7 +47,7 @@
       {% if state == 'running' %}
       <p class="section-kicker">AI käsittelee{% if active_jobs|length > 1 %} ({{ active_jobs|length }} tehtävää){% endif %}</p>
       <strong>{{ running_headline[0] }}</strong>
-      <p>{{ running_headline[1] or primary_job.get('current_step_label') or '' }}</p>
+      <p>{{ running_headline[1] or job_step_label(primary_job.get('current_step_label')) or '' }}</p>
       {% elif state == 'ok' %}
       <p class="section-kicker">AI valmis</p>
       <strong>{{ last_ok.get('summary') or last_ok.get('title', 'Käsittely valmis') }}</strong>
@@ -64,17 +86,19 @@
     data-stream-url="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ job.id }}/stream"
     data-job-id="{{ job.id }}">
     <div class="job-progress-meta">
-      <strong data-job-step-label>{{ job.get('current_step_label') or job.get('title') or '' }}</strong>
+      <strong data-job-step-label>{{ job_step_label(job.get('current_step_label') or job.get('title') or '') }}</strong>
       <span><b data-job-progress>{{ job.get('progress_percent', 0) }}</b>% · <span data-job-eta>{{ job.get('estimated_seconds_remaining', 0) }}</span> s</span>
     </div>
     <div class="progress-track"><span data-job-progress-bar style="--p: {{ job.get('progress_percent', 0) }}"></span></div>
-    <p class="job-current-agent" data-job-current-agent>Parhaillaan: {{ job.get('current_step_label') or 'valmistellaan' }}</p>
+    <p class="job-current-agent" data-job-current-agent>Parhaillaan: {{ job_step_label(job.get('current_step_label') or 'valmistellaan') }}</p>
     {% set events = job.get('events', []) %}
     {% if events|length > 1 %}
     <ul class="agent-steps">
       {% for evt in events %}
-      <li class="{{ evt.get('level', 'info') }}{% if evt.get('progress_percent', 0) >= 100 %} completed{% endif %}" title="{{ evt.get('step', '') }}: {{ evt.get('message', '') }}">
-        <span></span>{{ evt.get('step', '') }}
+      {% set event_step = evt.get('step', '') %}
+      {% set event_message = (evt.get('message', '') or '')|replace(event_step, job_step_label(event_step)) %}
+      <li class="{{ evt.get('level', 'info') }}{% if evt.get('progress_percent', 0) >= 100 %} completed{% endif %}" title="{{ job_step_label(event_step) }}: {{ event_message }}">
+        <span></span>{{ job_step_label(event_step) }}
       </li>
       {% endfor %}
     </ul>
@@ -89,8 +113,17 @@
 (function () {
   var rows = document.querySelectorAll("[data-ai-job]");
   if (!rows.length) return;
+  var jobFieldLabels = {{ job_field_labels | tojson }};
+  var jobAgentLabels = {{ job_agent_labels | tojson }};
   var terminal = new Set(["succeeded", "failed", "cancelled"]);
   var reloaded = false;
+
+  function jobStepLabel(value) {
+    var raw = String(value || "");
+    if (jobFieldLabels[raw]) return jobFieldLabels[raw];
+    if (jobAgentLabels[raw]) return jobAgentLabels[raw];
+    return raw.indexOf("_") >= 0 ? raw.replace(/_/g, " ").replace(/^./, function (char) { return char.toUpperCase(); }) : raw;
+  }
 
   function apply(row, payload) {
     var p = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
@@ -102,8 +135,8 @@
     if (progEl) progEl.textContent = p;
     if (etaEl) etaEl.textContent = payload.estimated_seconds_remaining ?? 0;
     if (barEl) barEl.style.setProperty("--p", p);
-    if (stepEl && payload.current_step_label) stepEl.textContent = payload.current_step_label;
-    if (currentEl && payload.current_step_label) currentEl.textContent = "Parhaillaan: " + payload.current_step_label;
+    if (stepEl && payload.current_step_label) stepEl.textContent = jobStepLabel(payload.current_step_label);
+    if (currentEl && payload.current_step_label) currentEl.textContent = "Parhaillaan: " + jobStepLabel(payload.current_step_label);
     return terminal.has(payload.status);
   }
 

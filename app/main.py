@@ -28,19 +28,31 @@ app.mount(
 app.include_router(create_lupademo_router(lambda: db, lambda: settings))
 
 
-@app.on_event("startup")
-def startup_retry_orphaned_jobs():
-    """F013: On startup, retry any jobs stuck in 'pending' or 'running' from a previous crash."""
-    for case in db.list_cases():
+def recover_orphaned_jobs(db_obj: DB) -> None:
+    """Mark jobs from a previous server process as failed and actionable."""
+    for case in db_obj.list_cases():
         case_id = case["id"]
         for permit_type in svc.PERMIT_SCHEMAS:
-            for job in svc.list_ai_jobs(db, case_id, permit_type):
-                if job.get("status") in {"pending", "running"}:
-                    try:
-                        job = svc.retry_ai_job(db, job["id"])
-                        logger.info("Retried orphaned job %s for case %s (%s)", job["id"], case_id, permit_type)
-                    except Exception:
-                        logger.warning("Failed to retry orphaned job %s for case %s", job["id"], case_id)
+            for job in svc.list_ai_jobs(db_obj, case_id, permit_type):
+                if job.get("status") not in {"pending", "running"}:
+                    continue
+                try:
+                    svc.complete_ai_job(
+                        db_obj,
+                        case_id,
+                        permit_type,
+                        job["id"],
+                        summary="AI-ajo keskeytyi palvelimen uudelleenkäynnistyksen vuoksi. Käynnistä ajo uudelleen.",
+                        failed=True,
+                    )
+                    logger.warning("Marked orphaned job %s as failed for case %s (%s)", job["id"], case_id, permit_type)
+                except Exception:
+                    logger.warning("Failed to recover orphaned job %s for case %s", job["id"], case_id, exc_info=True)
+
+
+@app.on_event("startup")
+def startup_recover_orphaned_jobs():
+    recover_orphaned_jobs(db)
 
 
 @app.exception_handler(Exception)

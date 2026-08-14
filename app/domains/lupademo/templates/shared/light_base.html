@@ -28,6 +28,7 @@
     applicant flow is the Customer Workspace (manage projects/applications). #}
     {% set case_workbench = not authority_workspace and not demo_workspace and
     '/lupademo/application/' in current_path %}
+    {% set hide_brand_mark = case_workbench or current_path.startswith('/lv/projects/') %}
     {% set service_names = {
     'building_residential': 'Rakennusluvan asiointi',
     'environmental_industrial': 'Ympäristöluvan asiointi',
@@ -117,7 +118,7 @@
             href="{{ workspace_home }}"
             class="app-brand"
           >
-            {% if not case_workbench %}
+            {% if not hide_brand_mark %}
             <span class="brand-mark" aria-hidden="true">LV</span>
             {% endif %}
             <span

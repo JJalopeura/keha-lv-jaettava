@@ -229,6 +229,21 @@ class ApplicantJourney(unittest.TestCase):
 
         self.assertIn("criteria_package_noise_context", {finding["id"] for finding in result["findings"]})
 
+    def test_package_analysis_attachment_only_skips_wizard_field_validation(self) -> None:
+        package_case = db.create_case("Attachment-only package analysis", language="fi")
+        svc.ensure_seed_state(db, package_case)
+        svc.update_application_data(db, package_case, "environmental_industrial", {"municipality": "Vantaa"})
+
+        result = svc.package_analysis_from_current_state(
+            db,
+            package_case,
+            "environmental_industrial",
+            attachment_only=True,
+        )
+
+        self.assertFalse(any(finding.get("field_id") == "business_id" for finding in result["findings"]))
+        self.assertTrue(all(finding.get("attachment_id") for finding in result["findings"]))
+
     def test_unknown_municipality_fallback_does_not_block_city_creation(self) -> None:
         city_case = db.create_case("Unknown municipality fallback", language="fi")
         svc.ensure_seed_state(db, city_case)
@@ -328,6 +343,18 @@ class ApplicantJourney(unittest.TestCase):
 
         self.assertEqual(context["criteria_municipality"], active["municipality"])
         self.assertEqual(context["criteria_version"], active["version"])
+
+    def test_national_package_analysis_is_not_stale_for_request_municipality(self) -> None:
+        fallback_case = db.create_case("National criteria package freshness", language="fi")
+        svc.ensure_seed_state(db, fallback_case)
+        svc.update_application_data(db, fallback_case, "environmental_industrial", {"municipality": "Vantaa"})
+
+        result = svc.package_analysis_from_current_state(db, fallback_case, "environmental_industrial")
+        active = svc.effective_criteria(db, fallback_case, "environmental_industrial", "Vantaa")
+
+        self.assertEqual(result["criteria_set_id"], active["criteria_set_id"])
+        self.assertEqual(result["criteria_version"], active["version"])
+        self.assertFalse(svc.is_package_analysis_stale(result, active))
 
     def test_package_analysis_stale_when_criteria_set_identity_changes(self) -> None:
         identity_case = db.create_case("Criteria identity freshness", language="fi")
