@@ -1556,6 +1556,26 @@ def accept_extraction_queue_item(
     return app
 
 
+def accept_all_extraction_queue_items(db: Any, case_id: str, permit_type: str) -> int:
+    permit_type = application_id_for(permit_type)
+    queue_payload = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []})
+    pending_items = [
+        item for item in _list(queue_payload.get("items"))
+        if isinstance(item, dict) and item.get("status") == "pending" and str(item.get("suggested_value") or item.get("extracted_value") or "").strip()
+    ]
+    accepted_count = 0
+    for item in pending_items:
+        accept_extraction_queue_item(
+            db,
+            case_id,
+            permit_type,
+            str(item.get("field_id")),
+            str(item.get("suggested_value") or item.get("extracted_value") or ""),
+        )
+        accepted_count += 1
+    return accepted_count
+
+
 def reject_extraction_queue_item(db: Any, case_id: str, permit_type: str, field_id: str) -> None:
     permit_type = application_id_for(permit_type)
     queue_payload = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []})

@@ -13,7 +13,7 @@
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2212%22 fill=%22%23123a64%22/><text y=%22.65em%22 x=%2250%22 text-anchor=%22middle%22 font-size=%2260%22 font-weight=%22800%22 fill=%22white%22>L</text></svg>"
     />
-    <link rel="stylesheet" href="/static/style.css?v=20260804-v6" />
+    <link rel="stylesheet" href="/static/style.css?v=20260814-v3" />
   </head>
   <body
     class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}"
@@ -66,7 +66,9 @@
               {% set sidebar_statuses = {'draft': 'Luonnos', 'not_started': 'Ei aloitettu', 'submitted': 'Lähetetty', 'application_draft': 'Luonnos'} %}
               {% set sidebar_permits = project.get('permits', []) %}
               {% set sidebar_current_permit = application.application_id if application is defined else (sidebar_permits|first if sidebar_permits else 'building_residential') %}
+              {% if not current_path.startswith('/lv/projects/') %}
               <a class="sidebar-link sidebar-link--next{% if '/lupademo/application/' in current_path %} active{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ sidebar_current_permit }}">Jatka nykyistä hakemusta</a>
+              {% endif %}
               <a class="sidebar-link{% if current_path.startswith('/lv/projects/') %} active{% endif %}" href="/lv/projects/{{ case_id }}" {% if current_path.startswith('/lv/projects/') %}aria-current="page"{% endif %}>Hanke</a>
               {% if sidebar_permits %}
               <span class="sidebar-subheading">Lupakokonaisuuden asioinnit</span>
@@ -139,9 +141,9 @@
             class="workspace-picker"
             method="post"
             action="/workspace/select"
-            aria-label="Hakija"
+            aria-label="Asiointikohde"
           >
-            <label for="workspace">Hakija</label>
+            <label for="workspace">Asiointikohde</label>
             <select
               id="workspace"
               name="workspace"
@@ -157,7 +159,7 @@
                 endif
                 %}
               >
-                {{ option.customer }}
+                {{ option.label }}
               </option>
               {% endfor %}
             </select>

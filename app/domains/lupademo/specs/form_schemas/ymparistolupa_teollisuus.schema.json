@@ -59,7 +59,8 @@
       "tab": "applicant",
       "label": "Toiminnan nimi",
       "type": "text",
-      "required": true
+      "required": true,
+      "ai_suggest": true
     },
     {
       "id": "permit_basis",

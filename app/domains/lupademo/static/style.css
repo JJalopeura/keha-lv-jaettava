@@ -1988,7 +1988,10 @@ body.service-light {
 
 .sidebar-nav {
   display: grid;
+  width: 100%;
   gap: 22px;
+  justify-content: stretch;
+  align-items: stretch;
 }
 
 .sidebar-section {
@@ -3525,14 +3528,14 @@ button:disabled {
 }
 
 .managed-document-list,
-.suggestion-review-list {
+.document-detail-body {
   display: grid;
   border-top: 1px solid #d8dee6;
 }
 
 .managed-document-row {
   display: grid;
-  grid-template-columns: 40px minmax(180px, 1fr) minmax(300px, auto);
+  grid-template-columns: 40px minmax(180px, 1fr);
   gap: 12px;
   align-items: start;
   padding: 14px 2px;
@@ -3561,6 +3564,26 @@ button:disabled {
   margin: 7px 0 0;
   color: #475467;
   font-size: 12px;
+}
+
+.document-detail {
+  margin-top: 8px;
+}
+
+.document-detail > summary {
+  width: fit-content;
+  color: #0d675d;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.document-detail-body {
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ec;
+  background: #fafbfc;
 }
 
 .managed-document-actions,
@@ -3609,10 +3632,6 @@ button:disabled {
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-}
-
-.suggestion-workspace {
-  padding: 24px 0;
 }
 
 .wizard-job-banner {
@@ -3782,6 +3801,7 @@ button:disabled {
 }
 
 .application-readiness small {
+  margin-top: 2px;
   color: #667085;
   font-size: 10px;
 }
@@ -3835,18 +3855,6 @@ button:disabled {
 .step-guidance p:last-child {
   margin: 0;
   color: #475467;
-}
-
-.step-counters {
-  display: flex;
-  gap: 18px;
-  color: #667085;
-  font-size: 11px;
-}
-
-.step-counters b {
-  color: #182230;
-  font-size: 16px;
 }
 
 .danger-text {
@@ -3911,6 +3919,35 @@ button:disabled {
   border-radius: 6px;
 }
 
+.context-section {
+  max-width: 860px;
+}
+
+.context-edit-link {
+  display: inline-block;
+  margin-top: 14px;
+  color: #0d675d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.material-analysis-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 860px;
+  gap: 24px;
+}
+
+.material-analysis-result h2 {
+  margin: 3px 0 0;
+}
+
+.material-analysis-result p:last-child {
+  margin: 8px 0 0;
+  color: #475467;
+}
+
 .application-form-workspace {
   display: grid;
   gap: 20px;
@@ -3929,6 +3966,124 @@ button:disabled {
 
 .application-fields-panel > .section-heading-line {
   margin-bottom: 18px;
+}
+
+.field-suggestion-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field-suggestion-summary > span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.field-suggestion-summary form {
+  margin: 0;
+}
+
+.field-suggestion-request {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 0;
+  padding: 14px 0;
+  border-top: 1px solid #e4e7ec;
+  border-bottom: 1px solid #e4e7ec;
+}
+
+.field-suggestion-request form {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.field-suggestion-request label {
+  display: grid;
+  gap: 4px;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field-suggestion-request select {
+  min-width: 250px;
+}
+
+.field-suggestion-request > span {
+  color: #667085;
+  font-size: 11px;
+}
+
+.field-suggestions-history {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid #d8dee6;
+}
+
+.field-suggestion-history-list {
+  display: grid;
+  border-top: 1px solid #d8dee6;
+}
+
+.field-suggestion-history-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.5fr) minmax(260px, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 14px 2px;
+  border-bottom: 1px solid #e4e7ec;
+}
+
+.field-suggestion-history-copy strong,
+.field-suggestion-history-copy small,
+.field-suggestion-history-value span {
+  display: block;
+}
+
+.field-suggestion-history-copy small,
+.field-suggestion-history-value span {
+  margin-top: 3px;
+  color: #667085;
+  font-size: 11px;
+}
+
+.field-suggestion-history-value p {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.field-suggestion-history-status {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.field-suggestion-history-status a {
+  color: #0d675d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field-suggestion-history-row > .evidence-disclosure {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.application-form-note {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  color: #344054;
+  background: #f5f8fa;
+  border-left: 3px solid #98a2b3;
+  border-radius: var(--radius-control);
+  font-size: 13px;
+}
+
+.application-form-note a {
+  font-weight: 700;
 }
 
 .field-section {
@@ -4110,39 +4265,35 @@ button:disabled {
   padding: 0;
 }
 
-.document-center > summary {
+.document-center-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 18px 22px;
-  cursor: pointer;
-  list-style: none;
+  border-bottom: 1px solid #e4e7ec;
 }
 
-.document-center > summary::-webkit-details-marker {
-  display: none;
-}
-
-.document-center > summary span:first-child small,
-.document-center > summary span:first-child strong {
+.document-center-heading p,
+.document-center-heading h2 {
   display: block;
 }
 
-.document-center > summary small {
+.document-center-heading p {
+  margin: 0;
   color: #667085;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
-.document-center > summary strong {
-  margin-top: 3px;
+.document-center-heading h2 {
+  margin: 3px 0 0;
   color: #182230;
   font-size: 16px;
 }
 
-.document-center > summary > span:last-child {
+.document-center-heading > span {
   color: #0d675d;
   font-size: 11px;
   font-weight: 700;
@@ -4150,7 +4301,14 @@ button:disabled {
 
 .document-center-body {
   padding: 0 22px 22px;
-  border-top: 1px solid #e4e7ec;
+}
+
+.material-center .upload-zone {
+  min-height: 270px;
+}
+
+.material-center .upload-zone-label {
+  min-height: 268px;
 }
 
 .assistant-rail {
@@ -4987,6 +5145,14 @@ button:disabled {
     padding-left: 0;
   }
 
+  .application-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .application-field.wide-field {
+    grid-column: auto;
+  }
+
   .flow-progress {
     margin: -20px -16px 0;
     padding: 0;
@@ -5052,7 +5218,6 @@ button:disabled {
     flex: 0 0 150px;
   }
 
-  .step-counters,
   .wizard-actions,
   .queue-toolbar,
   .queue-summary {

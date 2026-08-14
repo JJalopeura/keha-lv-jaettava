@@ -223,21 +223,6 @@ def context_app(
         if refs:
             item["evidence_refs"] = refs[:3]
     inline_field_suggestions = [dict(item, source_kind="suggestion") for item in ai_suggestions]
-    suggestion_fields = {str(item.get("field_id")) for item in inline_field_suggestions}
-    for item in extraction_items:
-        field_id = str(item.get("field_id") or "")
-        if not field_id or field_id in suggestion_fields or item.get("status") != "pending" or not item.get("suggested_value"):
-            continue
-        inline_field_suggestions.append(
-            {
-                **item,
-                "id": f"extraction_{field_id}",
-                "source_kind": "extraction",
-                "rationale": "Ehdotus poimittiin aineistosta ja odottaa käyttäjän hyväksyntää.",
-                "accept_url": f"/cases/{case_id}/lupademo/application/{app['application_id']}/extractions/accept",
-                "reject_url": f"/cases/{case_id}/lupademo/application/{app['application_id']}/extractions/reject",
-            }
-        )
     return {
         "application": app,
         "schema": svc.load_form_schema(app["permit_type"]),

@@ -62,6 +62,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-form` | `suggest_form` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/accept` | `accept_suggestion` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/suggestions/accept-selected` | `accept_selected_suggestions` | — (redirect) | **B** |
+| POST | `/cases/{case_id}/lupademo/application/{application_id}/suggestions/accept-all` | `accept_all_suggestions` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/reject` | `reject_suggestion` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/chat` | `contextual_chat` | — (redirect) | **B** |
 | POST | `/cases/{case_id}/lupademo/application/{application_id}/chat/messages` | `chat_messages` | JSON | **B** |

@@ -58,12 +58,15 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                 if item.get("type") == "material_package" and isinstance(item.get("data_json"), dict)
             ]
             for package in packages or [{}]:
+                customer = str(common.get("data", {}).get("applicant_name") or "Hakija")
+                package_name = str(package.get("display_name") or project.get("name") or case.get("title") or "Lupahanke")
                 options.append(
                     {
                         "case_id": case_id,
                         "package_id": str(package.get("package_id") or ""),
-                        "customer": str(common.get("data", {}).get("applicant_name") or "Hakija"),
-                        "package": str(package.get("display_name") or project.get("name") or case.get("title") or "Lupahanke"),
+                        "customer": customer,
+                        "package": package_name,
+                        "label": f"{customer} · {package_name}",
                         "selected": case_id == active_case_id and (not active_package_id or package.get("package_id") == active_package_id),
                     }
                 )
@@ -679,13 +682,13 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         field_label = next((field.get("label") for field in schema.get("fields", []) if field.get("id") == field_id), None) or "valittu kenttä"
         job = svc.start_ai_job(db(), case_id, permit_type, "field_suggestion", f"Kenttäehdotus: {field_label}", ["retrieval_context", "field_suggestion_agent"], eta_seconds=job_eta_seconds("field_suggestion_retrieval"), managed_background=True)
         background_tasks.add_task(svc.create_field_suggestion, db(), case_id, application_id, field_id, settings=settings(), job_id=job["id"])
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestions", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/ai/suggest-form")
     def suggest_form(case_id: str, application_id: str, background_tasks: BackgroundTasks):
         job = svc.start_form_suggestions_job(db(), case_id, application_id, settings=settings())
         background_tasks.add_task(svc.execute_form_suggestions_job, db(), case_id, application_id, job["id"], settings())
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#suggestions", status_code=303)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/accept")
     def accept_suggestion(case_id: str, application_id: str, suggestion_id: str, edited_value: str = Form("")):
@@ -699,6 +702,11 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     def accept_selected_suggestions(case_id: str, application_id: str, suggestion_ids: list[str] = Form([])):
         svc.accept_selected_suggestions(db(), case_id, application_id, suggestion_ids)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
+
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/accept-all")
+    def accept_all_suggestions(case_id: str, application_id: str):
+        svc.accept_all_suggestions(db(), case_id, application_id)
+        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3#ai-suggestions", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/reject")
     def reject_suggestion(case_id: str, application_id: str, suggestion_id: str):

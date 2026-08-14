@@ -1,5 +1,7 @@
-{% set active_jobs = (ai_jobs|selectattr('status', 'in', ['queued', 'running'])|list) %}
-{% set last_job = (ai_jobs|rejectattr('status', 'in', ['queued', 'running'])|list)[:1] %}
+{% set step_job_kinds = {2: ['material_ingest', 'intake_analysis'], 3: ['field_suggestion', 'form_suggestions'], 4: ['application_check']}.get(step|int, []) %}
+{% set relevant_jobs = ai_jobs|selectattr('kind', 'in', step_job_kinds)|list %}
+{% set active_jobs = (relevant_jobs|selectattr('status', 'in', ['queued', 'running'])|list) %}
+{% set last_job = (relevant_jobs|rejectattr('status', 'in', ['queued', 'running'])|list)[:1] %}
 {% set last_ok = last_job[0] if last_job and last_job[0].get('status') == 'succeeded' else none %}
 {% set last_fail = last_job[0] if last_job and last_job[0].get('status') == 'failed' else none %}
 {% set state = 'running' if active_jobs else ('ok' if last_ok else ('failed' if last_fail else 'idle')) %}
@@ -45,7 +47,7 @@
 
   {% if state != 'running' and step is defined and step == 3 %}
   <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/ai/suggest-form">
-    <button class="primary-cta">AI-suositukset liitteistä <span aria-hidden="true">→</span></button>
+    <button class="primary-cta">Ehdota tietoja aineiston perusteella <span aria-hidden="true">→</span></button>
   </form>
   {% endif %}
 

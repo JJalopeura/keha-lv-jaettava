@@ -875,13 +875,13 @@ class Pages(unittest.TestCase):
             svc.execute_form_suggestions_job = original_executor
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], f"{base}/wizard/3#suggestions")
+        self.assertEqual(response.headers["location"], f"{base}/wizard/3")
         job = next(job for job in svc.list_ai_jobs(db, case, PERMIT) if job["kind"] == "form_suggestions")
         self.assertEqual(job["kind"], "form_suggestions")
         self.assertEqual(job["status"], "running")
         self.assertTrue(job["managed_background"])
 
-    def test_wizard_reviews_extraction_suggestions_without_redirecting(self) -> None:
+    def test_wizard_reviews_all_ai_suggestions_in_application_step(self) -> None:
         queue = svc.artifact_json(db, case, "field_extraction_queue", PERMIT, {"items": []})["items"]
         pending_count = sum(item.get("status") == "pending" for item in queue)
         self.assertGreater(pending_count, 0)
@@ -892,15 +892,154 @@ class Pages(unittest.TestCase):
             wizard["pending_extraction_count"] + wizard["pending_field_suggestion_count"],
         )
 
-        suggestions_page = client.get(f"{base}/wizard/3")
-        self.assertEqual(suggestions_page.status_code, 200)
-        self.assertIn("Tarkista AI-ehdotukset", suggestions_page.text)
-        self.assertIn(f"{pending_count} odottaa käsittelyä", suggestions_page.text)
-        self.assertIn("Seuraava: Tarkistus", suggestions_page.text)
+        materials_page = client.get(f"{base}/wizard/2")
+        self.assertEqual(materials_page.status_code, 200)
+        self.assertIn("Aineiston analyysi", materials_page.text)
+        self.assertIn(f"{pending_count} ehdotusta odottaa hakemuksessa", materials_page.text)
+        self.assertIn("Siirry hakemukseen", materials_page.text)
+        self.assertNotIn("Tarkista AI-ehdotukset", materials_page.text)
+
+        form_page = client.get(f"{base}/wizard/3")
+        self.assertEqual(form_page.status_code, 200)
+        self.assertIn("AI-ehdotukset", form_page.text)
+        self.assertIn("ai-suggestions", form_page.text)
 
         check_page = client.get(f"{base}/wizard/4")
         self.assertEqual(check_page.status_code, 200)
         self.assertIn("AI- ja sääntötarkistus", check_page.text)
+
+    def test_bulk_ai_approval_controls_are_step_specific(self) -> None:
+        original_suggestions = json.loads(json.dumps(svc.artifact_json(db, case, "ai_suggestions", PERMIT, {"suggestions": []})))
+        original_queue = json.loads(json.dumps(svc.artifact_json(db, case, "field_extraction_queue", PERMIT, {"items": []})))
+        svc.save_artifact(
+            db,
+            case,
+            "ai_suggestions",
+            PERMIT,
+            {
+                "suggestions": [{
+                    "id": "sug_bulk_demo",
+                    "field_id": "activity_description",
+                    "suggested_value": "Aineistosta poimittu toiminnan kuvaus.",
+                    "status": "pending",
+                    "confidence": 0.9,
+                    "evidence_refs": [],
+                    "rationale": "Ehdotus perustuu hakemusaineistoon.",
+                    "fallback_used": False,
+                    "warnings": [],
+                }, {
+                    "id": "sug_accepted_demo",
+                    "field_id": "activity_name",
+                    "suggested_value": "Uusiutuvan energian tuotantolaitos",
+                    "accepted_value": "Hyväksytty tuotantolaitos",
+                    "status": "accepted",
+                    "confidence": 0.9,
+                    "evidence_refs": [],
+                    "rationale": "Ehdotus hyväksyttiin aiemmin.",
+                    "fallback_used": False,
+                    "warnings": [],
+                }],
+            },
+        )
+        svc.save_artifact(
+            db,
+            case,
+            "field_extraction_queue",
+            PERMIT,
+            {
+                "items": [{
+                    "field_id": "production_capacity",
+                    "suggested_value": "18 000 t/a",
+                    "source_document": "aineisto.txt",
+                    "confidence": 0.9,
+                    "evidence_refs": [],
+                    "status": "pending",
+                }],
+            },
+        )
+        try:
+            materials_page = client.get(f"{base}/wizard/2")
+            form_page = client.get(f"{base}/wizard/3")
+        finally:
+            svc.save_artifact(db, case, "ai_suggestions", PERMIT, original_suggestions)
+            svc.save_artifact(db, case, "field_extraction_queue", PERMIT, original_queue)
+
+        self.assertNotIn("Hyväksy kaikki AI-ehdotukset", materials_page.text)
+        self.assertIn("Hyväksy kaikki AI-ehdotukset", form_page.text)
+        self.assertIn("/suggestions/accept-all", form_page.text)
+        self.assertIn("data-suggestion-open", form_page.text)
+        self.assertIn("Pyydä yksittäinen ehdotus", form_page.text)
+        self.assertIn('option value="activity_name"', form_page.text)
+        self.assertNotIn('option value="applicant_name"', form_page.text)
+        self.assertNotIn('option value="business_id"', form_page.text)
+        self.assertIn("AI:n ehdotushistoria", form_page.text)
+        self.assertIn("Hyväksytty tuotantolaitos", form_page.text)
+
+    def test_accept_all_extractions_updates_application_values(self) -> None:
+        fresh_case = db.create_case("Bulk extraction approval", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        svc.save_artifact(
+            db,
+            fresh_case,
+            "field_extraction_queue",
+            PERMIT,
+            {
+                "items": [{
+                    "field_id": "activity_description",
+                    "suggested_value": "Aineistosta hyväksytty kuvaus.",
+                    "source_document": "aineisto.txt",
+                    "confidence": 0.9,
+                    "status": "pending",
+                }],
+            },
+        )
+
+        accepted = svc.accept_all_extraction_queue_items(db, fresh_case, PERMIT)
+        application = svc.artifact_json(db, fresh_case, "permit_application", PERMIT, {})
+        queue = svc.artifact_json(db, fresh_case, "field_extraction_queue", PERMIT, {})
+
+        self.assertEqual(accepted, 1)
+        self.assertEqual(application["form_data"]["activity_description"], "Aineistosta hyväksytty kuvaus.")
+        self.assertEqual(queue["items"][0]["status"], "accepted")
+
+    def test_accept_all_suggestions_approves_field_and_extraction_values(self) -> None:
+        fresh_case = db.create_case("Unified AI approval", language="fi")
+        svc.ensure_seed_state(db, fresh_case)
+        svc.save_artifact(
+            db,
+            fresh_case,
+            "ai_suggestions",
+            PERMIT,
+            {
+                "suggestions": [{
+                    "id": "unified_field_suggestion",
+                    "field_id": "activity_name",
+                    "suggested_value": "Hyväksytty toiminta",
+                    "status": "pending",
+                }],
+            },
+        )
+        svc.save_artifact(
+            db,
+            fresh_case,
+            "field_extraction_queue",
+            PERMIT,
+            {
+                "items": [{
+                    "field_id": "activity_description",
+                    "suggested_value": "Hyväksytty kuvaus",
+                    "source_document": "aineisto.txt",
+                    "status": "pending",
+                }],
+            },
+        )
+
+        result = svc.accept_all_suggestions(db, fresh_case, PERMIT)
+        application = svc.artifact_json(db, fresh_case, "permit_application", PERMIT, {})
+
+        self.assertEqual(result, {"field_suggestions": 1, "extractions": 1})
+        self.assertEqual(application["form_data"]["activity_name"], "Hyväksytty toiminta")
+        self.assertEqual(application["form_data"]["activity_description"], "Hyväksytty kuvaus")
 
     def test_package_workbench_and_wizard_are_independent(self) -> None:
         package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
@@ -946,13 +1085,37 @@ class Pages(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Esimerkki Oy", response.text)
 
-    def test_step_two_collapses_help_and_defers_suggestion_review(self) -> None:
+    def test_step_two_focuses_materials_and_defers_form_review(self) -> None:
         page = client.get(f"{base}/wizard/2")
 
         self.assertEqual(page.status_code, 200)
-        self.assertIn('class="field-section" open', page.text)
+        self.assertIn('class="document-center material-center"', page.text)
+        self.assertIn('class="document-center-heading"', page.text)
+        self.assertIn("Lisää hakemuksen aineisto", page.text)
+        self.assertNotIn('class="field-section" open', page.text)
+        self.assertNotIn("Hakemuslomake", page.text)
         self.assertNotIn("Pyydä ehdotus", page.text)
         self.assertNotIn("Hyväksy lomakkeelle", page.text)
+
+        form_page = client.get(f"{base}/wizard/3")
+        self.assertEqual(form_page.status_code, 200)
+        self.assertIn("Hakemuslomake", form_page.text)
+
+    def test_step_three_does_not_repeat_step_one_fields(self) -> None:
+        overview = client.get(f"{base}/wizard/1")
+        page = client.get(f"{base}/wizard/3")
+
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Hakemuksen lähtökohta", overview.text)
+        self.assertIn('class="context-section"', overview.text)
+        self.assertNotIn("Avaa hakemuslomake", overview.text)
+        self.assertNotIn('name="applicant_name"', overview.text)
+        self.assertNotIn('name="business_id"', overview.text)
+        self.assertIn('name="applicant_name"', page.text)
+        self.assertIn('name="business_id"', page.text)
+        self.assertIn('name="activity_description"', page.text)
+        self.assertIn("Kenttäkohtaiset AI-ehdotukset näkyvät suoraan", page.text)
 
     def test_front_page_picker_switches_customer_package(self) -> None:
         package = svc.current_material_package(db, case, PERMIT)
@@ -1307,7 +1470,7 @@ class Pages(unittest.TestCase):
             self.assertEqual(page.count('<footer class="service-footer">'), 1)
 
         # Wizard page has the six-step stepper in the main content area (not sidebar).
-        for label in ("Perustiedot", "Aineistot", "AI-ehdotukset", "Tarkistus", "Paketointi", "Vastaanotto"):
+        for label in ("Yhteiset tiedot", "Aineisto", "Hakemuksen tiedot", "Tarkistus", "Paketointi", "Vastaanotto"):
             self.assertIn(f">{label}</strong>", applicant)
         self.assertIn('aria-label="Hakemuksen vaiheet"', applicant)
 

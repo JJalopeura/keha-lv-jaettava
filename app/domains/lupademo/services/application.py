@@ -57,7 +57,7 @@ from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, Applicati
 from .criteria import *  # noqa: F401,F403
 from .criteria import _normalize_municipality
 from .jobs import complete_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
-from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
+from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -912,6 +912,7 @@ def deterministic_suggestion(
         "bat_assessment": "Hakemuksessa tulee kuvata sovellettavat BAT-päätelmät, valitut tekniikat, päästöjen ehkäisy sekä perustelut mahdollisille poikkeamille.",
         "monitoring_plan": "Tarkkailusuunnitelmassa kuvataan käyttötarkkailu, päästötarkkailu, vaikutustarkkailu, mittausvälit, raportointi ja poikkeamatilanteiden käsittely.",
         "activity_description": "Toiminta koostuu uusiutuvan energian tuotantoon liittyvästä prosessista, raaka-aineiden vastaanotosta, varastoinnista, tuotannosta ja päästöjen hallinnasta.",
+        "activity_name": "Uusiutuvan energian tuotantolaitos",
         "event_description": "Tapahtuma on yleisölle avoin paikallinen kaupunkitapahtuma. Kuvaus tulee täydentää ohjelmalla, aikataululla ja järjestäjän vastuuhenkilöillä.",
         "landowner_permission": "Tapahtuma-alueen käyttö perustuu maanomistajan tai alueen haltijan lupaan, joka liitetään hakemukseen.",
         "rescue_plan": "Pelastussuunnitelmassa kuvataan osallistujamäärä, poistumisreitit, ensiapu, järjestyksenvalvonta, alkusammutus ja häiriötilanteiden toimintamalli.",
@@ -1092,6 +1093,19 @@ def accept_selected_suggestions(db: Any, case_id: str, permit_type: str, suggest
     for suggestion_id in suggestion_ids:
         app = accept_suggestion(db, case_id, permit_type, suggestion_id)
     return app
+
+
+def accept_all_suggestions(db: Any, case_id: str, permit_type: str) -> dict[str, int]:
+    permit_type = application_id_for(permit_type)
+    pending = artifact_json(db, case_id, "ai_suggestions", permit_type, {"suggestions": []}).get("suggestions", [])
+    field_suggestion_ids = [
+        str(item.get("id"))
+        for item in pending
+        if isinstance(item, dict) and item.get("status") == "pending" and item.get("suggested_value") and item.get("id")
+    ]
+    accept_selected_suggestions(db, case_id, permit_type, field_suggestion_ids)
+    extraction_count = accept_all_extraction_queue_items(db, case_id, permit_type)
+    return {"field_suggestions": len(field_suggestion_ids), "extractions": extraction_count}
 
 
 def reject_suggestion(db: Any, case_id: str, permit_type: str, suggestion_id: str) -> dict[str, Any]:
@@ -1565,6 +1579,8 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     check_report = artifact_json(db, case_id, "check_report", permit_type, {})
     gate = precheck_gate_status(db, case_id, permit_type)
     form_data = app.get("form_data") or {}
+    common_data = artifact_json(db, case_id, "lv_common_data", "main", {"data": {}}).get("data") or {}
+    missing_common_data = [key for key in DEFAULT_COMMON_DATA if not str(common_data.get(key, "")).strip()]
     required_fields = [f for f in schema.get("fields", []) if f.get("required")]
     missing_required = [f.get("id") for f in required_fields if not str(form_data.get(f.get("id"), "")).strip()]
     official_types = {a.get("primary_type") for a in attachments if a.get("delivery_scope") == "official_submission"}
@@ -1575,15 +1591,16 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     issues = check_report.get("issues") or []
     blocking_count = sum(1 for issue in issues if issue.get("severity") == "blocking" and not issue.get("resolved"))
     steps = [
-        {"step": 1, "label": "Perustiedot", "status": "done" if not missing_required[:3] else "attention"},
-        {"step": 2, "label": "Aineistot", "status": "done" if not missing_attachments else "attention"},
-        {"step": 3, "label": "AI-ehdotukset", "status": "attention" if pending_suggestion_count or missing_required else "done"},
+        {"step": 1, "label": "Yhteiset tiedot", "status": "done" if not missing_common_data else "attention"},
+        {"step": 2, "label": "Aineisto", "status": "done" if not missing_attachments else "attention"},
+        {"step": 3, "label": "Hakemuksen tiedot", "status": "attention" if pending_suggestion_count or missing_required else "done"},
         {"step": 4, "label": "Tarkistus", "status": "done" if gate["is_fresh"] and blocking_count == 0 else "attention"},
         {"step": 5, "label": "Paketointi", "status": "done" if gate["can_submit"] else "blocked"},
         {"step": 6, "label": "Vastaanotto", "status": "done" if app.get("status") == "submitted" else "pending"},
     ]
     return {
         "steps": steps,
+        "missing_common_data": missing_common_data,
         "missing_required_fields": missing_required,
         "missing_attachments": missing_attachments,
         "pending_suggestion_count": pending_suggestion_count,

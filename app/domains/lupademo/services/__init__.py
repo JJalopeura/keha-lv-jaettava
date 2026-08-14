@@ -116,6 +116,7 @@ __all__ = [
     "seed_environmental_material_story",
     "structure_environmental_application_from_attachments",
     "accept_extraction_queue_item",
+    "accept_all_extraction_queue_items",
     "attachments_updated_at",
     "classify_source_material",
     # --- application.py (suggestions, checks, packaging, authority, chat, metrics, API) ---
@@ -136,6 +137,7 @@ __all__ = [
     "execute_form_suggestions_job",
     "accept_suggestion",
     "accept_selected_suggestions",
+    "accept_all_suggestions",
     "reject_suggestion",
     "criteria_version",
     "deterministic_issues",
