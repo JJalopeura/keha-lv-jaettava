@@ -589,8 +589,9 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         profile = dict(customer.get("profile") or {})
         profile_fields = {"applicant_name", "business_id", "contact_person", "phone", "email"}
         profile.update({key: str(form.get(key) or "").strip() for key in profile_fields})
-        db().upsert_customer(customer["id"], customer["display_name"], profile)
-        request.session["customer_name"] = customer["display_name"]
+        display_name = str(profile.get("applicant_name") or "").strip() or customer["display_name"]
+        db().upsert_customer(customer["id"], display_name, profile)
+        request.session["customer_name"] = display_name
         return RedirectResponse(url="/customer/profile?saved=1", status_code=303)
 
     @router.post("/lv/projects/{case_id}/common-data")

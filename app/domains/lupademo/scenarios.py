@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from pathlib import Path
 from typing import Any
 
 from . import services as svc
+from .services.db_helpers import _real_llm_enabled_from_env
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -202,9 +202,7 @@ def create_generic_project(
     if not tenant_id:
         tenant_id = "avi_demo" if permit == "environmental_industrial" else "vantaa_demo"
     # Skip hardcoded demo defaults when real LLM (Azure) is active.
-    _real_llm = str(os.getenv("KEHA_LV_LLM_PROVIDER", "mock") or "mock").strip().lower() != "mock"
-    if _real_llm:
-        _real_llm = str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
+    _real_llm = _real_llm_enabled_from_env()
     common = (
         {key: "" for key in svc.DEFAULT_COMMON_DATA}
         if created_from in {"package_workbench", "lv"} or _real_llm

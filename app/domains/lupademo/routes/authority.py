@@ -27,7 +27,7 @@ def create_authority_router(ctx: RouteContext) -> APIRouter:
         suffix = ""
         if permit_type or municipality:
             suffix = f"?permit_type={permit_type}&municipality={municipality}"
-        return RedirectResponse(url=f"/authority/queue{suffix}", status_code=301)
+        return RedirectResponse(url=f"/authority/queue{suffix}", status_code=303)
 
     @router.get("/authority/queue", response_class=HTMLResponse)
     def authority_queue_global(request: Request, permit_type: str = "", municipality: str = ""):

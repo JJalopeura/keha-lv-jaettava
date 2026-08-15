@@ -55,7 +55,7 @@
   </div>
   {% if authority_summary %}
   <div class="brief-content">
-    <div class="brief-summary"><h3>Tiivistelmä</h3><p>{{ authority_summary.summary_md }}</p>{% for fact in authority_summary.key_facts[:4] %}<div class="fact-row"><span>✓</span>{{ fact }}</div>{% endfor %}</div>
+    <div class="brief-summary"><h3>Tiivistelmä</h3><div data-md>{{ authority_summary.summary_md }}</div>{% for fact in authority_summary.key_facts[:4] %}<div class="fact-row"><span>✓</span>{{ fact }}</div>{% endfor %}</div>
     <div><h3>Avoimet kysymykset</h3>{% for question in authority_summary.open_questions[:5] %}<div class="open-question"><span>!</span>{{ authority_copy(question) }}</div>{% else %}<p class="empty-copy">Ei avoimia kysymyksiä.</p>{% endfor %}</div>
     <div><h3>Lähteet</h3>{% for ref in authority_summary.evidence_refs[:6] %}<div class="source-row"><span>§</span><div><strong>{{ ref.title }}</strong><small>{{ ref.locator }}</small></div></div>{% else %}<p class="empty-copy">Ei lähdeviitteitä vielä.</p>{% endfor %}</div>
   </div>

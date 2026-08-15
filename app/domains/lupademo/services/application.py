@@ -57,7 +57,7 @@ from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, Applicati
 from .criteria import *  # noqa: F401,F403
 from .criteria import _normalize_municipality
 from .jobs import complete_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
-from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
+from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _coerce_confidence, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -1111,7 +1111,6 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
     suggestion.fallback_used = bool(suggestion.fallback_used)
     if not suggestion.diff_summary:
         suggestion.diff_summary = "Korvaa tyhjän kentän ehdotuksella." if not current_value else "Täydentää nykyistä arvoa AI-ehdotuksella."
-    FieldSuggestionResponse(request_id=f"ui_{uuid.uuid4().hex[:8]}", criteria_version=criteria_version(app["permit_type"], db, case_id), suggestions=[suggestion])
     pending = artifact_json(db, case_id, "ai_suggestions", app["permit_type"], {"suggestions": []})
     pending["suggestions"] = [s for s in pending.get("suggestions", []) if s.get("field_id") != field_id]
     pending.setdefault("suggestions", []).append(suggestion)
@@ -1259,7 +1258,6 @@ def deterministic_issues(
         chemical_official = any(a.get("primary_type") == "chemical_inventory" and a.get("delivery_scope") == "official_submission" for a in attachments)
         if mentions_chemicals and chemical_ai_only and not chemical_official:
             issues.append(Issue(id="chemical_inventory_scope", type="inconsistent", severity="major", attachment_id="chemical_inventory", title="Kemikaaliluettelo on vain AI-tausta-aineistona", detail="Hakemus viittaa kemikaaliluetteloon, mutta liite ei kuulu viranomaiselle lähtevään pakettiin.", suggested_fix="Merkitse kemikaaliluettelo viranomaiselle toimitettavaksi tai poista viittaus.", evidence_refs=[criteria_source], confidence=0.88))
-    official_types = {a.get("primary_type") for a in attachments if a.get("delivery_scope") == "official_submission"}
     schema_field_ids = {str(field.get("id")) for field in schema.get("fields", [])}
     existing_missing_fields = {str(issue.field_id) for issue in issues if issue.field_id and issue.type == "missing"}
     existing_missing_attachments = {str(issue.attachment_id) for issue in issues if issue.attachment_id and issue.type == "missing"}
@@ -1436,7 +1434,7 @@ def _as_issue(issue: Issue | dict[str, Any]) -> Issue:
         severity=str(issue.get("severity", "major")),
         title=str(issue.get("title", "")),
         detail=str(issue.get("detail", "")),
-        confidence=float(issue.get("confidence", 0.5)),
+        confidence=_coerce_confidence(issue.get("confidence"), 0.5),
         field_id=issue.get("field_id"),
         attachment_id=issue.get("attachment_id"),
         suggested_fix=issue.get("suggested_fix"),
@@ -1868,7 +1866,7 @@ def metrics_snapshot(db: Any, case_id: str) -> dict[str, Any]:
     score_values = [int(check.get("score")) for check in checks if check.get("score") is not None]
     avg_score = round(sum(score_values) / len(score_values), 1) if score_values else 0
     check_scores = [int((event_row.get("data") or {}).get("score") or 0) for event_row in events if event_row.get("action") == "ai.check.completed"]
-    quality_before_ai = check_scores[0] if check_scores else max(0, int(avg_score) - accepted * 3)
+    quality_before_ai = check_scores[0] if check_scores else int(avg_score)
     quality_after_ai = check_scores[-1] if check_scores else int(avg_score)
     issue_count_by_check = [int((event_row.get("data") or {}).get("issues") or 0) for event_row in events if event_row.get("action") == "ai.check.completed"]
     issue_count_before = issue_count_by_check[0] if issue_count_by_check else detected_issues
@@ -3201,8 +3199,9 @@ def _compact_authority_context(db: Any, case_id: str, app: dict[str, Any]) -> di
             }
         )
     compact_attachments = []
-    official_attachments = [a for a in list_attachments(db, case_id, app["permit_type"]) if a.get("delivery_scope") == "official_submission"]
-    excluded_attachments = [a for a in list_attachments(db, case_id, app["permit_type"]) if a.get("delivery_scope") != "official_submission"]
+    all_attachments = list_attachments(db, case_id, app["permit_type"])
+    official_attachments = [a for a in all_attachments if a.get("delivery_scope") == "official_submission"]
+    excluded_attachments = [a for a in all_attachments if a.get("delivery_scope") != "official_submission"]
     for attachment in official_attachments[:10]:
         compact_attachments.append(
             {

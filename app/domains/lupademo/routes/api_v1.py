@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
-from .. import scenarios, security, services as svc
+from .. import security, services as svc
 from .common import RouteContext, api_response, job_eta_seconds, parse_documents, service_payload, validate_municipality_criteria
 
 def create_api_v1_router(ctx: RouteContext) -> APIRouter:
@@ -23,9 +23,6 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         if not isinstance(payload, dict):
             raise HTTPException(status_code=422, detail="request body must be a JSON object")
         return payload
-
-    def _demo_case_for_api() -> str:
-        return scenarios.active_case_id(db()) or svc.ensure_demo_case(db())
 
     def _case_for_api_client(client: dict[str, Any]) -> str:
         tenant_id = str(client["tenant_id"])

@@ -77,9 +77,9 @@ class DemoSessionMiddleware:
         if not value or "." not in value:
             return {}
         payload_text, signature_text = value.rsplit(".", 1)
-        payload = payload_text.encode("ascii")
-        expected = hmac.new(self.secret, payload, hashlib.sha256).digest()
         try:
+            payload = payload_text.encode("ascii")
+            expected = hmac.new(self.secret, payload, hashlib.sha256).digest()
             signature = base64.urlsafe_b64decode(signature_text + "=" * (-len(signature_text) % 4))
             if not hmac.compare_digest(signature, expected):
                 return {}

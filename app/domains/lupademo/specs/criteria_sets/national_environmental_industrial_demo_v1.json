@@ -77,7 +77,7 @@
     },
     {
       "id": "natura_assessment_needed",
-      "field_id": "location_environment",
+      "field_id": "sensitive_receptors",
       "severity": "major",
       "instruction": "Tunnista sijaitseeko hanke Natura-alueen vaikutuspiirissä ja tarvitaanko Natura-arviointi."
     },
@@ -111,27 +111,27 @@
     },
     {
       "id": "site_map_and_zoning_required",
-      "field_id": "location_environment",
+      "field_id": "site_location",
       "attachment_type": "zoning_extract",
       "severity": "major",
       "instruction": "Sijainti, asemakaava/yleiskaava ja karttaliitteet tulee toimittaa vaikutusalueen hahmottamiseksi."
     },
     {
       "id": "emissions_to_air_required",
-      "field_id": "emissions_to_air",
+      "field_id": "air_emissions",
       "attachment_type": "air_quality_model",
       "severity": "major",
       "instruction": "Ilmapäästöt, hajut ja mallinnustarve tulee kuvata laitoksen prosessien perusteella."
     },
     {
       "id": "water_and_wastewater_required",
-      "field_id": "water_wastewater",
+      "field_id": "water_and_wastewater",
       "severity": "major",
       "instruction": "Vedenotto, prosessivedet, jätevedet, hulevedet ja purkureitit tulee kuvata."
     },
     {
       "id": "waste_handling_required",
-      "field_id": "waste_handling",
+      "field_id": "waste",
       "severity": "major",
       "instruction": "Jätteiden muodostuminen, luokittelu, varastointi ja toimitus hyväksyttyyn käsittelyyn tulee kuvata."
     },
@@ -144,7 +144,7 @@
     },
     {
       "id": "noise_model_conditional",
-      "field_id": "noise_vibration",
+      "field_id": "",
       "attachment_type": "noise_model",
       "condition": {"field_id": "environmental_impacts", "contains_any": ["melu", "melua", "meluisa", "ään"]},
       "severity": "minor",

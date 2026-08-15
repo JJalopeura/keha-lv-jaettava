@@ -206,17 +206,20 @@ def extract_text_from_path(path: str, filename: str, *, max_chars: int = 24000) 
             return "\n".join([p.text for p in doc.paragraphs if p.text])[:max_chars]
         if ext == ".xlsx":
             wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-            rows = []
-            for sheet in wb.sheetnames[:8]:
-                ws = wb[sheet]
-                rows.append(f"[Sheet] {sheet}")
-                for row in ws.iter_rows(min_row=1, max_row=80, max_col=20, values_only=True):
-                    line = "\t".join(str(c) for c in row if c is not None)
-                    if line:
-                        rows.append(line)
-                    if sum(len(r) for r in rows) >= max_chars:
-                        return "\n".join(rows)[:max_chars]
-            return "\n".join(rows)[:max_chars]
+            try:
+                rows = []
+                for sheet in wb.sheetnames[:8]:
+                    ws = wb[sheet]
+                    rows.append(f"[Sheet] {sheet}")
+                    for row in ws.iter_rows(min_row=1, max_row=80, max_col=20, values_only=True):
+                        line = "\t".join(str(c) for c in row if c is not None)
+                        if line:
+                            rows.append(line)
+                        if sum(len(r) for r in rows) >= max_chars:
+                            return "\n".join(rows)[:max_chars]
+                return "\n".join(rows)[:max_chars]
+            finally:
+                wb.close()
         if ext in {".txt", ".md", ".csv", ".tsv"}:
             return Path(path).read_text(encoding="utf-8", errors="ignore")[:max_chars]
     except Exception as exc:
@@ -492,6 +495,7 @@ def run_json_agent(
             for marker in ("vector store", "readtimeout", "read operation timed out", "timed out")
         )
         if retry_without_retrieval:
+            failure = exc
             try:
                 payload = call_llm_json(
                     client,
@@ -526,12 +530,17 @@ def run_json_agent(
                 )
                 return model
             except Exception as retry_exc:
-                exc = retry_exc
+                failure = RuntimeError(
+                    f"Initial retrieval request failed: {exc}; "
+                    f"retry without retrieval also failed: {retry_exc}"
+                )
+        else:
+            failure = exc
         allow_fallback = _is_presenter_case(db, case_id) or str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
         if fallback is None or not allow_fallback:
-            raise LLMUnavailableError("Azure AI ei ole käytettävissä. Mock-AI on sallittu vain esittäjätilassa.") from exc
+            raise LLMUnavailableError("Azure AI ei ole käytettävissä. Mock-AI on sallittu vain esittäjätilassa.") from failure
         model = fallback if isinstance(fallback, response_model) else response_model(**fallback)
-        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "deterministic_fallback", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(exc)[:500], "error": str(exc)[:500]})
+        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "deterministic_fallback", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(failure)[:500], "error": str(failure)[:500]})
         return model
 
 
@@ -764,8 +773,9 @@ def add_attachment(db: Any, case_id: str, permit_type: str, filename: str, size:
                 attachment["azure_vs_file_id"] = ingest_result.get("azure_vs_file_id", "")
                 if ingest_result.get("error"):
                     attachment["vector_store_error"] = str(ingest_result.get("error"))[:300]
-        except Exception:
+        except Exception as exc:
             attachment["vector_store_status"] = "error"
+            attachment["vector_store_error"] = str(exc)[:300]
     elif attachment["delivery_scope"] == "internal_authority_only":
         attachment["vector_store_status"] = "excluded_by_policy"
     event(db, case_id, "attachment.uploaded", "Attachment uploaded", {"application_id": permit_type, "attachment_id": attachment["id"], "delivery_scope": attachment["delivery_scope"]})
