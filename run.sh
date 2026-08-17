@@ -10,4 +10,4 @@ fi
 
 PYTHON="${PYTHON:-$SCRIPT_DIR/.venv/bin/python}"
 [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3 || command -v python)"
-exec "$PYTHON" -m uvicorn app.main:app --host "${APP_HOST:-127.0.0.1}" --port "${APP_PORT:-8001}"
+exec "$PYTHON" -m uvicorn app.main:app --host "${APP_HOST:-127.0.0.1}" --port "${APP_PORT:-8002}"
