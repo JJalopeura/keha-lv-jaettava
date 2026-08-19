@@ -16,7 +16,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.domains.lupademo.routes import create_lupademo_router  # noqa: E402
-from app.domains.lupademo.services import artifact_json, find_material_package  # noqa: E402
+from app.domains.lupademo.services import artifact_json, find_material_package, save_artifact  # noqa: E402
 from app.domains.lupademo.services.customer_workspace import ensure_customer_demo_data  # noqa: E402
 from app.infra.config import load_settings  # noqa: E402
 from app.infra.db import DB  # noqa: E402
@@ -80,6 +80,25 @@ class CustomerWorkspace(unittest.TestCase):
         self.assertNotIn("Lisätiedot", page.text)
         self.assertNotIn("Hankkeen perustiedot", page.text)
         self.assertIn("Hankkeen tiedot", page.text)
+
+    def test_seeded_submitted_applications_are_visible_in_authority_queue(self) -> None:
+        response = client.get("/authority/queue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("Ei hakemuksia valituilla rajauksilla", response.text)
+        self.assertEqual(response.text.count('class="row-action'), 3)
+
+    def test_existing_seeded_submissions_rebuild_missing_queue_items(self) -> None:
+        for case in db.list_cases():
+            project = artifact_json(db, case["id"], "lv_project", "main", {})
+            if project.get("seeded_customer_workspace"):
+                save_artifact(db, case["id"], "authority_queue", "main", {"items": []})
+
+        ensure_customer_demo_data(db)
+
+        response = client.get("/authority/queue")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text.count('class="row-action'), 3)
 
     def test_package_upload_does_not_create_another_hanke(self) -> None:
         client.post("/login", data={"customer_id": "ren-gas"})

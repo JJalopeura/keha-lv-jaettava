@@ -587,7 +587,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             return RedirectResponse(url="/login", status_code=303)
         form = await request.form()
         profile = dict(customer.get("profile") or {})
-        profile_fields = {"applicant_name", "business_id", "contact_person", "phone", "email"}
+        profile_fields = {"applicant_name", "business_id", "contact_person", "phone", "email", "municipality", "address"}
         profile.update({key: str(form.get(key) or "").strip() for key in profile_fields})
         display_name = str(profile.get("applicant_name") or "").strip() or customer["display_name"]
         db().upsert_customer(customer["id"], display_name, profile)

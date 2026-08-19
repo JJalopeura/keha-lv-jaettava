@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
-from .core import PERMIT_SCHEMAS, artifact_json, ensure_application, save_artifact
+from .core import PERMIT_SCHEMAS, artifact_json, ensure_application, load_form_schema, save_artifact
 from .intake import find_material_package, list_attachments
 from .jobs import list_ai_jobs
 
@@ -134,7 +135,16 @@ def ensure_customer_demo_data(db: Any) -> None:
         customer_id = str(fixture["id"])
         profile = dict(fixture["profile"])
         db.upsert_customer(customer_id, str(fixture["display_name"]), profile)
-        if db.list_cases_for_customer(customer_id):
+        existing_cases = db.list_cases_for_customer(customer_id)
+        if existing_cases:
+            for case in existing_cases:
+                case_id = str(case["id"])
+                project = artifact_json(db, case_id, "lv_project", "main", {})
+                if not project.get("seeded_customer_workspace"):
+                    continue
+                for permit_type, status in (project.get("statuses") or {}).items():
+                    if status == "submitted":
+                        _set_seed_application_state(db, case_id, str(permit_type), status)
             continue
         for project in fixture["projects"]:
             started = scenarios.create_generic_project(
@@ -165,6 +175,47 @@ def _set_seed_application_state(db: Any, case_id: str, permit_type: str, status:
     project["seeded_customer_workspace"] = True
     save_artifact(db, case_id, "lv_project", "main", project)
     db.set_case_status(case_id, "submitted" if status == "submitted" else "application_draft")
+    if status != "submitted":
+        return
+
+    received_at = time.strftime("%Y-%m-%d %H:%M:%S")
+    receipt_id = f"LV-SEED-{case_id[:8].upper()}"
+    save_artifact(
+        db,
+        case_id,
+        "receipt",
+        permit_type,
+        {
+            "receipt_id": receipt_id,
+            "application_id": permit_type,
+            "received_at": received_at,
+            "authority": load_form_schema(permit_type).get("authority_default", "Viranomainen"),
+            "package_id": f"seeded-{case_id[:8]}",
+            "official_attachment_count": 0,
+        },
+    )
+    common = artifact_json(db, case_id, "lv_common_data", "main", {}).get("data", {})
+    queue = artifact_json(db, case_id, "authority_queue", "main", {"items": []})
+    if not any(item.get("application_id") == permit_type for item in queue.get("items", [])):
+        queue.setdefault("items", []).append(
+            {
+                "application_id": permit_type,
+                "application_title": load_form_schema(permit_type).get("title", permit_type),
+                "receipt_id": receipt_id,
+                "applicant_name": (app.get("form_data") or {}).get("applicant_name") or common.get("applicant_name", ""),
+                "municipality": (app.get("form_data") or {}).get("municipality") or common.get("municipality", ""),
+                "status": "käsittelyssä",
+                "submitted_at": received_at,
+                "quality_score": 75,
+                "open_issue_count": 0,
+                "info_request_risk": "matala",
+                "permit_type": permit_type,
+                "processing_stage": "vastaanotettu",
+                "sla_due_at": time.strftime("%Y-%m-%d", time.localtime(time.time() + 30 * 24 * 60 * 60)),
+                "urgency": "normaali",
+            }
+        )
+    save_artifact(db, case_id, "authority_queue", "main", queue)
 
 
 def customer_case(db: Any, customer_id: str, case_id: str) -> dict[str, Any]:

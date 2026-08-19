@@ -2505,34 +2505,26 @@ body.service-light {
 }
 
 .ai-mode-status {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 3px 9px;
-  border: 1px solid #cbd8d5;
-  border-radius: 999px;
-  color: #31534d;
-  background: #f3f8f6;
-  font-size: 11px;
-  font-weight: 800;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 8px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #98a2b3;
+  box-shadow: 0 0 0 1px rgba(16, 24, 40, 0.18);
 }
 
 .ai-mode-status--azure {
-  color: #145c50;
-  border-color: #9bcbb7;
-  background: #edf8f2;
+  background: #15945f;
 }
 
 .ai-mode-status--simulation {
-  color: #7a4a00;
-  border-color: #dec083;
-  background: #fff8e8;
+  background: #e59a16;
 }
 
 .ai-mode-status--error {
-  color: #a22a2a;
-  border-color: #e2aaaa;
-  background: #fff1f1;
+  background: #d64545;
 }
 
 @media (max-width: 980px) {
@@ -4351,6 +4343,8 @@ button:disabled {
 }
 
 .studio-stepper .step-link {
+  grid-template-columns: auto auto;
+  justify-content: center;
   padding: 8px 5px;
   background: transparent;
   border: 0;

@@ -146,9 +146,9 @@
             >
               {% if case_id is defined and ai_mode_status is defined %}
               {% if wizard_view %}
-              <span class="ai-mode-status ai-mode-status--{{ ai_mode_status.kind }}">{{ 'Tekoälysimulaatio' if ai_mode_status.kind == 'simulation' else ('Tekoälypalvelu' if ai_mode_status.kind == 'azure' else 'Tekoäly ei käytettävissä') }}</span>
+              <span class="ai-mode-status ai-mode-status--{{ ai_mode_status.kind }}" role="img" aria-label="{{ ai_mode_status.label }}" title="{{ ai_mode_status.label }}"></span>
               {% else %}
-              <span class="ai-mode-status ai-mode-status--{{ ai_mode_status.kind }}">{{ ai_mode_status.label }}</span>
+              <span class="ai-mode-status ai-mode-status--{{ ai_mode_status.kind }}" role="img" aria-label="{{ ai_mode_status.label }}" title="{{ ai_mode_status.label }}"></span>
               {% endif %}
               {% endif %}
           </a>
