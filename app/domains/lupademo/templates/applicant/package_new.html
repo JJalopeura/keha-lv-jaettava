@@ -54,6 +54,7 @@
     <label>Kunnan kriteeristö
       <select name="municipality" required>
         <option value="" disabled selected>Valitse sijainti</option>
+        <option value="general">Yleinen</option>
         {% for municipality in municipalities %}
         <option value="{{ municipality }}">{{ municipality }}</option>
         {% endfor %}
@@ -64,7 +65,7 @@
       <p>AI erottaa hakemuksen, lähetettävät liitteet ja vain tarkistuksessa käytettävän tausta-aineiston.</p>
       <p><b>Viranomaisen omat asiakirjat ohitetaan</b>, eikä niitä tallenneta hakemuksen AI-hakukontekstiin.</p>
     </div>
-    <button class="primary-cta" data-submit-button disabled>Aloita tarkistus <span aria-hidden="true">→</span></button>
+    <button class="primary-cta" data-submit-button disabled>Tuo aineisto <span aria-hidden="true">→</span></button>
     <p class="submit-hint" data-submit-hint>Valitse vähintään yksi tiedosto tai lisää kuvaus.</p>
   </aside>
 </form>

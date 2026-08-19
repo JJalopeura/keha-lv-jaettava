@@ -29,7 +29,7 @@
 <header class="application-header">
   <div>
     <a class="flow-back-link" href="/lv/projects/{{ case_id }}">← Hanke</a>
-    <h1>{{ schema.title }}</h1>
+    <h1>{{ project.name or application.form_data.get('project_name') or schema.title }}</h1>
   </div>
   <div class="application-readiness">
     <span class="readiness-dot {{ current_step_status.get('state', 'ready') }}"></span>
@@ -76,7 +76,7 @@
 {% if step == 1 %}
 <section class="context-section">
   <div>
-    <div class="section-heading-line"><h2>Yhteystiedot</h2></div>
+    <div class="section-heading-line"><h2>Hankkeen perustiedot</h2></div>
     <dl class="data-list">
       {% for key, value in common.data.items() %}
       <div class="data-row"><dt>{{ common_labels.get(key, field_labels.get(key, "Muu tieto")) }}</dt><dd>{{ value or "-" }}</dd></div>
@@ -99,7 +99,7 @@
       {% for tab in schema.tabs if tab.id != 'attachments' and tab.id != 'summary' %}
       {% set tab_fields = schema.fields|selectattr('tab', 'equalto', tab.id)|list %}
       {% if tab_fields %}
-      <details class="field-section" {% if tab.id == schema.fields[0].tab %}open{% endif %}>
+      <details class="field-section" open>
       <summary id="tab-{{ tab.id }}"><span>{{ tab.label }}</span><small>Avaa ja täytä</small></summary>
       <div class="application-field-grid" aria-labelledby="tab-{{ tab.id }}">
         {% for field in tab_fields %}
@@ -375,6 +375,17 @@
         <div class="field-suggestion-history-status">
           <span class="status {% if suggestion.status == 'accepted' %}good{% elif suggestion.status == 'rejected' %}warn{% endif %}">{{ suggestion_status_labels.get(suggestion.status, "Tarkistettava") }}</span>
         </div>
+        {% if suggestion.status == "pending" %}
+        <div class="suggestion-review-actions">
+          <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/accept" class="suggestion-edit-form">
+            <textarea name="edited_value" rows="3" aria-label="Muokattu ehdotus kentälle {{ field_labels.get(suggestion.field_id, suggestion.field_id) }}">{{ suggestion.suggested_value }}</textarea>
+            <button>Hyväksy ehdotus</button>
+          </form>
+          <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/reject">
+            <button class="secondary" type="submit">Hylkää</button>
+          </form>
+        </div>
+        {% endif %}
         {% if suggestion.evidence_refs %}
         <details class="evidence-disclosure compact">
           <summary>Mihin tämä perustuu?</summary>
@@ -486,21 +497,6 @@
         {% endfor %}
       </details>
       {% endif %}
-      {% if issue.field_id %}
-      {% set issue_value = application.form_data.get(issue.field_id, '') %}
-      <details class="inline-fix" data-inline-fix>
-        <summary class="button-compact-summary"><span class="button secondary compact">Korjaa</span></summary>
-        <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/save" class="inline-fix-form" data-inline-fix-form data-return-step="4">
-          <input type="hidden" name="redirect_to" value="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/4#check-results">
-          {% if issue_fields and issue_fields[0].type == "textarea" %}
-          <textarea name="{{ issue.field_id }}" aria-label="{{ issue_fields[0].label }}">{{ issue_value }}</textarea>
-          {% else %}
-          <input type="text" name="{{ issue.field_id }}" value="{{ issue_value }}" aria-label="{{ issue_fields[0].label if issue_fields else "Valittu kenttä" }}">
-          {% endif %}
-          <button class="button compact">Tallenna ja tarkista uudelleen</button>
-        </form>
-      </details>
-      {% endif %}
     </div>
     {% endfor %}
     {% else %}
@@ -508,40 +504,6 @@
     {% endif %}
   </div>
 </section>
-<script>
-(function () {
-  var root = document.getElementById("check-results");
-  if (!root) return;
-
-  function postForm(form) {
-    var body = new URLSearchParams(new FormData(form));
-    return fetch(form.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body });
-  }
-
-  root.addEventListener("submit", function (e) {
-    var form = e.target.closest("form[data-inline-fix-form]");
-    if (!form) return;
-    e.preventDefault();
-    var details = form.closest("[data-inline-fix]");
-    var btn = form.querySelector("button");
-    if (btn) { btn.disabled = true; btn.textContent = "Tallennetaan…"; }
-
-    postForm(form)
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); })
-      .then(function () {
-        // Re-run the check, then reload step 4 to show fresh results.
-        var checkUrl = form.action.replace("/save", "/ai/check");
-        return fetch(checkUrl, { method: "POST", headers: { "Accept": "application/json" } });
-      })
-      .then(function () {
-        window.location.reload();
-      })
-      .catch(function () {
-        if (btn) { btn.disabled = false; btn.textContent = "Tallenna ja tarkista uudelleen"; }
-      });
-  });
-})();
-</script>
 {% endif %}
 
 {% if step == 5 %}

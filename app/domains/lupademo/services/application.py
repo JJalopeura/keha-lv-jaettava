@@ -1097,6 +1097,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
             fallback={"request_id": f"fallback_{uuid.uuid4().hex[:8]}", "criteria_version": criteria_version(app["permit_type"], db, case_id, municipality), "suggestions": [fallback_suggestion], "warnings": []},
             max_output_tokens=3000,
             reasoning_effort="low",
+            timeout_s=600,
         )
         if isinstance(response, FieldSuggestionResponse) and response.suggestions:
             suggestion = response.suggestions[0]

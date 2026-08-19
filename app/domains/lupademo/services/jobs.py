@@ -252,7 +252,26 @@ def _refresh_ai_jobs_for_case_permit(db: Any, case_id: str, permit_type: str) ->
     changed = False
     for job in store.get("jobs", []):
         if isinstance(job, dict) and job.get("status") == "running":
-            _advance_ai_job_in_store(db, case_id, permit_type, job)
+            agents = job.get("agents") or []
+            all_agents_complete = bool(agents) and all(
+                isinstance(agent, dict) and agent.get("status") == "completed"
+                for agent in agents
+            )
+            result_ready = (
+                job.get("kind") == "intake_analysis"
+                and bool(artifact_json(db, case_id, "package_analysis_result", permit_type, {}))
+            )
+            if all_agents_complete and result_ready:
+                complete_ai_job(
+                    db,
+                    case_id,
+                    permit_type,
+                    str(job.get("id") or ""),
+                    summary=job.get("summary") or "Aineiston analyysi valmis.",
+                    result_artifact=f"intake_analysis:{permit_type}",
+                )
+            else:
+                _advance_ai_job_in_store(db, case_id, permit_type, job)
             changed = True
     if changed:
         save_artifact(db, case_id, "ai_jobs", permit_type, store)

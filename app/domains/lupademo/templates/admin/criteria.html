@@ -3,6 +3,49 @@
 {% block title %}Kriteeristöt{% endblock %}
 {% block content %}
 {% set permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
+{% set field_labels = {
+  'building_type': 'Rakennuksen tyyppi',
+  'building_use': 'Rakennuksen käyttö',
+  'location': 'Sijainti',
+  'location_environment': 'Sijainti ja ympäristö',
+  'project_description': 'Hankkeen kuvaus',
+  'activity_description': 'Toiminnan kuvaus',
+  'confidential_attachment': 'Luottamuksellinen liite',
+  'applicant_name': 'Hakija',
+  'business_id': 'Y-tunnus',
+  'municipality': 'Kunta',
+  'address': 'Osoite',
+  'property_id': 'Kiinteistötunnus',
+  'project_name': 'Hankkeen nimi',
+  'contact_person': 'Yhteyshenkilö',
+  'phone': 'Puhelin',
+  'email': 'Sähköposti',
+  'intended_use': 'Käyttötarkoitus',
+  'floor_area': 'Kerrosala',
+  'building_height': 'Rakennuksen korkeus',
+  'construction_method': 'Rakennustapa',
+  'water_system': 'Vesijärjestelmä',
+  'wastewater_system': 'Jätevesijärjestelmä'
+} %}
+{% set attachment_labels = {
+  'site_map': 'Asemapiirros / sijaintikartta',
+  'zoning_extract': 'Kaavaote',
+  'main_drawings': 'Pääpiirustukset',
+  'facade_drawings': 'Julkisivupiirustukset',
+  'stormwater_plan': 'Hulevesisuunnitelma',
+  'environmental_application': 'Ympäristölupahakemus',
+  'public_summary': 'Julkinen yhteenveto',
+  'bat_assessment': 'BAT-arviointi',
+  'monitoring_plan': 'Tarkkailu- ja raportointisuunnitelma',
+  'risk_preparedness_plan': 'Ennalta varautumisen suunnitelma',
+  'yva_statement': 'YVA-selostus / lausunto',
+  'chemical_inventory': 'Kemikaaliluettelo',
+  'air_quality_model': 'Ilmapäästöselvitys',
+  'noise_model': 'Meluselvitys',
+  'baseline_report': 'Perustilaselvitys',
+  'confidential_attachment': 'Luottamuksellinen liite'
+} %}
+{% set severity_labels = {'blocking': 'Estävä', 'major': 'Merkittävä', 'minor': 'Vähäinen', 'recommendation': 'Suositus'} %}
 {% set selected_municipality = selected_municipality|default('') %}
 {% set municipalities = municipalities|default([]) %}
 {% set total_rules = namespace(value=0) %}
@@ -72,7 +115,7 @@
     </div>
     <span class="status good">{{ "Aktiivinen" if (criteria.status or "active") == "active" else criteria.status }}</span>
   </summary>
-  <div class="grid two-wide">
+  <div class="criteria-card-body">
     <div>
       {% set blocking_rules = criteria.rules|selectattr('severity', 'equalto', 'blocking')|list if criteria.rules else [] %}
       {% set major_rules = criteria.rules|selectattr('severity', 'equalto', 'major')|list if criteria.rules else [] %}
@@ -129,12 +172,21 @@
             <input type="hidden" name="municipality" value="{{ selected_municipality }}">
             <input type="hidden" name="rule_id" value="{{ rule.id }}">
             <div class="form-grid">
-              <label>Kenttä<input name="field_id" value="{{ rule.field_id }}"></label>
-              <label>Liitetyyppi<input name="attachment_type" value="{{ rule.attachment_type }}"></label>
-              <label>Vakavuus<select name="severity">{% for severity in ["blocking", "major", "minor", "recommendation"] %}<option value="{{ severity }}" {% if rule.severity == severity %}selected{% endif %}>{{ severity }}</option>{% endfor %}</select></label>
+              <label>Kenttä
+                <input type="hidden" name="field_id" value="{{ rule.field_id }}">
+                <span class="criteria-readable-value">{{ field_labels.get(rule.field_id, rule.field_id or "Kaikki kentät") }}</span>
+              </label>
+              <label>Vaadittava liite
+                <select name="attachment_type">
+                  <option value="">Ei liitevaatimusta</option>
+                  {% if rule.attachment_type and rule.attachment_type not in attachment_labels %}<option value="{{ rule.attachment_type }}" selected>{{ rule.attachment_type }}</option>{% endif %}
+                  {% for attachment_id, attachment_label in attachment_labels.items() %}<option value="{{ attachment_id }}" {% if rule.attachment_type == attachment_id %}selected{% endif %}>{{ attachment_label }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>Vakavuus<select name="severity">{% for severity in ["blocking", "major", "minor", "recommendation"] %}<option value="{{ severity }}" {% if rule.severity == severity %}selected{% endif %}>{{ severity_labels.get(severity, severity) }}</option>{% endfor %}</select></label>
             </div>
             <label>Arviointiohje<textarea name="instruction">{{ rule.instruction }}</textarea></label>
-            <p class="criteria-rule-impact"><strong>Vaikutus AI-tarkistukseen:</strong> {% if rule.field_id %}tarkistaa kentän {{ rule.field_id }}{% endif %}{% if rule.field_id and rule.attachment_type %} ja {% endif %}{% if rule.attachment_type %}vaatii liitteen {{ rule.attachment_type }}{% endif %}{% if not rule.field_id and not rule.attachment_type %}ohjaa yleistä arviointia{% endif %}.</p>
+            <p class="criteria-rule-impact"><strong>Vaikutus AI-tarkistukseen:</strong> {% if rule.field_id %}tarkistaa kentän {{ field_labels.get(rule.field_id, rule.field_id) }}{% endif %}{% if rule.field_id and rule.attachment_type %} ja {% endif %}{% if rule.attachment_type %}vaatii liitteen {{ attachment_labels.get(rule.attachment_type, rule.attachment_type) }}{% endif %}{% if not rule.field_id and not rule.attachment_type %}ohjaa yleistä arviointia{% endif %}.</p>
             <button>Tallenna sääntö</button>
           </form>
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule/delete" class="inline-action">
@@ -150,7 +202,7 @@
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule">
             <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
             <input type="hidden" name="municipality" value="{{ selected_municipality }}">
-            <div class="form-grid"><label>Sääntötunnus<input name="rule_id" required></label><label>Kenttä<input name="field_id"></label><label>Liitetyyppi<input name="attachment_type"></label><label>Vakavuus<select name="severity"><option value="major">Merkittävä</option><option value="blocking">Estävä</option><option value="minor">Vähäinen</option><option value="recommendation">Suositus</option></select></label></div>
+            <div class="form-grid"><label>Sääntötunnus<input name="rule_id" required></label><label>Kenttä<input name="field_id"></label><label>Vaadittava liite<select name="attachment_type"><option value="">Ei liitevaatimusta</option>{% for attachment_id, attachment_label in attachment_labels.items() %}<option value="{{ attachment_id }}">{{ attachment_label }}</option>{% endfor %}</select></label><label>Vakavuus<select name="severity"><option value="major">Merkittävä</option><option value="blocking">Estävä</option><option value="minor">Vähäinen</option><option value="recommendation">Suositus</option></select></label></div>
             <label>Arviointiohje<textarea name="instruction" required></textarea></label><button>Lisää sääntö</button>
           </form>
         </div>

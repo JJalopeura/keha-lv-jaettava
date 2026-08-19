@@ -1692,6 +1692,21 @@ pre {
   min-height: 76px;
 }
 
+.criteria-card-body {
+  display: grid;
+  gap: 24px;
+}
+
+.criteria-readable-value {
+  display: block;
+  min-height: 38px;
+  padding: 9px 11px;
+  color: var(--color-text-strong);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+}
+
 /* Criteria admin: city picker + collapsible cards */
 .criteria-city-controls {
   display: flex;
@@ -1998,7 +2013,7 @@ body.service-light {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -2044,6 +2059,7 @@ body.service-light {
 }
 
 .sidebar-customer-context > strong {
+  align-self: flex-start;
   color: var(--color-text-strong);
   font-size: 15px;
 }
@@ -2407,10 +2423,17 @@ body.service-light {
 }
 
 .sidebar-application-link:hover,
-.sidebar-application-link:focus-visible,
-.sidebar-application-link.active {
+.sidebar-application-link:focus-visible {
   color: var(--color-text-strong);
   background: var(--color-surface-subtle);
+  outline: 0;
+}
+
+.sidebar-application-link.active {
+  color: var(--color-brand-strong);
+  background: #dff3ed;
+  border-left: 3px solid var(--color-brand);
+  font-weight: 800;
   outline: 0;
 }
 
@@ -4557,6 +4580,29 @@ button:disabled {
 .field-suggestion-history-row > .evidence-disclosure {
   grid-column: 1 / -1;
   margin: 0;
+}
+
+.field-suggestion-history-row > .suggestion-review-actions {
+  grid-column: 1 / -1;
+  align-items: stretch;
+  width: 100%;
+}
+
+.field-suggestion-history-row .suggestion-edit-form {
+  min-width: 0;
+}
+
+.field-suggestion-history-row .suggestion-edit-form textarea {
+  min-height: 96px;
+  width: 100%;
+  resize: vertical;
+}
+
+.field-suggestion-history-row .suggestion-review-actions button {
+  align-self: start;
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 13px;
 }
 
 .application-form-note {

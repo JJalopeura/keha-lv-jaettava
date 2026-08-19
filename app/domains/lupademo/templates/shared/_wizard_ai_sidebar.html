@@ -104,7 +104,7 @@
   {% endif %}
 
   {% if wizard_ai_jobs %}
-  <details class="wizard-ai-history">
+  <details class="wizard-ai-history" open>
     <summary>Viimeisimmät ajot <small>{{ wizard_ai_jobs|length }}</small></summary>
     <ul>
       {% for job in wizard_ai_jobs[:5] %}

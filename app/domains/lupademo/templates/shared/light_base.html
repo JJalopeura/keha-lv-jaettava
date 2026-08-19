@@ -27,11 +27,12 @@
     one specific permit application (wizard + receipt). Everything else in the
     applicant flow is the Customer Workspace (manage projects/applications). #}
     {% set package_review = is_package_review is defined and is_package_review %}
+    {% set package_workbench = current_path.startswith('/applicant/packages/') %}
     {% set case_context = case_id is defined and not package_review %}
     {% set case_workbench = not authority_workspace and not demo_workspace and
     '/lupademo/application/' in current_path %}
     {% set wizard_view = case_workbench and '/wizard/' in current_path %}
-    {% set hide_brand_mark = case_workbench or current_path.startswith('/lv/projects/') %}
+    {% set hide_brand_mark = case_workbench or package_workbench or current_path.startswith('/lv/projects/') %}
     {% set service_names = {
     'building_residential': 'Rakennusluvan asiointi',
     'environmental_industrial': 'Ympäristöluvan asiointi',
@@ -43,6 +44,9 @@
     {% if case_workbench %}
     {% set workspace_brand = current_service_name %}
     {% set workspace_brand_sub = 'LV:n asiointipalvelu' %}
+    {% elif package_workbench %}
+    {% set workspace_brand = 'Hakemuspaketin tarkistus' %}
+    {% set workspace_brand_sub = 'Aineistotyöpöytä' %}
     {% endif %}
     {% set workspace_home = ('/lv/projects/' ~ case_id)
     if (case_workbench and case_id is defined) else '/' %}
@@ -70,10 +74,7 @@
               {% set sidebar_statuses = {'draft': 'Luonnos', 'not_started': 'Ei aloitettu', 'submitted': 'Lähetetty', 'application_draft': 'Luonnos'} %}
               {% set sidebar_permits = project.get('permits', []) %}
               {% set sidebar_current_permit = application.application_id if application is defined else (sidebar_permits|first if sidebar_permits else 'building_residential') %}
-              {% if not current_path.startswith('/lv/projects/') %}
-              <a class="sidebar-link sidebar-link--next{% if '/lupademo/application/' in current_path %} active{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ sidebar_current_permit }}">Jatka nykyistä hakemusta</a>
-              {% endif %}
-              <a class="sidebar-link{% if current_path.startswith('/lv/projects/') %} active{% endif %}" href="/lv/projects/{{ case_id }}" {% if current_path.startswith('/lv/projects/') %}aria-current="page"{% endif %}>Hanke</a>
+              <a class="sidebar-link{% if current_path.startswith('/lv/projects/') %} active{% endif %}" href="/lv/projects/{{ case_id }}" {% if current_path.startswith('/lv/projects/') %}aria-current="page"{% endif %}>Nykyinen hanke</a>
               {% if sidebar_permits %}
               <span class="sidebar-subheading">Hakemukset</span>
               <div class="sidebar-applications">

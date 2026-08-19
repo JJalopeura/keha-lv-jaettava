@@ -310,6 +310,13 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
         municipality = str(request.query_params.get("municipality") or "").strip()
         ctx = context(case_id)
         permit_types = list(svc.PERMIT_SCHEMAS.keys())
+        criteria_field_labels = {
+            permit_type: {
+                field.get("id"): field.get("label", field.get("id"))
+                for field in svc.load_form_schema(permit_type).get("fields", [])
+            }
+            for permit_type in permit_types
+        }
         ctx.update({
             "selected_municipality": municipality,
             "municipalities": svc.list_municipalities(db(), case_id),
@@ -317,6 +324,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
             "criteria_histories": {pt: svc.criteria_history(db(), case_id, pt, municipality) for pt in permit_types},
             "criteria_history_rows": {pt: svc.criteria_history_rows(svc.criteria_history(db(), case_id, pt, municipality)) for pt in permit_types},
             "criteria_rule_rows": {pt: svc.criteria_rule_rows(svc.effective_criteria(db(), case_id, pt, municipality)) for pt in permit_types},
+            "criteria_field_labels": criteria_field_labels,
             "criteria_test_results": {pt: svc.artifact_json(db(), case_id, "criteria_test_result", f"{pt}:{municipality.lower()}", {}) for pt in permit_types},
             "source_ingest": svc.artifact_json(db(), case_id, "source_material_ingest", "main", {}),
         })

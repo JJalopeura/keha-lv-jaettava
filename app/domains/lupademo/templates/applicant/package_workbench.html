@@ -47,7 +47,7 @@
 
 <nav class="flow-progress" aria-label="Hakemuspaketin tarkistuksen vaiheet">
   <span class="complete"><b>1</b> Tuo aineisto</span>
-  <span class="{% if not package_analysis %}active{% else %}complete{% endif %}"><b>2</b> AI:n tulkinta</span>
+  <span class="{% if not package_analysis %}active{% else %}complete{% endif %}"><b>2</b> Tekoälyn tulkinta</span>
   <span class="{% if package_analysis %}active{% endif %}"><b>3</b> Korjaa ja vahvista</span>
 </nav>
 
@@ -75,7 +75,7 @@
         <div>
           {% if package_analysis %}
           <p class="section-kicker">Analyysi valmis</p>
-          <h2>AI muodosti hakemuksesta tarkistusnäkymän</h2>
+          <h2>Tekoäly muodosti hakemuksesta tarkistusnäkymän</h2>
           <p>{{ package_analysis.summary }}</p>
           {% elif material_package.status == 'failed' %}
           <p class="section-kicker">Aineiston käsittely epäonnistui</p>
@@ -84,14 +84,14 @@
           {% elif failed_analysis_job %}
           <p class="section-kicker">Analyysi epäonnistui</p>
           <h2>Tuloksia ei voitu muodostaa</h2>
-          <p>{{ failed_analysis_job.summary or 'Azure AI ei vastannut ajoissa. Yritä analyysiä uudelleen.' }}</p>
+          <p>{{ failed_analysis_job.summary or 'Azure-tekoäly ei vastannut ajoissa. Yritä analyysiä uudelleen.' }}</p>
           {% elif active_job and active_job.kind == 'material_ingest' %}
           <p class="section-kicker">Aineistoa valmistellaan</p>
           <h2>Dokumentit luetaan ja hakukonteksti muodostetaan</h2>
           <p>Voit seurata etenemistä tai jatkaa myöhemmin. Mitään ei lähetetä viranomaiselle.</p>
           {% elif active_job %}
           <p class="section-kicker">Analyysi käynnissä</p>
-          <h2>AI vertaa hakemusta ohjeisiin ja etsii ristiriitoja</h2>
+          <h2>Tekoäly vertaa hakemusta ohjeisiin ja etsii ristiriitoja</h2>
           <p>Hakemuksen tietoja ei muuteta analyysin aikana.</p>
           {% else %}
           <p class="section-kicker">Valmis aloitettavaksi</p>
@@ -103,7 +103,7 @@
 
       {% if can_start_analysis %}
       <form method="post" action="/applicant/packages/{{ package_id }}/analyze">
-        <button class="primary-cta">{{ 'Analysoi uudelleen' if package_analysis else 'Analysoi hakemuspaketti AI:lla' }} <span aria-hidden="true">→</span></button>
+        <button class="primary-cta">{{ 'Analysoi uudelleen' if package_analysis else 'Analysoi aineisto' }} <span aria-hidden="true">→</span></button>
       </form>
       {% endif %}
 
@@ -155,8 +155,8 @@
     </section>
 
     <details class="extraction-section workbench-evidence-disclosure" id="extractions">
-      <summary class="workbench-evidence-summary"><span class="section-kicker">AI-poiminnat</span><strong>Näytä AI:n löytämät lomaketiedot</strong><small>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</small></summary>
-      <div class="section-heading-line"><div><p class="section-kicker">Poiminnat</p><h2 id="extractions-heading">AI:n löytämät lomaketiedot</h2></div><span>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</span></div>
+      <summary class="workbench-evidence-summary"><span class="section-kicker">Tekoälyn poiminnat</span><strong>Näytä tekoälyn löytämät lomaketiedot</strong><small>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</small></summary>
+      <div class="section-heading-line"><div><p class="section-kicker">Poiminnat</p><h2 id="extractions-heading">Tekoälyn löytämät lomaketiedot</h2></div><span>{{ field_extraction_queue.get('items', [])|length }} ehdotusta</span></div>
       <p class="section-description">Vertaa ehdotusta lähteeseen. Vasta hyväksyminen lisää tiedon hakemukselle.</p>
       <div class="extraction-list">
         {% for item in field_extraction_queue.get('items', [])[:10] %}
@@ -167,7 +167,7 @@
           <div class="extraction-value">{{ item.get('accepted_value') or item.get('suggested_value') or item.get('extracted_value', '') }}{% if item.get('evidence_refs') %}<details class="evidence-disclosure compact"><summary>Näytä lähde</summary>{% for ref in item.get('evidence_refs', [])[:2] %}<div class="evidence-line"><strong>{{ evidence_source_title(ref.title, attachments) }}</strong>{% if ref.locator %}<small>{{ ref.locator }}</small>{% endif %}{% if ref.quote %}<p>“{{ ref.quote }}”</p>{% endif %}</div>{% endfor %}</details>{% endif %}</div>
           {% if item.status == 'accepted' %}<span class="status good">Hyväksytty</span>{% elif is_package_review %}<span class="status">Siirtyy uuteen hankkeeseen</span>{% else %}<form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/extractions/accept"><input type="hidden" name="field_id" value="{{ item.field_id }}"><input type="hidden" name="edited_value" value="{{ item.suggested_value }}"><input type="hidden" name="redirect_to" value="/applicant/packages/{{ package_id }}"><button class="secondary compact">Hyväksy</button></form>{% endif %}
         </article>
-        {% else %}<p class="empty-copy">AI ei löytänyt vielä hyväksyttäviä lomaketietoja.</p>{% endfor %}
+        {% else %}<p class="empty-copy">Tekoäly ei löytänyt vielä hyväksyttäviä lomaketietoja.</p>{% endfor %}
       </div>
     </details>
     {% endif %}
@@ -184,7 +184,7 @@
       </div>
     </div>
     <div class="scope-group">
-      <div class="scope-heading"><span><i class="scope-dot context"></i><strong>Vain AI:n taustaksi</strong></span><b>{{ context_attachments|length }}</b></div>
+      <div class="scope-heading"><span><i class="scope-dot context"></i><strong>Vain tekoälyn taustaksi</strong></span><b>{{ context_attachments|length }}</b></div>
       <div class="document-list">
         {% for attachment in context_attachments %}<div class="document-row"><span class="file-icon">{{ attachment.filename.split('.')[-1][:3]|upper }}</span><div><strong>{{ attachment.filename }}</strong><small>Ei sisälly lähetyspakettiin</small></div></div>{% else %}<p class="empty-copy">Ei tiedostoja.</p>{% endfor %}
       </div>

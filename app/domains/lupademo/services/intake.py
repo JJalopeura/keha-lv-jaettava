@@ -536,7 +536,11 @@ def run_json_agent(
                 )
         else:
             failure = exc
-        allow_fallback = _is_presenter_case(db, case_id) or str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
+        allow_fallback = (
+            provider == "mock"
+            or _is_presenter_case(db, case_id)
+            or str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
+        )
         if fallback is None or not allow_fallback:
             raise LLMUnavailableError("Azure AI ei ole käytettävissä. Mock-AI on sallittu vain esittäjätilassa.") from failure
         model = fallback if isinstance(fallback, response_model) else response_model(**fallback)
