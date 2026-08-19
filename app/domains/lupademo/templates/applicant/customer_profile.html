@@ -1,8 +1,8 @@
 {% extends "shared/light_base.html" %}
 {% from "shared/_components.html" import page_header %}
-{% block title %}Yhteiset tiedot · {{ customer.display_name }}{% endblock %}
+{% block title %}Yhteystiedot · {{ customer.display_name }}{% endblock %}
 {% block content %}
-{{ page_header('Yhteiset tiedot', 'Yrityksen perustiedot täytetään uusiin hankkeisiin automaattisesti.', 'Yrityksen perustiedot', [{'label': 'Omat asiat', 'href': '/'}, {'label': 'Yhteiset tiedot', 'href': ''}]) }}
+{{ page_header('Yhteystiedot', 'Yrityksen perustiedot täytetään uusiin hankkeisiin automaattisesti.', 'Yrityksen perustiedot', [{'label': 'Omat asiat', 'href': '/'}, {'label': 'Yhteystiedot', 'href': ''}]) }}
 {% if request.query_params.get('saved') %}<p class="form-notice success">Tiedot tallennettu.</p>{% endif %}
 <form method="post" action="/customer/profile" class="setup-layout profile-form">
   <section class="form-section" aria-labelledby="company-details">

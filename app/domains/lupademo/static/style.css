@@ -2980,8 +2980,9 @@ body.service-light {
 
 .hanke-form-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 18px;
+  padding: 4px 0 2px;
 }
 
 .hanke-field-wide {
@@ -2989,17 +2990,40 @@ body.service-light {
 }
 
 .hanke-form-actions {
-  grid-column: 1 / -1;
+  grid-column: 2;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid #e2e8f0;
+  align-items: stretch;
+  margin-top: 0;
+}
+
+.hanke-form-actions .button {
+  width: 100%;
+  min-height: 56px;
+  color: #fff;
+  background: #1769d1;
+  border-color: #1769d1;
+  box-shadow: 0 3px 8px rgba(23, 105, 209, 0.2);
+}
+
+.hanke-form-actions .button:hover {
+  color: #fff;
+  background: #1258b3;
+  border-color: #1258b3;
 }
 
 .hanke-details {
   padding: 28px 0 30px;
   border-bottom: 1px solid #d8dee6;
+}
+
+@media (max-width: 760px) {
+  .hanke-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hanke-form-actions {
+    grid-column: 1;
+  }
 }
 
 .hanke-application-list {

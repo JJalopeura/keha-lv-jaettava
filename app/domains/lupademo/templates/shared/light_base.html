@@ -56,7 +56,7 @@
           <section class="sidebar-section sidebar-customer-context" aria-labelledby="customer-context-heading">
             <p class="sidebar-heading" id="customer-context-heading">Asioit yrityksenä</p>
             <strong>{{ session.get('customer_name', 'Asiakas') }}</strong>
-            <a class="sidebar-customer-link{% if current_path == '/customer/profile' %} active{% endif %}" href="/customer/profile">Yhteiset tiedot</a>
+            <a class="sidebar-customer-link{% if current_path == '/customer/profile' %} active{% endif %}" href="/customer/profile">Yhteystiedot</a>
           </section>
           {% endif %}
           <section class="sidebar-section" aria-labelledby="applicant-links-heading">

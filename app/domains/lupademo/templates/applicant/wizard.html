@@ -43,7 +43,7 @@
 <section class="present-card">
   <strong>Mitä tämä todistaa</strong>
   {% if step == 1 %}
-  <p>LV:n yhteiset tiedot siirtyvät hakemuksen pohjaksi.</p>
+  <p>Yhteystiedot siirtyvät hakemuksen pohjaksi.</p>
   {% elif step == 2 %}
   <p>Hakemuksen liitteet ja muu aineisto lisätään tänne. Tekoäly erottaa viranomaiselle toimitettavat liitteet tausta-aineistosta.</p>
   {% elif step == 3 %}
@@ -76,7 +76,7 @@
 {% if step == 1 %}
 <section class="context-section">
   <div>
-    <div class="section-heading-line"><h2>Yhteiset tiedot</h2></div>
+    <div class="section-heading-line"><h2>Yhteystiedot</h2></div>
     <dl class="data-list">
       {% for key, value in common.data.items() %}
       <div class="data-row"><dt>{{ common_labels.get(key, field_labels.get(key, "Muu tieto")) }}</dt><dd>{{ value or "-" }}</dd></div>
