@@ -572,6 +572,10 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     def lv(request: Request):
         return RedirectResponse(url="/", status_code=303)
 
+    @router.get("/lv/projects/new", response_class=HTMLResponse)
+    def lv_project_new():
+        return RedirectResponse(url="/projects/new", status_code=303)
+
     @router.get("/lv/projects/{case_id}", response_class=HTMLResponse)
     def lv_project(request: Request, case_id: str):
         return templates.TemplateResponse(request, "applicant/lv_project.html", hanke_context(request, case_id))

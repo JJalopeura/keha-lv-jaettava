@@ -43,6 +43,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | GET | `/demo/presenter` | `presenter` | — (redirect) | — |
 | GET | `/lv` | `lv` | — (redirect) | — |
 | GET | `/lv/projects/{case_id}` | `lv_project` | `applicant/lv_project.html` | — |
+| GET | `/lv/projects/new` | `lv_project_new` | — (redirect → `/projects/new`) | — |
 | GET | `/customer/profile` | `customer_profile` | `applicant/customer_profile.html` | — |
 | POST | `/customer/profile` | `update_customer_profile` | — (redirect) | — |
 | POST | `/lv/projects/{case_id}/common-data` | `update_lv` | — (redirect) | — |

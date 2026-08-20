@@ -865,7 +865,7 @@ class Uploads(unittest.TestCase):
             svc.cancel_ai_job(db, job["id"])
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Analysoi hakemuspaketti", response.text)
+        self.assertIn("Analysoi aineisto", response.text)
         self.assertNotIn("Hakukontekstin valmistelu käynnissä", response.text)
 
     def test_package_analysis_route_uses_attachment_only_validation(self) -> None:

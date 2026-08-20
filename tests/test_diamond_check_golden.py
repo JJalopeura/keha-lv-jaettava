@@ -15,12 +15,31 @@ import unittest
 
 os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 os.environ["KEHA_LV_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="keha-golden-"), "test.db")
+os.environ["KEHA_LV_UPLOADS_DIR"] = tempfile.mkdtemp(prefix="keha-golden-uploads-")
 
+from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import app.domains.lupademo.services as svc  # noqa: E402
+from app.domains.lupademo.routes import create_lupademo_router  # noqa: E402
 from app.domains.lupademo.scenarios import create_case_from_scenario  # noqa: E402
-from app.main import app, db as app_db  # noqa: E402
+from app.infra.config import load_settings  # noqa: E402
+from app.infra.db import DB  # noqa: E402
+from app.infra.session import DemoSessionMiddleware  # noqa: E402
+
+# Fully isolated app + DB so the golden gate never touches the shared `app.main`
+# state that test_smoke.py relies on (app.main pins its DB at import time —
+# whichever module imports it first wins; golden must not be that module).
+_settings = load_settings()
+_db = DB(_settings.db_path)
+app = FastAPI(title="KEHA LV AI-demo (golden gate)")
+app.add_middleware(
+    DemoSessionMiddleware,
+    secret_key=_settings.session_secret,
+    session_cookie="lv_session",
+    same_site="lax",
+)
+app.include_router(create_lupademo_router(lambda: _db, lambda: _settings))
 
 PERMIT = "environmental_industrial"
 GOLDEN_SCENARIO = "environmental_industrial_generic"
@@ -32,13 +51,13 @@ class DiamondCheckGoldenTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.case_id = create_case_from_scenario(app_db, GOLDEN_SCENARIO)["case_id"]
+        cls.case_id = create_case_from_scenario(_db, GOLDEN_SCENARIO)["case_id"]
         client = TestClient(app, follow_redirects=False)
         client.post(
             f"/cases/{cls.case_id}/lupademo/application/{PERMIT}/ai/check",
             data={},
         )
-        cls.report = svc.artifact_json(app_db, cls.case_id, "check_report", PERMIT, {})
+        cls.report = svc.artifact_json(_db, cls.case_id, "check_report", PERMIT, {})
         assert cls.report, "check_report artifact missing — the check did not run"
 
     # -- 06: mock mirrors reality, never placeholders -------------------------
@@ -128,6 +147,40 @@ class DiamondCheckGoldenTest(unittest.TestCase):
         for key in ("score", "readiness", "summary", "issues", "criteria_results", "counts", "degraded", "criteria_version"):
             self.assertIn(key, self.report, f"check_report must carry {key}")
         self.assertIsInstance(self.report.get("degraded", {}).get("reconciliation_notes"), list)
+
+    # -- 07: the /api/v1 precheck surface renders the SAME diamond verdict ---------
+
+    def test_api_precheck_surface_matches_wizard_derivation(self) -> None:
+        """The external precheck must compose the verdict via the same code-owned
+        derivation as the wizard/authority check — not the legacy score formula.
+        (Regression gate for the suggestion_service_check divergence found in the
+        verification-audit run; broken by the precheck skipping reconcile/derive.)"""
+        from app.domains.lupademo import security  # noqa: PLC0415
+
+        tenant = next((t for t in security._load_tenants() if "environmental_industrial" in t.get("permit_types", [])), None)
+        self.assertIsNotNone(tenant, "tenants.json must define an environmental_industrial tenant")
+        client = TestClient(app, follow_redirects=False)
+        response = client.post(
+            "/api/v1/applications:precheck",
+            json={"permit_type": PERMIT},
+            headers={"X-Lupademo-Api-Key": tenant["api_key"]},
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        result = body.get("result", {})
+        counts = result.get("counts", {})
+        criteria = result.get("criteria_results", [])
+        self.assertIn("blocking", counts, "precheck must carry derived counts")
+        self.assertIsInstance(result.get("readiness"), str)
+        self.assertIn(result.get("readiness"), {"ready", "almost_ready", "not_ready"})
+        crit_score = (counts.get("green", 0) + 0.5 * counts.get("yellow", 0)) / len(criteria) if criteria else 1.0
+        issue_score = max(0.0, 1 - 0.25 * counts.get("blocking", 0) - 0.10 * counts.get("major", 0) - 0.04 * counts.get("minor", 0))
+        expected = round(50 * crit_score + 50 * issue_score)
+        self.assertEqual(result.get("score"), expected, "precheck score must be code-derived")
+        unresolved = [i for i in result.get("issues", []) if not i.get("resolved")]
+        self.assertEqual(counts.get("blocking"), sum(1 for i in unresolved if i.get("severity") == "blocking"))
+        self.assertIsInstance(result.get("degraded", {}).get("reconciliation_notes"), list)
+        self.assertNotEqual(result.get("summary"), "API-tarkistus valmis.")
 
 
 if __name__ == "__main__":

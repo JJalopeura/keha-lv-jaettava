@@ -48,7 +48,7 @@ class CustomerWorkspace(unittest.TestCase):
         dashboard = client.get("/")
         self.assertEqual(dashboard.status_code, 200)
         self.assertIn("Ren-Gas Oy", dashboard.text)
-        self.assertIn("Valitse lähtökohta", dashboard.text)
+        self.assertIn("Uusi asiointi", dashboard.text)
         self.assertIn("Hankkeet", dashboard.text)
         self.assertNotIn("Hallitse hankkeita ja jatka keskeneräisiä asiointeja", dashboard.text)
         self.assertNotIn("Tehtävät", dashboard.text)

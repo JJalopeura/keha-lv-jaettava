@@ -1565,6 +1565,36 @@ def reconcile_verdict(
     return issues, notes
 
 
+def _derive_check_verdict(issues: list[Issue], criteria_results: list[dict[str, Any]]) -> tuple[dict[str, int], int, str]:
+    """03/04: code-owned 50/50 score derivation from reconciled issues + criteria verdict.
+    Single source of truth for run_application_check (wizard/authority) AND
+    suggestion_service_check (/api/v1 precheck) so all three surfaces render the same verdict.
+    """
+    counts = {
+        "blocking": sum(1 for i in issues if i.severity == "blocking" and not i.resolved),
+        "major": sum(1 for i in issues if i.severity == "major" and not i.resolved),
+        "minor": sum(1 for i in issues if i.severity == "minor" and not i.resolved),
+        "red": sum(1 for c in criteria_results if c.get("status") == "red"),
+        "yellow": sum(1 for c in criteria_results if c.get("status") == "yellow"),
+        "green": sum(1 for c in criteria_results if c.get("status") == "green"),
+    }
+    if criteria_results:
+        crit_score = (counts["green"] + 0.5 * counts["yellow"]) / len(criteria_results)
+    else:
+        crit_score = 1.0  # 04-C2: no criteria ran -> neutral, not a green verdict
+    issue_score = max(0.0, 1 - 0.25 * counts["blocking"] - 0.10 * counts["major"] - 0.04 * counts["minor"])
+    score = round(50 * crit_score + 50 * issue_score)
+    readiness = "ready" if (score >= 80 and counts["blocking"] == 0) else ("almost_ready" if score >= 40 else "not_ready")
+    return counts, score, readiness
+
+
+def _degraded_agents(db: Any, case_id: str, agents: tuple[str, ...]) -> list[str]:
+    """Names of check agents that fell back to a deterministic response."""
+    if db is None:
+        return []
+    return [a for a in agents if artifact_json(db, case_id, "agent_output", a, {}).get("fallback_used")]
+
+
 def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any = None, *, job_id: str = "") -> ApplicationCheckResponse:
     app = ensure_application(db, case_id, permit_type)
     if not job_id:
@@ -1640,42 +1670,24 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             criteria_results = criteria_response.get("criteria_results", [])
     issues = merge_issues(deterministic, agent_issues)
     issues, reconciliation_notes = reconcile_verdict(issues, criteria_results)
+    counts, score, readiness = _derive_check_verdict(issues, criteria_results)
     blocked = [i for i in issues if i.severity == "blocking" and not i.resolved]
     majors = [i for i in issues if i.severity == "major" and not i.resolved]
     minors = [i for i in issues if i.severity == "minor" and not i.resolved]
-    counts = {
-        "blocking": len(blocked),
-        "major": len(majors),
-        "minor": len(minors),
-        "red": sum(1 for c in criteria_results if c.get("status") == "red"),
-        "yellow": sum(1 for c in criteria_results if c.get("status") == "yellow"),
-        "green": sum(1 for c in criteria_results if c.get("status") == "green"),
-    }
-    if criteria_results:
-        crit_score = (counts["green"] + 0.5 * counts["yellow"]) / len(criteria_results)
-    else:
-        crit_score = 1.0  # 04-C2: no criteria ran -> neutral, not a green verdict
-    issue_score = max(0.0, 1 - 0.25 * counts["blocking"] - 0.10 * counts["major"] - 0.04 * counts["minor"])
-    score = round(50 * crit_score + 50 * issue_score)
-    blockers = counts["blocking"]
-    major = counts["major"]
-    readiness = "ready" if (score >= 80 and blockers == 0) else ("almost_ready" if score >= 40 else "not_ready")
     checked_at = time.time()
     current_criteria_version = criteria_version(app["permit_type"], db, case_id, municipality)
     active_criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
     degraded = {
-        "fallback_used_agents": [
-            agent
-            for agent in ("completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report")
-            if artifact_json(db, case_id, "agent_output", agent, {}).get("fallback_used")
-        ],
+        "fallback_used_agents": _degraded_agents(
+            db, case_id, ("completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report")
+        ),
         "reconciliation_notes": reconciliation_notes,
     }
     response = ApplicationCheckResponse(
         request_id=f"check_{uuid.uuid4().hex[:8]}",
         criteria_version=current_criteria_version,
         score=score,
-        summary="Hakemus on lähetysvalmis." if blockers == 0 else "Hakemuksessa on lähettämisen estäviä puutteita.",
+        summary="Hakemus on lähetysvalmis." if counts["blocking"] == 0 else "Hakemuksessa on lähettämisen estäviä puutteita.",
         issues=issues,
         criteria_results=criteria_results,
         counts=counts,
@@ -1717,8 +1729,8 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
                     {"title": "Ristiriidat", "items": [i.title for i in issues if i.type == "inconsistent"]},
                     {"title": "Suositukset", "items": [i.title for i in minors]},
                 ],
-                "blocking_issue_count": blockers,
-                "major_issue_count": major,
+                "blocking_issue_count": counts["blocking"],
+                "major_issue_count": counts["major"],
             },
             max_output_tokens=5000,
             reasoning_effort="low",
@@ -1742,7 +1754,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         save_artifact(db, case_id, "check_report", app["permit_type"], report_payload)
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "applicant_precheck_report", "Esitarkistusraportti valmis.")
-    event(db, case_id, "ai.check.completed", "Application check completed", {"application_id": app["permit_type"], "issues": len(issues), "blocking": blockers, "major": major, "score": response.score})
+    event(db, case_id, "ai.check.completed", "Application check completed", {"application_id": app["permit_type"], "issues": len(issues), "blocking": counts["blocking"], "major": counts["major"], "score": response.score})
     save_artifact(db, case_id, "precheck_gate", app["permit_type"], precheck_gate_status(db, case_id, app["permit_type"]))
     complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Tarkistus valmis: {len(issues)} havaintoa, pisteet {response.score}.", result_artifact=f"check_report:{app['permit_type']}")
     return response
@@ -3602,21 +3614,34 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             fallback={"criteria_results": []},
             max_output_tokens=6000,
         )
+        criteria_results: list[dict[str, Any]] = []
         if isinstance(criteria_response, CriteriaAssessmentResponse) and criteria_response.criteria_results:
-            save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": _plain(criteria_response.criteria_results)})
+            criteria_results = _plain(criteria_response.criteria_results)
+            save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": criteria_results})
         elif isinstance(criteria_response, dict):
             cr = criteria_response.get("criteria_results", [])
             if cr:
-                save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": _plain(cr)})
+                criteria_results = _plain(cr)
+                save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": criteria_results})
         issues = merge_issues(issues, agent_issues)
-    blockers = sum(1 for i in issues if i.severity == "blocking")
-    majors = sum(1 for i in issues if i.severity == "major")
+    issues, reconciliation_notes = reconcile_verdict(issues, criteria_results)
+    counts, score, readiness = _derive_check_verdict(issues, criteria_results)
+    degraded = {
+        "fallback_used_agents": _degraded_agents(
+            db, api_case, ("completeness_validator", "consistency_validator", "criteria_assessor")
+        ),
+        "reconciliation_notes": reconciliation_notes,
+    }
     response = ApplicationCheckResponse(
         request_id=req.request_id,
         criteria_version=criteria_version(req.permit_type, db, api_case, municipality) if db is not None and settings is not None else criteria_version(req.permit_type, municipality=municipality),
-        score=max(0, 100 - blockers * 25 - majors * 10),
-        summary="API-tarkistus valmis.",
+        score=score,
+        summary="Hakemus on lähetysvalmis." if counts["blocking"] == 0 else "Hakemuksessa on lähettämisen estäviä puutteita.",
         issues=issues,
+        criteria_results=criteria_results,
+        counts=counts,
+        degraded=degraded,
+        readiness=readiness,
     )
     return asdict(response)
 
