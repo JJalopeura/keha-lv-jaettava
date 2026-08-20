@@ -19,6 +19,40 @@ from app.infra.llm_factory import create_llm_client
 
 logger = logging.getLogger(__name__)
 
+
+def _process_material_zip(
+    db, settings, background_tasks, case_id: str, application_id: str, filename: str, content: bytes
+) -> RedirectResponse:
+    """Validate a zip upload, create the material package, start ingest, return the wizard redirect."""
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=422, detail="Only .zip material packages are supported")
+    try:
+        svc.validate_upload_bytes(filename, content, allow_zip=True)
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            svc.validate_zip_archive(archive)
+            document_count = sum(1 for item in archive.infolist() if not item.is_dir())
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=422, detail="Invalid zip file")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    package = svc.create_pending_material_package(db(), case_id, application_id, filename, document_count)
+    azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
+    job = svc.start_material_ingest_job(
+        db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
+    )
+    background_tasks.add_task(
+        svc.execute_material_ingest_job,
+        db(),
+        settings(),
+        case_id,
+        application_id,
+        package["package_id"],
+        job["id"],
+        filename,
+        zip_payload=(filename, content),
+    )
+    return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
+
 def create_applicant_router(ctx: RouteContext) -> APIRouter:
     templates = ctx.templates
     db = ctx.db
@@ -740,35 +774,8 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         zip_file: UploadFile = File(...),
     ):
         filename = zip_file.filename or "aineisto.zip"
-        if not filename.lower().endswith(".zip"):
-            raise HTTPException(status_code=422, detail="Only .zip material packages are supported")
         content = await zip_file.read()
-        try:
-            svc.validate_upload_bytes(filename, content, allow_zip=True)
-            with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                svc.validate_zip_archive(archive)
-                document_count = sum(1 for item in archive.infolist() if not item.is_dir())
-        except zipfile.BadZipFile:
-            raise HTTPException(status_code=422, detail="Invalid zip file")
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-        package = svc.create_pending_material_package(db(), case_id, application_id, filename, document_count)
-        azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
-        job = svc.start_material_ingest_job(
-            db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
-        )
-        background_tasks.add_task(
-            svc.execute_material_ingest_job,
-            db(),
-            settings(),
-            case_id,
-            application_id,
-            package["package_id"],
-            job["id"],
-            filename,
-            zip_payload=(filename, content),
-        )
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
+        return _process_material_zip(db, settings, background_tasks, case_id, application_id, filename, content)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/materials/upload-files")
     async def upload_material_files(
@@ -783,36 +790,9 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     ):
         # --- ZIP path ---
         if zip_file and zip_file.filename:
-            filename = zip_file.filename or "aineisto.zip"
-            if not filename.lower().endswith(".zip"):
-                raise HTTPException(status_code=422, detail="Only .zip material packages are supported")
-            content = await zip_file.read()
-            try:
-                svc.validate_upload_bytes(filename, content, allow_zip=True)
-                with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                    svc.validate_zip_archive(archive)
-                    document_count = sum(1 for item in archive.infolist() if not item.is_dir())
-            except zipfile.BadZipFile:
-                raise HTTPException(status_code=422, detail="Invalid zip file")
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc))
-            package = svc.create_pending_material_package(db(), case_id, application_id, filename, document_count)
-            azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
-            job = svc.start_material_ingest_job(
-                db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
+            return _process_material_zip(
+                db, settings, background_tasks, case_id, application_id, zip_file.filename or "aineisto.zip", await zip_file.read()
             )
-            background_tasks.add_task(
-                svc.execute_material_ingest_job,
-                db(),
-                settings(),
-                case_id,
-                application_id,
-                package["package_id"],
-                job["id"],
-                filename,
-                zip_payload=(filename, content),
-            )
-            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/2#ai-jobs", status_code=303)
 
         # --- Multi-file path ---
         payload: list[tuple[str, bytes]] = []

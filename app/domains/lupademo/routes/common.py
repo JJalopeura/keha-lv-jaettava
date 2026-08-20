@@ -247,7 +247,7 @@ def context_app(
         "criteria": active_criteria,
         "criteria_municipality": str(active_criteria.get("municipality") or municipality or "Kansallinen oletus"),
         "criteria_version": str(active_criteria.get("version") or "demo"),
-        "attachments": svc.list_attachments(db_obj, case_id, app["permit_type"]),
+        "attachments": attachments,
         "suggestions": ai_suggestions,
         "inline_field_suggestions": inline_field_suggestions,
         "check_report": aj("check_report", {}),

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 
-def guess_mime_type(filename: str) -> str:
+def _guess_mime_type(filename: str) -> str:
     mt, _ = mimetypes.guess_type(filename)
     return mt or "application/octet-stream"
 
@@ -17,7 +17,6 @@ def _build_responses_payload(
     model: str,
     *,
     input_text: Optional[str] = None,
-    input_items: Optional[List[Dict[str, Any]]] = None,
     vector_store_ids: Optional[List[str]] = None,
     response_format: Optional[str] = None,
     max_output_tokens: Optional[int] = None,
@@ -26,10 +25,9 @@ def _build_responses_payload(
     text_verbosity: Optional[str] = None,
     stream: bool = False,
 ) -> Dict[str, Any]:
-    if input_text is None and input_items is None:
-        raise ValueError("responses requires input_text or input_items")
-    payload: Dict[str, Any] = {"model": model}
-    payload["input"] = input_items if input_items is not None else input_text
+    if input_text is None:
+        raise ValueError("responses requires input_text")
+    payload: Dict[str, Any] = {"model": model, "input": input_text}
     if vector_store_ids:
         payload["tools"] = [{"type": "file_search", "vector_store_ids": vector_store_ids}]
         payload["tool_choice"] = "auto"
@@ -151,7 +149,7 @@ class AzureOpenAIClient:
     # -------- Uploads --------
     def upload_file_from_path(self, local_path: str) -> tuple[str, str]:
         filename = os.path.basename(local_path)
-        mime_type = guess_mime_type(filename)
+        mime_type = _guess_mime_type(filename)
         with open(local_path, "rb") as f:
             data = self.request_json(
                 "POST",
@@ -166,7 +164,6 @@ class AzureOpenAIClient:
         self,
         *,
         input_text: Optional[str] = None,
-        input_items: Optional[List[Dict[str, Any]]] = None,
         vector_store_ids: Optional[List[str]] = None,
         response_format: Optional[str] = None,  # None | "json_object"
         max_output_tokens: Optional[int] = None,
@@ -178,7 +175,6 @@ class AzureOpenAIClient:
         payload = _build_responses_payload(
             model or self.model,
             input_text=input_text,
-            input_items=input_items,
             vector_store_ids=vector_store_ids,
             response_format=response_format,
             max_output_tokens=max_output_tokens,
@@ -203,7 +199,6 @@ class AzureOpenAIClient:
         self,
         *,
         input_text: Optional[str] = None,
-        input_items: Optional[List[Dict[str, Any]]] = None,
         vector_store_ids: Optional[List[str]] = None,
         max_output_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
@@ -215,7 +210,6 @@ class AzureOpenAIClient:
         payload = _build_responses_payload(
             model or self.model,
             input_text=input_text,
-            input_items=input_items,
             vector_store_ids=vector_store_ids,
             max_output_tokens=max_output_tokens,
             previous_response_id=previous_response_id,

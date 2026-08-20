@@ -128,31 +128,6 @@
 
 /* ===== Utility components: badges, cards, service shells ===== */
 
-.system-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 4px 10px;
-  color: #0f2f4a;
-  background: #e9f4ff;
-  border: 1px solid #b8d9f3;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.system-badge.ai {
-  color: #0e4b3e;
-  background: #e7fbf5;
-  border-color: #9bdcc8;
-}
-
-.system-badge.authority {
-  color: #4a2a05;
-  background: #fff4df;
-  border-color: #e6c47f;
-}
-
 .present-card {
   margin: 14px 0;
   padding: 14px 16px;
@@ -181,18 +156,6 @@
   height: 5px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.6);
-}
-
-.authority-shell {
-  background:
-    linear-gradient(135deg, rgba(67, 52, 26, 0.98), rgba(164, 99, 0, 0.86)),
-    #4a2a05;
-}
-
-.metrics-shell {
-  background:
-    linear-gradient(135deg, rgba(17, 80, 92, 0.98), rgba(23, 90, 141, 0.88)),
-    #11505c;
 }
 
 .integration-pills {
