@@ -76,14 +76,16 @@
       "label": "Kiinteistötunnus",
       "type": "text",
       "required": true,
-      "common_data": true
+      "common_data": true,
+      "ai_suggest": true
     },
     {
       "id": "intended_use",
       "tab": "building",
       "label": "Käyttötarkoitus",
       "type": "text",
-      "required": true
+      "required": true,
+      "ai_suggest": true
     },
     {
       "id": "project_description",
@@ -98,21 +100,24 @@
       "tab": "building",
       "label": "Kerrosala (m²)",
       "type": "number",
-      "required": true
+      "required": true,
+      "ai_suggest": true
     },
     {
       "id": "building_height_m",
       "tab": "building",
       "label": "Rakennuksen korkeus (m)",
       "type": "number",
-      "required": true
+      "required": true,
+      "ai_suggest": true
     },
     {
       "id": "distance_to_boundary_m",
       "tab": "building",
       "label": "Etäisyys rajasta (m)",
       "type": "number",
-      "required": true
+      "required": true,
+      "ai_suggest": true
     },
     {
       "id": "wastewater_handling",
@@ -143,7 +148,8 @@
       "tab": "responsibilities",
       "label": "Pääsuunnittelija",
       "type": "text",
-      "required": true
+      "required": true,
+      "ai_suggest": true
     }
   ],
   "required_attachments": [

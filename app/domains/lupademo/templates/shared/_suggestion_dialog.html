@@ -43,6 +43,21 @@
 
   function close() { dialog.close(); activeButton = null; activePayload = null; }
 
+  // A suggestion is a "no source support" placeholder when the model could not
+  // infer a real value (e.g. Azure returns "Ei ilmoitettu" for an empty field
+  // with no source material). Detect it so we don't present a confident
+  // percentage for a value that is really just "this field is empty".
+  function isNoSourceSupport(payload) {
+    var value = String(payload.suggested_value || "").trim();
+    if (!value) return true;
+    if (value === "Ei ilmoitettu") return true;
+    if (/^Täydennä kenttä /.test(value)) return true;
+    var warnings = payload.warnings || [];
+    return warnings.some(function (w) {
+      return /ei (voitu|voida)|ei löytynyt|ei ole varsinainen|ei ole annettu/i.test(String(w));
+    });
+  }
+
   document.querySelectorAll("[data-suggestion-open]").forEach(function (button) {
     button.addEventListener("click", function () {
       activeButton = button;
@@ -50,8 +65,17 @@
       field.textContent = activePayload.field_label || "Ehdotuksen tarkistus";
       var confidenceValue = parseFloat(activePayload.confidence);
       var isFallback = Boolean(activePayload.fallback_used);
-      confidence.textContent = isFallback ? "Paikallinen AI-simulaatio" : "Arvioitu lähdetuki " + (Number.isFinite(confidenceValue) ? Math.round(confidenceValue * 100) + " %" : "-");
-      rationale.textContent = activePayload.rationale || "Ehdotukselle ei ole erillistä perustelua.";
+      var noSource = isNoSourceSupport(activePayload);
+      if (noSource) {
+        confidence.textContent = "Ei voitu täyttää automaattisesti";
+        confidence.className = "suggestion-dialog__confidence suggestion-dialog__confidence--warn";
+      } else {
+        confidence.className = "suggestion-dialog__confidence";
+        confidence.textContent = isFallback ? "Paikallinen AI-simulaatio" : "Arvioitu lähdetuki " + (Number.isFinite(confidenceValue) ? Math.round(confidenceValue * 100) + " %" : "-");
+      }
+      rationale.textContent = noSource
+        ? "Lähdeaineistosta ei löytynyt tietoa tälle kentälle, joten sitä ei voitu täyttää automaattisesti. Täydennä kenttä käsin ennen lähettämistä."
+        : (activePayload.rationale || "Ehdotukselle ei ole erillistä perustelua.");
       evidenceSummary.textContent = isFallback ? "Miten simulaatio muodostui?" : "Mihin tämä perustuu?";
       var refs = activePayload.evidence_refs || [];
       source.replaceChildren();
@@ -60,6 +84,11 @@
         simulation.className = "muted";
         simulation.textContent = "Tämä on paikallinen AI-simulaatio. Ehdotus ei perustu tunnistettuun lähdekatkelmaan.";
         source.appendChild(simulation);
+      } else if (noSource) {
+        var noSourceNote = document.createElement("p");
+        noSourceNote.className = "muted";
+        noSourceNote.textContent = "Tämä kenttä vaatii hakijan täydennyksen — tekoäly ei voi päätellä arvoa annetusta aineistosta.";
+        source.appendChild(noSourceNote);
       } else if (refs.length) {
         refs.forEach(function (ref) {
           var line = document.createElement("div");

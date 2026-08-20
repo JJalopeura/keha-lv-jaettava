@@ -304,18 +304,19 @@ def _advance_ai_job_in_store(db: Any, case_id: str, permit_type: str, job: dict[
     agent_count = max(1, len(job.get("agents") or []))
 
     # For managed_background jobs the real agents complete in a background task.
-    # Blend agent-completion progress with elapsed wall-clock time so the bar
-    # visibly advances even before the first agent finishes (otherwise it sits
-    # at 1% for the whole run). Agent completion still dominates the final
-    # stretch so the bar stays honest when Azure calls actually finish.
+    # Progress is driven by actual agent completion so the bar stays honest.
+    # A small time-based floor keeps the bar visibly moving before the first
+    # agent finishes, but agent completion dominates and the bar never jumps
+    # ahead of the real work.
     if job.get("managed_background"):
         completed_agents = sum(
             1 for a in (job.get("agents") or []) if isinstance(a, dict) and a.get("status") == "completed"
         )
         agent_progress = (completed_agents / agent_count) * 100
         time_progress = min(100.0, (elapsed / total_seconds) * 100) if total_seconds > 0 else 0.0
-        # Weighted blend: 60% agent completion, 40% elapsed time. Never regress.
-        progress = max(1, min(99, int(agent_progress * 0.6 + time_progress * 0.4)))
+        # Agent completion is the source of truth; time only nudges the bar
+        # forward while the first agent is still running. Never regress.
+        progress = max(1, min(99, int(agent_progress * 0.85 + time_progress * 0.15)))
         # When every agent is done, none should be shown as "running".
         active_index = agent_count if completed_agents >= agent_count else min(agent_count - 1, completed_agents)
         job["progress_pct"] = progress
@@ -346,18 +347,14 @@ def _advance_ai_job_in_store(db: Any, case_id: str, permit_type: str, job: dict[
             agent["status"] = "pending"
             agent["started_at"] = None
             agent["finished_at"] = None
-    if elapsed >= total_seconds and job.get("managed_background"):
-        job["progress_pct"] = 95
-        job["progress_current"] = max(1, agent_count)
-        job["eta_seconds"] = 0
-    elif elapsed >= total_seconds:
+    if elapsed >= total_seconds:
         if job.get("auto_finalize") and job.get("kind") == "intake_analysis":
             # deferred import: application.py depends on jobs.py, not the reverse -
             # this is the one legitimate job-runner -> feature-finalizer callback.
             from .application import _finalize_intake_analysis_job_in_store
 
             _finalize_intake_analysis_job_in_store(db, case_id, permit_type, job)
-        else:
+        elif not job.get("managed_background"):
             job["status"] = "completed"
             job["progress_current"] = agent_count
             job["progress_pct"] = 100

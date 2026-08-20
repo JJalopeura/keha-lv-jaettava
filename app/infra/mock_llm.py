@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import random
 from typing import Any, Dict, Optional
 import uuid
@@ -50,34 +51,103 @@ class MockLLMClient:
             }
 
         if "lupahakemusten laadunvarmistaja" in low or "lupahakemusten ristiriitojen tunnistaja" in low:
-            return {"issues": []}
-
-        if "lupahakemuksen kriteerivertailija" in low:
+            # 06: mock mirrors reality — return the same shape real Azure runs produce,
+            # scenario-reflecting (permit-type-specific) findings instead of placeholders.
+            permit_type = self._extract_first(r'"permit_type"\s*:\s*"([^"]+)"', input_text) or ""
+            if "ristiriitojen tunnistaja" in low:
+                # Mirrors the audit's real consistency findings (identifier mismatch, blocking).
+                return {
+                    "issues": [
+                        {
+                            "type": "inconsistent",
+                            "severity": "blocking",
+                            "title": "Hakijan nimi tai Y-tunnus eroaa lomakkeen ja yhteisten tietojen välillä",
+                            "detail": "Lomakkeen ja yhteisten tietojen hakijatiedot poikkeavat toisistaan.",
+                            "suggested_fix": "Yhdenmukaista hakijan nimi ja Y-tunnus kaikkiin tietoihin.",
+                            "evidence_refs": [self._lupademo_evidence("common_data")],
+                            "confidence": 0.92,
+                        },
+                        {
+                            "type": "risk",
+                            "severity": "minor",
+                            "title": "Liitteen ajantasaisuutta ei voi täysin varmistaa",
+                            "detail": "Osassa liitteistä ei ole näkyvää päiväystä.",
+                            "suggested_fix": "Tarkista liitteiden päiväykset ennen lähetystä.",
+                            "evidence_refs": [self._lupademo_evidence("attachments")],
+                            "confidence": 0.7,
+                        },
+                    ]
+                }
+            templates = {
+                "building_residential": {
+                    "title": "Pääpiirustusten sisältö ei täytä vaatimusta",
+                    "detail": "Mitoitus ja pinta-alatiedot ovat osittain puutteelliset piirustuksissa.",
+                    "fix": "Täydennä pääpiirustusten mitoitus- ja pinta-alatiedot.",
+                },
+                "event_public": {
+                    "title": "Turvallisuussuunnitelman yksityiskohdat ovat vajavaiset",
+                    "detail": "Poikkeustilannekuvaus ja järjestäjän vastuut on kuvattu yleisellä tasolla.",
+                    "fix": "Täydennä turvallisuussuunnitelman poikkeustilanneosio.",
+                },
+            }
+            tpl = templates.get(
+                permit_type,
+                {
+                    "title": "Tarkkailuohjelma jää hyvin yleiselle tasolle",
+                    "detail": "Tarkkailun toteutus ja aikataulu on kuvattu yleisellä tasolla.",
+                    "fix": "Täsmennä tarkkailun toteutus, menetelmät ja aikataulu.",
+                },
+            )
             return {
-                "criteria_results": [
+                "issues": [
                     {
-                        "criteria_id": "mock_criteria",
-                        "status": "yellow",
-                        "rationale": "Mock-arvio: tieto on osittain riittävä ja käsittelijän tarkistettava.",
-                        "related_fields": [],
-                        "issues": [],
-                        "evidence_refs": [self._lupademo_evidence("mock_criteria")],
-                        "confidence": 0.62,
+                        "type": "incomplete",
+                        "severity": "major",
+                        "title": tpl["title"],
+                        "detail": tpl["detail"],
+                        "suggested_fix": tpl["fix"],
+                        "evidence_refs": [self._lupademo_evidence("form_data")],
+                        "confidence": 0.88,
                     }
                 ]
             }
 
+        if "lupahakemuksen kriteerivertailija" in low:
+            # 06: real criteria ids from the active criteria set in the prompt, with a
+            # deterministic status assignment so reconciliation (03/04) is exercised and the
+            # demo shows a realistic verdict. permit_basis is always red: the permit basis is
+            # the load-bearing criterion in every demo scenario.
+            criteria_slice = input_text.split("Kriteerit:")[-1].split("Hakemus:")[0] if "Kriteerit:" in input_text else ""
+            crit_ids = list(dict.fromkeys(re.findall(r'"id"\s*:\s*"([a-z0-9_]{4,})"', criteria_slice)))
+            results: list[dict[str, Any]] = []
+            for idx, cid in enumerate(crit_ids):
+                if cid == "permit_basis" or idx % 3 == 1:
+                    status, rationale, conf = "red", "Vaatimus ei täyty toimitettujen tietojen perusteella.", 0.9
+                elif idx % 3 == 2:
+                    status, rationale, conf = "yellow", "Vaatimus on osittain täytetty; käsittelijän tarkistettava.", 0.7
+                else:
+                    status, rationale, conf = "green", "Vaatimus täyttyy toimitettujen tietojen perusteella.", 0.85
+                results.append(
+                    {
+                        "criteria_id": cid,
+                        "status": status,
+                        "rationale": rationale,
+                        "related_fields": [],
+                        "issues": [],
+                        "evidence_refs": [self._lupademo_evidence(cid)],
+                        "confidence": conf,
+                    }
+                )
+            return {"criteria_results": results if results else [{"criteria_id": "mock_criteria", "status": "yellow", "rationale": "Mock-arvio: tieto on osittain riittävä.", "related_fields": [], "issues": [], "evidence_refs": [self._lupademo_evidence("mock_criteria")], "confidence": 0.62}]}
+
         if "hakijaa auttava lupahakemuksen esitarkistusavustaja" in low:
+            # 03 D4: score/readiness/counts are code-owned; mock returns summary + sections only.
             return {
-                "summary": "Hakemus on esitarkistettu mock-agentilla. Käsittelijän päätöstä ei tehdä.",
-                "readiness": "almost_ready",
-                "score": 76,
+                "summary": "Hakemus on esitarkistettu. Ennen lähettämistä on hyvä korjata estävät puutteet ja tarkistaa kriteeriarvio.",
                 "sections": [
-                    {"title": "Tarkistettavat kohdat", "items": ["Täsmennä liitteiden ajantasaisuus ennen lähetystä."]},
+                    {"title": "Tärkeimmät korjattavat", "items": ["Korjaa estävät puutteet ennen lähetystä.", "Täydennä punaisiksi arvioidut kriteerit."]},
                     {"title": "AI-huomio", "items": ["Kaikki havainnot ovat ehdotuksia."]},
                 ],
-                "blocking_issue_count": 0,
-                "major_issue_count": 1,
             }
 
         if "viranomaiskäsittelijän valmisteluavustaja" in low:
@@ -236,6 +306,12 @@ class MockLLMClient:
             "project_description": "Hankkeessa toteutetaan lupahakemuksessa kuvattu rakennus- tai toimintakokonaisuus. Kuvaus on tarkistettava suunnitelmista ennen hyväksyntää.",
             "activity_description": "Toiminta koostuu hakemuksessa kuvatusta tuotannosta, varastoinnista ja vaikutusten hallinnasta.",
             "event_description": "Tapahtuma on yleisölle avoin kaupunkitapahtuma, jonka ohjelma, aikataulu ja vastuuhenkilöt täsmennetään hakemuksessa.",
+            "property_id": "092-416-12-34",
+            "intended_use": "Asuinrakennus",
+            "floor_area_m2": "145",
+            "building_height_m": "8.2",
+            "distance_to_boundary_m": "4",
+            "designer": "Pääsuunnittelija Demo Oy",
         }
         return {
             "field_id": field_id,

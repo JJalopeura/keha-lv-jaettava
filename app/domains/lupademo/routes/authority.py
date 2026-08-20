@@ -55,6 +55,7 @@ def create_authority_router(ctx: RouteContext) -> APIRouter:
                 "additional_info_draft": svc.artifact_json(db(), case_id, "additional_info_draft", svc.application_id_for(application_id), {}),
                 "authority_memo": svc.artifact_json(db(), case_id, "authority_memo", svc.application_id_for(application_id), {}),
                 "caseworker_observations": svc.caseworker_observation_panel(db(), case_id, application_id),
+                "check_report": svc.artifact_json(db(), case_id, "check_report", svc.application_id_for(application_id), {}),
             },
         )
 

@@ -69,7 +69,7 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
             case_id=case_id,
             application_id=application_id,
         )
-        for key in ("criteria_version", "suggestions", "issues", "extracted_fields", "warnings", "score", "summary", "model_audit"):
+        for key in ("criteria_version", "suggestions", "issues", "extracted_fields", "warnings", "score", "summary", "model_audit", "criteria_results", "counts", "degraded", "readiness"):
             if key in annotated:
                 envelope[key] = annotated[key]
         svc.save_artifact(db(), case_id, "api_job_result", completed["id"], envelope)

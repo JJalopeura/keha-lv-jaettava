@@ -283,10 +283,16 @@ def _run_check_agents(
             max_output_tokens=max_output_tokens,
             timeout_s=timeout_s,
         )
+        issues: list[Issue] = []
         if isinstance(response, IssueListResponse):
-            agent_issues.extend(response.issues)
+            issues = list(response.issues)
         elif isinstance(response, dict):
-            agent_issues.extend(response.get("issues", []))
+            issues = list(response.get("issues", []))
+        # 02: runtime-assigned, per-agent namespaced ids — never trust LLM-emitted ids
+        origin = agent_name.split("_")[0]
+        for idx, issue in enumerate(issues, start=1):
+            issue.id = f"{origin}-{idx}"
+        agent_issues.extend(issues)
     return agent_issues
 
 
@@ -1020,6 +1026,12 @@ def deterministic_suggestion(
         "waste_management": "Jätehuolto järjestetään lajitteluastioilla, tyhjennyksillä ja tapahtuman jälkisiivouksella.",
         "environmental_impacts": "Toiminnan ympäristövaikutukset kohdistuvat pääasiassa ilmapäästöihin, meluun, liikenteeseen ja jätevesiin. Vaikutukset arvioidaan YVA-selostuksen ja lupahakemuksen liitteiden perusteella.",
         "risk_preparedness": "Laitoksella on ennaltavarautumissuunnitelma ja toimintaohjeet häiriö- ja poikkeustilanteita varten. Keskeiset riskit liittyvät kemikaalien käsittelyyn, tulipaloon ja vuotoihin.",
+        "property_id": "092-416-12-34",
+        "intended_use": "Asuinrakennus",
+        "floor_area_m2": "145",
+        "building_height_m": "8.2",
+        "distance_to_boundary_m": "4",
+        "designer": "Pääsuunnittelija Demo Oy",
     }
     suggested_value = values.get(field_id, "")
     if field_id == "project_description":
@@ -1285,10 +1297,13 @@ def deterministic_issues(
             continue
         subject_key = (field_id, attachment_type)
         subject = field_id or attachment_type
+        _rule_sev = str(rule.get("severity") or "major")
+        if _rule_sev == "recommendation":  # 02: recommendation is not an Issue severity; map to minor
+            _rule_sev = "minor"
         candidate = Issue(
             id=f"criteria_{rule.get('id') or subject}",
             type="missing",
-            severity=str(rule.get("severity") or "major"),
+            severity=_rule_sev,
             field_id=field_id or None,
             attachment_id=attachment_type or None,
             title=f"Kunnan kriteeri: {subject} puuttuu",
@@ -1449,15 +1464,105 @@ def merge_issues(*groups: list[Issue]) -> list[Issue]:
 
     Groups may contain ``Issue`` dataclasses (from agents) or plain dicts
     (from fallback payloads); both are normalized to ``Issue``.
+
+    Beyond id-based dedup, missing-type issues that target the same
+    attachment or field are collapsed to a single finding. This prevents the
+    same missing attachment from being reported 3x (deterministic check, AI
+    completeness validator, and criteria check all flag e.g. main_drawings).
     """
     seen: dict[str, Issue] = {}
+    # Map (attachment_id|field_id) -> issue id for missing-type issues, so a
+    # later agent finding about the same missing subject collapses into the
+    # strongest existing one instead of adding a duplicate.
+    subject_to_id: dict[str, str] = {}
+
+    def _subject_key(issue: Issue) -> str | None:
+        if issue.type != "missing":
+            return None
+        if issue.attachment_id:
+            return f"attachment:{issue.attachment_id}"
+        if issue.field_id:
+            return f"field:{issue.field_id}"
+        return None
+
     for group in groups:
         for issue in group:
             iid = _issue_id(issue)
             isev = _issue_severity(issue)
+            norm = _as_issue(issue)
+            subject = _subject_key(norm)
+            if subject and subject in subject_to_id:
+                existing_id = subject_to_id[subject]
+                existing = seen.get(existing_id)
+                if existing is not None and SEVERITY_ORDER.get(isev, 1) > SEVERITY_ORDER.get(_issue_severity(existing), 1):
+                    # New finding is stronger — replace the existing one.
+                    seen[existing_id] = norm
+                    seen[iid] = norm
+                    subject_to_id[subject] = iid
+                # Otherwise keep the existing (stronger) finding; drop the dup.
+                continue
             if iid not in seen or SEVERITY_ORDER.get(isev, 1) > SEVERITY_ORDER.get(_issue_severity(seen[iid]), 1):
-                seen[iid] = _as_issue(issue)
+                seen[iid] = norm
+                if subject:
+                    subject_to_id[subject] = iid
     return list(seen.values())
+
+
+def reconcile_verdict(
+    issues: list[Issue],
+    criteria_results: list[dict[str, Any]],
+) -> tuple[list[Issue], list[str]]:
+    """03/04: reconcile issues with the criteria verdict so a red/yellow criterion always
+    yields (or aligns with) a blocking/major issue carrying its criteria_id, and a green
+    criterion wins over linked blocking/major issues (marked resolved, kept for traceability).
+
+    Pure and deterministic: same inputs -> same notes. Returns (issues, reconciliation notes).
+    """
+    notes: list[str] = []
+    issues = list(issues)
+    for c in criteria_results:
+        cid = str(c.get("criteria_id") or "")
+        status = str(c.get("status") or "")
+        if not cid:
+            continue
+        linked = [i for i in issues if i.criteria_id == cid and not i.resolved]
+        crit_ref = EvidenceRef(
+            source_id=cid,
+            title=str(c.get("rationale") or f"Kriteeri {cid}"),
+            locator="criteria",
+            confidence=_coerce_confidence(c.get("confidence"), 0.75),
+        )
+        if status in ("red", "yellow"):
+            target = "blocking" if status == "red" else "major"
+            if not linked:
+                issues.append(
+                    Issue(
+                        id=f"criteria_{cid}",
+                        type="incomplete",
+                        severity=target,
+                        title=f"Kriteeri {cid} ei täyty" if status == "red" else f"Kriteeri {cid} on osittain täytetty",
+                        detail=str(c.get("rationale") or ("Kriteeri ei täyty toimitettujen tietojen perusteella." if status == "red" else "Kriteerin vaatimus on osittain täytetty; käsittelijän tarkistettava.")),
+                        suggested_fix="Täydennä hakemusta niin, että kriteerin vaatimus täyttyy." if status == "red" else "Tarkista ja täydennä kriteerin vaatimus.",
+                        criteria_id=cid,
+                        evidence_refs=[crit_ref],
+                        confidence=0.95 if status == "red" else 0.9,
+                    )
+                )
+                notes.append(f"{'P1' if status == 'red' else 'C1'}: {status} criterion {cid} synthesized as {target} issue criteria_{cid}")
+            else:
+                strongest = max(linked, key=lambda i: SEVERITY_ORDER.get(i.severity, 1))
+                if SEVERITY_ORDER.get(strongest.severity, 1) < SEVERITY_ORDER[target]:
+                    strongest.severity = target
+                    notes.append(f"P2: {status} criterion {cid} upgraded linked issue {strongest.id} to {target}")
+                if strongest.criteria_id != cid:
+                    strongest.criteria_id = cid
+                strongest.evidence_refs = list(strongest.evidence_refs) + [crit_ref]
+        elif status == "green":
+            for i in linked:
+                if SEVERITY_ORDER.get(i.severity, 1) >= SEVERITY_ORDER["major"]:
+                    i.resolved = True
+                    notes.append(f"P3: green criterion {cid} resolved linked issue {i.id}")
+    return issues, notes
 
 
 def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any = None, *, job_id: str = "") -> ApplicationCheckResponse:
@@ -1534,18 +1639,48 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         elif isinstance(criteria_response, dict):
             criteria_results = criteria_response.get("criteria_results", [])
     issues = merge_issues(deterministic, agent_issues)
-    blockers = sum(1 for i in issues if i.severity == "blocking" and not i.resolved)
-    major = sum(1 for i in issues if i.severity == "major" and not i.resolved)
-    score = max(0, 100 - blockers * 25 - major * 10 - (len(issues) - blockers - major) * 4)
+    issues, reconciliation_notes = reconcile_verdict(issues, criteria_results)
+    blocked = [i for i in issues if i.severity == "blocking" and not i.resolved]
+    majors = [i for i in issues if i.severity == "major" and not i.resolved]
+    minors = [i for i in issues if i.severity == "minor" and not i.resolved]
+    counts = {
+        "blocking": len(blocked),
+        "major": len(majors),
+        "minor": len(minors),
+        "red": sum(1 for c in criteria_results if c.get("status") == "red"),
+        "yellow": sum(1 for c in criteria_results if c.get("status") == "yellow"),
+        "green": sum(1 for c in criteria_results if c.get("status") == "green"),
+    }
+    if criteria_results:
+        crit_score = (counts["green"] + 0.5 * counts["yellow"]) / len(criteria_results)
+    else:
+        crit_score = 1.0  # 04-C2: no criteria ran -> neutral, not a green verdict
+    issue_score = max(0.0, 1 - 0.25 * counts["blocking"] - 0.10 * counts["major"] - 0.04 * counts["minor"])
+    score = round(50 * crit_score + 50 * issue_score)
+    blockers = counts["blocking"]
+    major = counts["major"]
+    readiness = "ready" if (score >= 80 and blockers == 0) else ("almost_ready" if score >= 40 else "not_ready")
     checked_at = time.time()
     current_criteria_version = criteria_version(app["permit_type"], db, case_id, municipality)
     active_criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
+    degraded = {
+        "fallback_used_agents": [
+            agent
+            for agent in ("completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report")
+            if artifact_json(db, case_id, "agent_output", agent, {}).get("fallback_used")
+        ],
+        "reconciliation_notes": reconciliation_notes,
+    }
     response = ApplicationCheckResponse(
         request_id=f"check_{uuid.uuid4().hex[:8]}",
         criteria_version=current_criteria_version,
         score=score,
         summary="Hakemus on lähetysvalmis." if blockers == 0 else "Hakemuksessa on lähettämisen estäviä puutteita.",
         issues=issues,
+        criteria_results=criteria_results,
+        counts=counts,
+        degraded=degraded,
+        readiness=readiness,
     )
     report_payload = asdict(response)
     questions = intake_analysis_questions(schema, app, attachments)
@@ -1561,24 +1696,26 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         }
     )
     save_artifact(db, case_id, "check_report", app["permit_type"], report_payload)
-    if criteria_results:
-        save_artifact(db, case_id, "criteria_assessment", app["permit_type"], {"criteria_results": criteria_results})
     if settings is not None:
         precheck = run_json_agent(
             db,
             settings,
             case_id,
             "applicant_precheck_report",
-            {"issues": json.dumps(_plain(issues), ensure_ascii=False)},
+            {
+                "issues": json.dumps(_plain([i for i in issues if not i.resolved]), ensure_ascii=False),
+                "criteria_results": json.dumps(criteria_results, ensure_ascii=False),
+                "score_inputs": json.dumps({**counts, "score": score}, ensure_ascii=False),
+            },
             ApplicantPrecheckReport,
             fallback={
                 "summary": response.summary,
-                "readiness": "not_ready" if blockers else ("almost_ready" if major else "ready"),
-                "score": response.score,
+                "readiness": readiness,
+                "score": score,
                 "sections": [
-                    {"title": "Tärkeimmät korjattavat", "items": [i.title for i in issues if i.severity == "blocking"]},
+                    {"title": "Tärkeimmät korjattavat", "items": [i.title for i in blocked]},
                     {"title": "Ristiriidat", "items": [i.title for i in issues if i.type == "inconsistent"]},
-                    {"title": "Suositukset", "items": [i.title for i in issues if i.severity in {"minor", "recommendation"}]},
+                    {"title": "Suositukset", "items": [i.title for i in minors]},
                 ],
                 "blocking_issue_count": blockers,
                 "major_issue_count": major,
@@ -1586,7 +1723,23 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             max_output_tokens=5000,
             reasoning_effort="low",
         )
-        save_artifact(db, case_id, "applicant_precheck_report", app["permit_type"], precheck)
+        if isinstance(precheck, ApplicantPrecheckReport):
+            precheck_dict = asdict(precheck)
+        elif isinstance(precheck, dict):
+            precheck_dict = precheck
+        else:
+            precheck_dict = {}
+        report_payload["summary"] = precheck_dict.get("summary") or response.summary
+        report_payload["sections"] = precheck_dict.get("sections") or []
+        if degraded["fallback_used_agents"]:
+            report_payload["summary"] = (
+                (report_payload["summary"] + " " if report_payload["summary"] else "")
+                + "AI ei voinut tarkistaa: "
+                + ", ".join(degraded["fallback_used_agents"])
+                + "."
+            )
+        response.summary = report_payload["summary"]
+        save_artifact(db, case_id, "check_report", app["permit_type"], report_payload)
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "applicant_precheck_report", "Esitarkistusraportti valmis.")
     event(db, case_id, "ai.check.completed", "Application check completed", {"application_id": app["permit_type"], "issues": len(issues), "blocking": blockers, "major": major, "score": response.score})

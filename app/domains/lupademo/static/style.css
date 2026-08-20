@@ -856,6 +856,10 @@ section {
   font-weight: 800;
 }
 
+.suggestion-dialog__confidence--warn {
+  color: #b54708;
+}
+
 .suggestion-dialog blockquote {
   margin: 0;
   padding: 14px 16px;

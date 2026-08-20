@@ -190,7 +190,10 @@ class AgentPipeline(unittest.TestCase):
 
         overdue = next(item for item in svc.list_ai_jobs(db, case, PERMIT) if item["id"] == job["id"])
         self.assertEqual(overdue["status"], "running")
-        self.assertEqual(overdue["progress_pct"], 95)
+        # An overdue managed_background job must NOT jump to 95% while its agent
+        # is still unfinished — progress reflects real agent completion, not
+        # elapsed wall-clock time. With 0/1 agents done it stays low.
+        self.assertLess(overdue["progress_pct"], 95)
 
         completed = svc.complete_ai_job(db, case, PERMIT, job["id"], summary="Valmis.")
         self.assertEqual(completed["status"], "completed")

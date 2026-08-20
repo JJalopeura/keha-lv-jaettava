@@ -66,6 +66,7 @@ class Issue:
     title: str
     detail: str
     confidence: float
+    criteria_id: str | None = None
     field_id: str | None = None
     attachment_id: str | None = None
     suggested_fix: str | None = None
@@ -132,6 +133,10 @@ class ApplicationCheckResponse:
     score: int
     summary: str
     issues: list[Issue] = field(default_factory=list)
+    criteria_results: list = field(default_factory=list)
+    counts: dict = field(default_factory=dict)
+    degraded: dict = field(default_factory=dict)
+    readiness: str = ""
 
 
 @dataclass

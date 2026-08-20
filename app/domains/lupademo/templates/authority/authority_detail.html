@@ -87,6 +87,24 @@
 </div>
 
 <section class="drafts-section" id="drafts">
+{% if check_report and check_report.get('score') is not none %}
+<section class="drafts-section" id="verdict">
+  <div class="section-heading-line"><div><p class="section-kicker">AI-tarkistuksen tulos</p><h2>Verdikti: {{ check_report.get('readiness', '') }} · {{ check_report.get('score', '') }}/100</h2><p class="muted">{{ check_report.get('summary', '') }}</p></div></div>
+  {% if check_report.degraded and check_report.degraded.fallback_used_agents %}<div class="issue minor" role="alert"><strong>Epätäydellinen tarkistus</strong><p>AI ei voinut tarkistaa: {{ check_report.degraded.fallback_used_agents|join(', ') }}.</p></div>{% endif %}
+  <div class="draft-grid">
+    <article><h3>Havainnot ({{ check_report.issues|length }})</h3>
+      {% for issue in check_report.issues %}{% if not issue.resolved %}
+      <div class="review-row {{ issue.severity }}"><span class="review-icon">!</span><div><strong>{{ {'blocking': 'Estävä', 'major': 'Merkittävä', 'minor': 'Vähäinen'}.get(issue.severity, issue.severity) }}{% if issue.criteria_id %} · {{ issue.criteria_id }}{% endif %}</strong><p>{{ authority_copy(issue.title) }}</p>{% for ref in issue.evidence_refs[:2] %}<small>{{ ref.title }}{% if ref.locator %} · {{ ref.locator }}{% endif %}{% if ref.quote %} · “{{ ref.quote[:160] }}”{% endif %}</small>{% endfor %}</div></div>
+      {% endif %}{% endfor %}
+    </article>
+    <article><h3>Kriteerit</h3>
+      {% for cr in check_report.get('criteria_results', []) %}
+      <div class="review-row {{ 'blocking' if cr.status == 'red' else ('major' if cr.status == 'yellow' else 'ready') }}"><span class="review-icon">{{ '!' if cr.status != 'green' else '✓' }}</span><div><strong>{{ {'green': 'Täyttyy', 'yellow': 'Osittain', 'red': 'Ei täyty'}.get(cr.status, cr.status) }} · {{ cr.criteria_id }}</strong><p>{{ authority_copy(cr.rationale) }}</p></div></div>
+      {% else %}<p class="empty-copy">Kriteeriarviota ei ole.</p>{% endfor %}
+    </article>
+  </div>
+</section>
+{% endif %}
   <div class="section-heading-line"><div><p class="section-kicker">Luonnokset</p><h2>Muokkaa tai kopioi ennen käyttöä</h2><p class="muted">Luonnoksen muokkauksia ei tallenneta automaattisesti.</p></div></div>
   <div class="draft-grid">
     <article><h3>Täydennyspyyntö</h3>{% if additional_info_draft %}<label>Otsikko<input value="{{ authority_copy(additional_info_draft.get('subject', '')) }}"></label><label>Sisältö<textarea rows="10">{{ authority_copy(additional_info_draft.get('body_md', '')) }}</textarea></label>{% for item in additional_info_draft.get('requested_items', []) %}<div class="open-question"><span>!</span><div><strong>{{ authority_copy(item.title) }}</strong><small>{{ authority_copy(item.reason) }}</small></div></div>{% endfor %}{% else %}<p class="empty-copy">Täydennyspyyntöä ei ole vielä muodostettu.</p>{% endif %}</article>

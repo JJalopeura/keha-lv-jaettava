@@ -472,7 +472,8 @@ def run_json_agent(
     client = create_llm_client(settings, purpose="core", db=db, case_id=case_id, timeout_s=timeout_s)
     # Log the actual provider used, not just the config setting.
     provider = "mock" if _is_presenter_case(db, case_id) else str(getattr(settings, "llm_provider", "mock") or "mock").lower()
-    try:
+
+    def _invoke(vids: list[str], mode: str, **extra: Any) -> response_model:
         payload = call_llm_json(
             client,
             prompt,
@@ -480,62 +481,53 @@ def run_json_agent(
             case_id=case_id,
             task_id=None,
             agent=f"lupademo.{agent}",
-            vector_store_ids_list=vector_ids,
+            vector_store_ids_list=vids,
             max_output_tokens=max_output_tokens,
             reasoning_effort=reasoning_effort,
             text_verbosity="low",
         )
         payload = normalize_agent_payload(response_model, payload)
         model = response_model(**payload)
-        save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "retrieval" if vector_ids else "direct", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": False, "error": None})
+        save_artifact(
+            db,
+            case_id,
+            "agent_output",
+            agent,
+            {
+                "agent": agent,
+                "output": model,
+                "provider": provider,
+                "execution_mode": mode,
+                "used_vector_store_ids": vids or [],
+                "vector_store_scope_manifest": retrieval_manifest,
+                "fallback_used": False,
+                "error": None,
+                **extra,
+            },
+        )
         return model
+
+    try:
+        return _invoke(vector_ids, "retrieval" if vector_ids else "direct")
     except Exception as exc:
-        retry_without_retrieval = vector_ids and any(
+        failure = exc
+        if vector_ids and any(
             marker in str(exc).lower()
             for marker in ("vector store", "readtimeout", "read operation timed out", "timed out")
-        )
-        if retry_without_retrieval:
-            failure = exc
+        ):
             try:
-                payload = call_llm_json(
-                    client,
-                    prompt,
-                    db=db,
-                    case_id=case_id,
-                    task_id=None,
-                    agent=f"lupademo.{agent}",
-                    vector_store_ids_list=[],
-                    max_output_tokens=max_output_tokens,
-                    reasoning_effort=reasoning_effort,
-                    text_verbosity="low",
-                )
-                payload = normalize_agent_payload(response_model, payload)
-                model = response_model(**payload)
-                save_artifact(
-                    db,
-                    case_id,
-                    "agent_output",
-                    agent,
-                    {
-                        "agent": agent,
-                        "output": model,
-                        "provider": provider,
-                        "execution_mode": "direct_after_retrieval_error",
-                        "used_vector_store_ids": [],
-                        "vector_store_scope_manifest": retrieval_manifest,
-                        "vector_store_retry_reason": str(exc)[:500],
-                        "fallback_used": False,
-                        "error": None,
-                    },
-                )
-                return model
+                return _invoke([], "direct_after_retrieval_error", vector_store_retry_reason=str(exc)[:500])
             except Exception as retry_exc:
                 failure = RuntimeError(
                     f"Initial retrieval request failed: {exc}; "
                     f"retry without retrieval also failed: {retry_exc}"
                 )
-        else:
-            failure = exc
+        if "HTTP 429" in str(failure):
+            time.sleep(2)
+            try:
+                return _invoke(vector_ids, "retry_after_rate_limit")
+            except Exception as retry_exc:
+                failure = RuntimeError(f"Rate-limited request failed on retry: {retry_exc}")
         allow_fallback = (
             provider == "mock"
             or _is_presenter_case(db, case_id)

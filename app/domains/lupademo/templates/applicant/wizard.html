@@ -114,7 +114,7 @@
           {% set source_key = application.field_sources.get(field.id, "käyttäjän syöttämä") %}
           <span class="field-note"><i aria-hidden="true"></i>{{ source_labels.get(source_key, source_key) }}{% if inline_suggestion %}
             <span class="field-suggestion-inline" data-inline-suggestion>
-              <button type="button" class="field-suggestion-trigger" aria-label="Avaa tekoälyn ehdotus kentälle {{ field.label }}" title="Avaa tekoälyn ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.get('suggested_value', ''), 'confidence': inline_suggestion.get('confidence', 0), 'fallback_used': inline_suggestion.get('fallback_used', false), 'rationale': inline_suggestion.get('rationale', 'Aineistosta poimittu ehdotus.'), 'evidence_refs': inline_suggestion.get('evidence_refs', []), 'accept_url': inline_suggestion.get('accept_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/accept'), 'reject_url': inline_suggestion.get('reject_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/reject'), 'accept_field_id': inline_suggestion.get('field_id', '') if inline_suggestion.get('source_kind') == 'extraction' else ''} | tojson | forceescape }}">Tekoälyn ehdotus</button>
+              <button type="button" class="field-suggestion-trigger" aria-label="Avaa tekoälyn ehdotus kentälle {{ field.label }}" title="Avaa tekoälyn ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.get('suggested_value', ''), 'confidence': inline_suggestion.get('confidence', 0), 'fallback_used': inline_suggestion.get('fallback_used', false), 'rationale': inline_suggestion.get('rationale', 'Aineistosta poimittu ehdotus.'), 'warnings': inline_suggestion.get('warnings', []), 'evidence_refs': inline_suggestion.get('evidence_refs', []), 'accept_url': inline_suggestion.get('accept_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/accept'), 'reject_url': inline_suggestion.get('reject_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/reject'), 'accept_field_id': inline_suggestion.get('field_id', '') if inline_suggestion.get('source_kind') == 'extraction' else ''} | tojson | forceescape }}">Tekoälyn ehdotus</button>
             </span>
           {% endif %}</span>
           {% for change in sync.changes if change.field_id == field.id %}
@@ -437,7 +437,7 @@
   <div class="score-ring" style="--score: {{ check_report.score }}"><strong>{{ check_report.score }}</strong><span>/ 100</span></div>
   <div>
     <p class="section-kicker">Valmius</p>
-    <h2>{% if check_report.score >= 80 %}Hakemus on lähes valmis{% elif check_report.score >= 50 %}Hakemus tarvitsee vielä täydennyksiä{% else %}Aloita estävistä puutteista{% endif %}</h2>
+    <h2>{% if check_report.get('readiness') == 'ready' %}Hakemus on lähes valmis{% elif check_report.get('readiness') == 'almost_ready' %}Hakemus tarvitsee vielä täydennyksiä{% else %}Aloita estävistä puutteista{% endif %}</h2>
     <p>{{ check_report.issues|length }} havaintoa · {{ precheck_gate.blocking_count }} estävää puutetta.</p>
   </div>
   <div class="readiness-actions">
@@ -446,6 +446,13 @@
     {% endif %}
   </div>
 </section>
+{% endif %}
+{% set _degraded_agents = (check_report.get('degraded') or {}).get('fallback_used_agents', []) %}
+{% if _degraded_agents %}
+<div class="issue minor" role="alert" id="check-degraded">
+  <strong>AI ei voinut tarkistaa kaikkia kohtia</strong>
+  <p>AI ei voinut tarkistaa: {{ _degraded_agents|join(', ') }}. Tulokset ovat tästä syystä epätäydellisiä.</p>
+</div>
 {% endif %}
 <section class="grid two" id="check">
   <div>
@@ -499,6 +506,21 @@
       {% endif %}
     </div>
     {% endfor %}
+    {% set criteria_results = check_report.get('criteria_results', []) %}
+    {% if criteria_results %}
+    <h2>Lupakriteerit</h2>
+    {% set non_green = criteria_results|selectattr('status', 'ne', 'green')|list %}
+    {% set greens = criteria_results|selectattr('status', 'equalto', 'green')|list %}
+    {% for cr in non_green %}
+    <div class="issue {{ 'blocking' if cr.status == 'red' else 'major' }}">
+      <strong>{{ 'Ei täyty' if cr.status == 'red' else 'Osittain täytetty' }} · {{ cr.criteria_id }}</strong>
+      <p>{{ cr.rationale }}</p>
+      {% set linked = check_report.issues|selectattr('criteria_id', 'equalto', cr.criteria_id)|list %}
+      {% if linked %}<small>Korjaus: {{ linked[0].suggested_fix if linked[0].suggested_fix else linked[0].title }}</small>{% endif %}
+    </div>
+    {% endfor %}
+    {% if greens %}<p class="muted">{{ greens|length }} kriteeriä täyttyy.</p>{% endif %}
+    {% endif %}
     {% else %}
     <p class="muted">Tarkistusta ei ole vielä ajettu.</p>
     {% endif %}
