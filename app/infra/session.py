@@ -6,13 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
-from collections.abc import Awaitable, Callable
-from typing import Any
-
-
-ASGIMessage = dict[str, Any]
-ASGIReceive = Callable[[], Awaitable[ASGIMessage]]
-ASGISend = Callable[[ASGIMessage], Awaitable[None]]
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
 class DemoSessionMiddleware:
@@ -20,7 +14,7 @@ class DemoSessionMiddleware:
 
     def __init__(
         self,
-        app: Callable[..., Awaitable[None]],
+        app: ASGIApp,
         secret_key: str,
         *,
         session_cookie: str = "lv_session",
@@ -33,13 +27,13 @@ class DemoSessionMiddleware:
         self.same_site = same_site
         self.https_only = https_only
 
-    async def __call__(self, scope: dict[str, Any], receive: ASGIReceive, send: ASGISend) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
         scope["session"] = self._decode_cookie(self._request_cookie(scope))
 
-        async def send_with_cookie(message: ASGIMessage) -> None:
+        async def send_with_cookie(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
                 if scope["session"]:

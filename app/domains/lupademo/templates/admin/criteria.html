@@ -185,7 +185,7 @@
               </label>
               <label>Vakavuus<select name="severity">{% for severity in ["blocking", "major", "minor", "recommendation"] %}<option value="{{ severity }}" {% if rule.severity == severity %}selected{% endif %}>{{ severity_labels.get(severity, severity) }}</option>{% endfor %}</select></label>
             </div>
-            <label>Arviointiohje<textarea name="instruction">{{ rule.instruction }}</textarea></label>
+            <label>Arviointiohje<textarea aria-label="Kriteeristön JSON" name="instruction">{{ rule.instruction }}</textarea></label>
             <p class="criteria-rule-impact"><strong>Vaikutus AI-tarkistukseen:</strong> {% if rule.field_id %}tarkistaa kentän {{ field_labels.get(rule.field_id, rule.field_id) }}{% endif %}{% if rule.field_id and rule.attachment_type %} ja {% endif %}{% if rule.attachment_type %}vaatii liitteen {{ attachment_labels.get(rule.attachment_type, rule.attachment_type) }}{% endif %}{% if not rule.field_id and not rule.attachment_type %}ohjaa yleistä arviointia{% endif %}.</p>
             <button>Tallenna sääntö</button>
           </form>
@@ -208,7 +208,7 @@
         </div>
       </details>
       {% call technical_details("Koko kriteeristön JSON-muokkaus") %}
-      <form method="post"><input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="municipality" value="{{ selected_municipality }}"><textarea name="criteria_json" class="json-editor">{{ criteria | tojson(indent=2) }}</textarea><button>Tallenna uusi kriteeriversio</button></form>
+      <form method="post"><input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="municipality" value="{{ selected_municipality }}"><textarea name="criteria_json" class="json-editor" aria-label="Kriteeristön JSON">{{ criteria | tojson(indent=2) }}</textarea><button>Tallenna uusi kriteeriversio</button></form>
       {% endcall %}
     </div>
   </div>

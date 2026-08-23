@@ -211,13 +211,19 @@ def accept_common_data_sync(
 ) -> dict[str, Any]:
     common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy(), "version": 1})
     value_for_base = common["data"].get(field_id, "")
+
+    def _schema_field_ids(permit_type: str) -> set[str]:
+        # F19: only sync fields the target schema actually defines — never pollute form_data.
+        return {f["id"] for f in load_form_schema(permit_type).get("fields", [])}
+
     if direction == "lv_to_app" or (direction == "conflict" and resolution == "lv_wins"):
         for permit_type in PERMIT_SCHEMAS:
+            if field_id not in _schema_field_ids(permit_type):
+                continue  # F19: field absent from this schema — skip instead of writing it in.
             app = ensure_application(db, case_id, permit_type)
-            if field_id in COMMON_FIELDS or field_id in app.get("form_data", {}):
-                app["form_data"][field_id] = common["data"].get(field_id, "")
-                app["updated_at"] = time.time()
-                save_artifact(db, case_id, "permit_application", permit_type, app)
+            app["form_data"][field_id] = common["data"].get(field_id, "")
+            app["updated_at"] = time.time()
+            save_artifact(db, case_id, "permit_application", permit_type, app)
     elif direction == "app_to_lv" or (direction == "conflict" and resolution == "app_wins"):
         source_id = source_application_id or "building_residential"
         app = ensure_application(db, case_id, source_id)
@@ -228,11 +234,12 @@ def accept_common_data_sync(
         value_for_base = common["data"].get(field_id, "")
         if direction == "conflict":
             for permit_type in PERMIT_SCHEMAS:
+                if field_id not in _schema_field_ids(permit_type):
+                    continue  # F19: same schema guard as lv_to_app.
                 app_item = ensure_application(db, case_id, permit_type)
-                if field_id in COMMON_FIELDS or field_id in app_item.get("form_data", {}):
-                    app_item["form_data"][field_id] = value_for_base
-                    app_item["updated_at"] = time.time()
-                    save_artifact(db, case_id, "permit_application", permit_type, app_item)
+                app_item["form_data"][field_id] = value_for_base
+                app_item["updated_at"] = time.time()
+                save_artifact(db, case_id, "permit_application", permit_type, app_item)
     elif direction == "conflict" and resolution == "manual":
         common["data"][field_id] = manual_value
         # pi-lens-ignore: unchecked-throwing-call-python

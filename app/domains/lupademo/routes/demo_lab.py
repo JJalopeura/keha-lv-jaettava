@@ -1,14 +1,10 @@
 from __future__ import annotations
-import json
-import io
 import time
 import uuid
-import zipfile
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from pydantic import ValidationError
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .. import scenarios, security, services as svc
 from .common import RouteContext

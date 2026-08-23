@@ -162,6 +162,7 @@ def retry_ai_job(db: Any, job_id: str) -> dict[str, Any]:
             continue
         selected = job
         job["status"] = "running"
+        job["created_at"] = now  # F20a: reset clock, else elapsed simulation insta-completes the retry
         job["progress_current"] = 0
         job["progress_pct"] = 0
         job["eta_seconds"] = job.get("estimated_seconds_total") or job.get("eta_seconds") or 20
@@ -382,6 +383,9 @@ def mark_agent_complete(db: Any, case_id: str, permit_type: str, job_id: str, ag
     for job in store.get("jobs", []):
         if not (isinstance(job, dict) and job.get("id") == job_id):
             continue
+        # F20c: never mutate a non-running (e.g. cancelled) job's agents.
+        if job.get("status") != "running":
+            break
         for agent in job.get("agents") or []:
             if isinstance(agent, dict) and agent.get("name") == agent_name and agent.get("status") != "completed":
                 agent["status"] = "completed"
@@ -410,12 +414,15 @@ def complete_ai_job(
     store = _job_store(db, case_id, permit_type)
     now = time.time()
     selected: dict[str, Any] = {}
+    mutated = False
     for job in store.get("jobs", []):
         if job.get("id") != job_id:
             continue
         selected = job
-        if job.get("status") == "cancelled":
+        # F20b/F20d: terminal states are final — no overwrite, no duplicate audit event.
+        if job.get("status") in {"cancelled", "completed", "failed"}:
             break
+        mutated = True
         job["status"] = "failed" if failed else "completed"
         job["progress_current"] = job.get("progress_total") or len(job.get("agents") or []) or 1
         job["progress_pct"] = 100
@@ -431,5 +438,6 @@ def complete_ai_job(
             agent["summary"] = summary if not agent.get("summary") else agent.get("summary")
         break
     save_artifact(db, case_id, "ai_jobs", permit_type, store)
-    event(db, case_id, "ai.job.completed" if not failed else "ai.job.failed", "AI job finished", {"job_id": job_id, "permit_type": permit_type, "status": selected.get("status")})
+    if mutated:
+        event(db, case_id, "ai.job.completed" if not failed else "ai.job.failed", "AI job finished", {"job_id": job_id, "permit_type": permit_type, "status": selected.get("status")})
     return selected

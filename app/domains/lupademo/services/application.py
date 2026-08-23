@@ -1223,9 +1223,13 @@ def accept_all_suggestions(db: Any, case_id: str, permit_type: str) -> dict[str,
 def reject_suggestion(db: Any, case_id: str, permit_type: str, suggestion_id: str) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     pending = artifact_json(db, case_id, "ai_suggestions", permit_type, {"suggestions": []})
+    found = False
     for item in pending.get("suggestions", []):
         if item.get("id") == suggestion_id:
             item["status"] = "rejected"
+            found = True
+    if not found:
+        raise KeyError(suggestion_id)  # F23: symmetric with accept_suggestion.
     save_artifact(db, case_id, "ai_suggestions", permit_type, pending)
     event(db, case_id, "ai.suggestion.rejected", "AI suggestion rejected", {"suggestion_id": suggestion_id})
     return pending
@@ -1741,6 +1745,10 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             precheck_dict = precheck
         else:
             precheck_dict = {}
+        # F24: recompute after the precheck agent ran — otherwise its own fallback is invisible.
+        degraded["fallback_used_agents"] = _degraded_agents(
+            db, case_id, ("completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report")
+        )
         report_payload["summary"] = precheck_dict.get("summary") or response.summary
         report_payload["sections"] = precheck_dict.get("sections") or []
         if degraded["fallback_used_agents"]:
@@ -2016,7 +2024,13 @@ def metrics_snapshot(db: Any, case_id: str) -> dict[str, Any]:
     agent_audit = agent_chain_audit(db, case_id)
     agent_audit_run = artifact_json(db, case_id, "agent_chain_audit_run", "main", {})
     attachment_extraction = attachment_extraction_summary(db, case_id)
-    applications = [ensure_application(db, case_id, p) for p in PERMIT_SCHEMAS]
+    # F16: placeholders auto-created by ensure_application are not real applications —
+    # count only ones whose permit_application artifact already existed.
+    applications = [
+        app for p in PERMIT_SCHEMAS
+        if (existing := artifact_json(db, case_id, "permit_application", p, {}))
+        for app in [ensure_application(db, case_id, p)]
+    ]
     checks = [artifact_json(db, case_id, "check_report", p, {}) for p in PERMIT_SCHEMAS]
     suggestions = []
     for permit_type in PERMIT_SCHEMAS:

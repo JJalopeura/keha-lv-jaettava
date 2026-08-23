@@ -1832,7 +1832,7 @@ pre {
 .criteria-card > summary::after {
   content: "▾";
   margin-left: auto;
-  color: #98a2b3;
+  color: #64748b;
 }
 
 .criteria-card[open] > summary::after {
@@ -3318,7 +3318,7 @@ body.service-light {
 
 .upload-zone-label small {
   margin-top: 14px;
-  color: #98a2b3;
+  color: #64748b;
   font-weight: 500;
 }
 
@@ -3356,7 +3356,7 @@ body.service-light {
   position: relative;
   top: -10px;
   padding: 0 12px;
-  color: #98a2b3;
+  color: #64748b;
   background: var(--page);
   font-size: 12px;
 }
@@ -3455,7 +3455,7 @@ body.service-light {
 /* ===== Workbench layouts & analysis panels ===== */
 
 button:disabled {
-  color: #98a2b3;
+  color: #64748b;
   background: #e4e7ec;
   cursor: not-allowed;
   box-shadow: none;
@@ -5476,7 +5476,7 @@ button:disabled {
 
 .source-boundaries {
   background: #f7f9fa;
-  border-left-color: #98a2b3;
+  border-left-color: #64748b;
 }
 
 .material-split,

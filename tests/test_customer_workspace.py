@@ -132,6 +132,48 @@ class CustomerWorkspace(unittest.TestCase):
         target_case = promoted.headers["location"].split("/cases/", 1)[1].split("/", 1)[0]
         self.assertEqual(len(db.list_cases_for_customer("ren-gas")), before + 1)
         self.assertIsNotNone(db.get_artifact(target_case, "permit_application", "environmental_industrial"))
+        # F27: consumed review namespace holds no duplicated artifacts after promotion.
+        leftover = [a["id"] for a in db.list_artifacts(package_id)]
+        self.assertEqual(leftover, [])
+
+    def test_anonymous_admin_mutation_is_forbidden(self) -> None:
+        """F28: case-scoped criteria mutations require the owning customer's session."""
+        other_case_id = db.list_cases_for_customer("p2x")[0]["id"]
+        response = client.post(
+            f"/cases/{other_case_id}/lupademo/admin/criteria/rule",
+            data={
+                "permit_type": "building_residential",
+                "rule_id": "evil_rule",
+                "instruction": "anonyymi saanto",
+                "severity": "major",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+        history = artifact_json(db, other_case_id, "criteria_history", "building_residential", {})
+        self.assertFalse(history, "anonymous mutation must not write criteria artifacts")
+
+    def test_owner_can_post_admin_criteria_rule(self) -> None:
+        """F28 positive case: logged-in owner can still mutate their case's criteria."""
+        client.post("/login", data={"customer_id": "p2x"})
+        own_case_id = db.list_cases_for_customer("p2x")[0]["id"]
+        response = client.post(
+            f"/cases/{own_case_id}/lupademo/admin/criteria/rule",
+            data={
+                "permit_type": "building_residential",
+                "rule_id": "owner_rule_1",
+                "instruction": "omistajan saanto",
+                "severity": "minor",
+            },
+        )
+        self.assertEqual(response.status_code, 303)
+
+    def test_anonymous_unknown_case_gets_404_without_artifacts(self) -> None:
+        """F25b: anonymous GET of a nonexistent case must not render or create artifacts."""
+        fake = "00000000-0000-0000-0000-000000000000"
+        response = client.get(f"/cases/{fake}/lupademo/application/building_residential/wizard/1")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(artifact_json(db, fake, "lv_project", "main", {}), {})
+        self.assertEqual(artifact_json(db, fake, "permit_application", "building_residential", {}), {})
 
     def test_new_hanke_inherits_customer_profile(self) -> None:
         client.post("/login", data={"customer_id": "sharpcell"})

@@ -5,7 +5,7 @@
 {% set present = request.query_params.get('present') == '1' %}
 {% set permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
 {% set urgent_count = queue['items']|selectattr('urgency', 'equalto', 'kiireellinen')|list|length %}
-{% set received_count = queue['items']|selectattr('status', 'equalto', 'Vastaanotettu')|list|length %}
+{% set received_count = queue['items']|selectattr('status', 'in', ['Vastaanotettu', 'submitted', 'käsittelyssä'])|list|length %}
 {% set next_case = queue['items']|first|default(none) %}
 {{ page_header('Viranomaisen työjono', 'Priorisoi käsittely puutteiden, riskin ja määräajan perusteella.', 'Viranomainen', [{'label': 'Etusivu', 'href': '/'}, {'label': 'Työjono', 'href': ''}]) }}
 

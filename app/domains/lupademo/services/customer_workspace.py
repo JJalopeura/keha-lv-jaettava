@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from .core import PERMIT_SCHEMAS, artifact_json, ensure_application, load_form_schema, save_artifact
+from .core import artifact_json, ensure_application, load_form_schema, save_artifact
 from .intake import find_material_package, list_attachments
 from .jobs import list_ai_jobs
 
@@ -332,7 +332,9 @@ def _package_review_row(db: Any, review: dict[str, Any]) -> dict[str, Any]:
 
 
 def case_application_rows(db: Any, case_id: str, project: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    project = project or artifact_json(db, case_id, "lv_project", "main", {})
+    if not isinstance(project, dict):
+        stored = artifact_json(db, case_id, "lv_project", "main", {})
+        project = stored if isinstance(stored, dict) else {}
     permit_types = list(project.get("permits") or project.get("applications") or [])
     return [_application_row(db, case_id, permit_type, project) for permit_type in permit_types]
 

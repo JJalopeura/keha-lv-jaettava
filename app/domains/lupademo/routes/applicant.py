@@ -10,9 +10,8 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
-from pydantic import ValidationError
 
-from .. import scenarios, security, services as svc
+from .. import scenarios, services as svc
 from ..services import customer_workspace as customer_ws
 from .common import RouteContext, ai_mode_status, context_app_with_material, job_eta_seconds
 from app.infra.llm_factory import create_llm_client
@@ -74,7 +73,11 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             "/admin",
             "/demo",
         )
-        if path in public_paths or path.startswith(public_prefixes) or "/authority/" in path or "/admin/" in path:
+        if path in public_paths or path.startswith(public_prefixes):
+            return
+        # F28: substring skips are GET-only — case-scoped /authority/ & /admin/
+        # mutations must pass the ownership checks below.
+        if request.method == "GET" and ("/authority/" in path or "/admin/" in path):
             return
 
         customer_id = current_customer_id(request)
@@ -94,10 +97,18 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                     return
                 case_id = str(found_package["case_id"])
             except KeyError:
+                # F25b: unknown package id must not fall through anonymously.
+                if not customer_id:
+                    raise HTTPException(status_code=404, detail="package_not_found")
                 return
         if case_id:
             case = db().get_case(case_id)
             review = db().get_package_review(case_id)
+            # F25b: a truly nonexistent id must never fall through to routes
+            # that auto-create artifacts. Existing-but-unowned demo-seeded
+            # cases keep the legacy allow (ponytail: tighten when real auth lands).
+            if case is None and review is None:
+                raise HTTPException(status_code=404, detail="case_not_found")
             owner_id = str((case or {}).get("customer_id") or (review or {}).get("customer_id") or "")
             if owner_id:
                 if owner_id != customer_id:
@@ -459,6 +470,10 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         )
         target_case_id = started["case_id"]
         db().copy_artifacts(review["id"], target_case_id)
+        # F27: the review is consumed — drop its copied artifacts so the promoted
+        # hanke holds the only copy. ponytail: hard delete; tombstones if audit needs them.
+        with db()._conn() as conn:
+            conn.execute("DELETE FROM artifacts WHERE case_id=?", (review["id"],))
         db().move_files(review["id"], target_case_id)
         for artifact_name in ("material_package", "material_packages"):
             copied = svc.artifact_json(db(), target_case_id, artifact_name, permit_type, {})
@@ -953,7 +968,11 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/suggestions/{suggestion_id}/reject")
     def reject_suggestion(case_id: str, application_id: str, suggestion_id: str):
-        svc.reject_suggestion(db(), case_id, application_id, suggestion_id)
+        # F23: symmetric with accept — unknown id is a 404, not a silent success/500.
+        try:
+            svc.reject_suggestion(db(), case_id, application_id, suggestion_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/3", status_code=303)
 
     @router.post("/cases/{case_id}/lupademo/application/{application_id}/chat")
@@ -1048,7 +1067,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         try:
             svc.submit_application(db(), case_id, application_id, settings=settings())
         except RuntimeError:
-            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/5#check-blocking", status_code=303)
+            return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/wizard/4#check-blocking", status_code=303)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/application/{application_id}/receipt", status_code=303)
 
     @router.get("/cases/{case_id}/lupademo/application/{application_id}/receipt", response_class=HTMLResponse)

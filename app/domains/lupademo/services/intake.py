@@ -14,20 +14,18 @@ import unicodedata
 import uuid
 import zipfile
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
 import openpyxl
 import pdfplumber
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict
 from dataclasses import fields as dataclass_fields
 from docx import Document as DocxDocument
-from fastapi import HTTPException
-from jinja2 import Template
 
 from app.infra.llm_factory import LLMUnavailableError, create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
-from .core import AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
+from .core import ApplicantPrecheckReport, AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
 from .jobs import complete_ai_job, mark_agent_complete, start_ai_job
 
 
@@ -325,10 +323,12 @@ def build_retrieval_context(
     for scope in requested:
         allowed_delivery.update(V3_SCOPE_TO_DELIVERY.get(scope, set()))
     context_payload = retrieval_context(db, project_id, application_id, max_chars=max_chars)
+    # F21: an empty allowed_delivery means the scopes authorize nothing — return
+    # zero excerpts, never the unfiltered set.
     excerpts = [
         item
         for item in context_payload.get("excerpts", [])
-        if not allowed_delivery or str(item.get("delivery_scope") or "") in allowed_delivery
+        if allowed_delivery and str(item.get("delivery_scope") or "") in allowed_delivery
     ]
     return {
         "project_id": project_id,
@@ -473,7 +473,7 @@ def run_json_agent(
     # Log the actual provider used, not just the config setting.
     provider = "mock" if _is_presenter_case(db, case_id) else str(getattr(settings, "llm_provider", "mock") or "mock").lower()
 
-    def _invoke(vids: list[str], mode: str, **extra: Any) -> response_model:
+    def _invoke(vids: Optional[list[str]], mode: str, **extra: Any) -> Any:
         payload = call_llm_json(
             client,
             prompt,
@@ -646,6 +646,18 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
                 clean_result["evidence_refs"] = _normalize_evidence_refs(clean_result.get("evidence_refs", []), limit=6)
                 clean_results.append(clean_result)
         return {"criteria_results": clean_results}
+    if response_model is ApplicantPrecheckReport:
+        # score/readiness/counts are code-owned (03 D4); agent returns summary+sections only.
+        # Azure responses omit them, so default instead of failing construction.
+        normalized = dict(payload) if isinstance(payload, dict) else {}
+        allowed = {f.name for f in dataclass_fields(ApplicantPrecheckReport)}
+        normalized = {k: v for k, v in normalized.items() if k in allowed}
+        normalized["readiness"] = str(normalized.get("readiness") or "needs_completion")
+        try:
+            normalized["score"] = int(normalized.get("score") or 0)
+        except (TypeError, ValueError):
+            normalized["score"] = 0
+        return normalized
     if response_model is not IssueListResponse:
         return payload
     issues = payload.get("issues", []) if isinstance(payload, dict) else []
@@ -729,7 +741,8 @@ def add_attachment(db: Any, case_id: str, permit_type: str, filename: str, size:
         "id": file_id,
         "filename": filename,
         "size_bytes": size,
-        "delivery_scope": delivery_scope if delivery_scope in {"official_submission", "ai_context_only", "internal_authority_only"} else "official_submission",
+        # F22: unknown scope defaults to ai_context_only, not the most sensitive scope.
+        "delivery_scope": delivery_scope if delivery_scope in {"official_submission", "ai_context_only", "internal_authority_only"} else "ai_context_only",
         "primary_type": classification.primary_type if classification else classify_attachment(filename),
         "type_tags": classification.type_tags if classification else [],
         "summary": classification.summary if classification else (text_excerpt[:500] or f"Luokiteltu tiedostonimen perusteella: {filename}"),
@@ -1315,7 +1328,10 @@ def update_attachment_metadata(
             if primary_type:
                 att["primary_type"] = primary_type
             if delivery_scope:
-                att["delivery_scope"] = delivery_scope if delivery_scope in {"official_submission", "ai_context_only", "internal_authority_only"} else att.get("delivery_scope", "official_submission")
+                # F22: reject unknown scopes instead of silently storing them.
+                if delivery_scope not in {"official_submission", "ai_context_only", "internal_authority_only"}:
+                    raise ValueError(f"unknown_delivery_scope:{delivery_scope}")
+                att["delivery_scope"] = delivery_scope
             att["updated_at"] = time.time()
             updated = att
             break
@@ -1491,12 +1507,12 @@ def structure_environmental_application_from_attachments(
         else:
             fields_iter = []
         for schema_field in fields_iter:
-            fid = schema_field.field_id if hasattr(schema_field, 'field_id') else schema_field.get('field_id', '')
-            val = schema_field.value if hasattr(schema_field, 'value') else schema_field.get('value', '')
-            if fid not in allowed_fields or not (val or '').strip():
+            # ExtractedField is a dataclass — attribute access only, no .get().
+            fid = str(schema_field.field_id or "")
+            val = str(schema_field.value or "")
+            if fid not in allowed_fields or not val.strip():
                 continue
-            refs_raw = schema_field.evidence_refs if hasattr(schema_field, 'evidence_refs') else schema_field.get('evidence_refs', [])
-            refs = [ref for ref in (refs_raw or []) if isinstance(ref, dict)]
+            refs = [ref for ref in (schema_field.evidence_refs or []) if isinstance(ref, dict)]
             fallback_source = source_fallbacks.get(str(fid), {})
             if not refs:
                 refs = [ref for ref in (fallback_source.get("evidence_refs") or []) if isinstance(ref, dict)]
@@ -1505,7 +1521,7 @@ def structure_environmental_application_from_attachments(
                     "field_id": fid,
                     "extracted_value": val.strip(),
                     "source_document": str((refs[0].get("title") if refs else "Hakemusaineisto") or "Hakemusaineisto"),
-                    "confidence": schema_field.confidence if hasattr(schema_field, 'confidence') else schema_field.get('confidence', 0.78),
+                    "confidence": float(schema_field.confidence),
                     "evidence_refs": refs,
                 }
             )

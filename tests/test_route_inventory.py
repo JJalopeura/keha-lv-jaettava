@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 
 from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from app.domains.lupademo.routes import create_lupademo_router  # noqa: E402
@@ -123,3 +124,13 @@ class RouteInventory(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JobAuthOrder(unittest.TestCase):
+    """F11: unauthenticated job requests must 401 before any existence check."""
+
+    def test_unknown_job_unauthenticated_returns_401_not_404(self) -> None:
+        c = TestClient(app)
+        for path, method in (("/api/v1/jobs/nope", "get"), ("/api/v1/jobs/nope/result", "get"), ("/api/v1/jobs/nope/cancel", "post")):
+            r = getattr(c, method)(path)
+            self.assertEqual(r.status_code, 401, path)

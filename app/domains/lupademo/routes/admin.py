@@ -3,7 +3,7 @@ import json
 import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import scenarios, security, services as svc
@@ -17,6 +17,13 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
 
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
         return ctx.context(case_id, permit_type)
+
+    def require_case_owner(request: Request, case_id: str) -> None:
+        # F28: case-scoped admin mutations require an authenticated owning session.
+        customer_id = str(request.scope.get("session", {}).get("customer_id") or "")
+        owner = str((db().get_case(case_id) or {}).get("customer_id") or "")
+        if not owner or customer_id != owner:
+            raise HTTPException(status_code=403, detail="admin_case_forbidden")
 
     def playground_case_for_client(client: dict[str, Any]) -> str:
         setting_key = f"lupademo_api_case_id:{client['tenant_id']}"
@@ -205,7 +212,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
             },
         )
 
-    @router.post("/cases/{case_id}/lupademo/admin/criteria/city")
+    @router.post("/cases/{case_id}/lupademo/admin/criteria/city", dependencies=[Depends(require_case_owner)])
     def criteria_city_post(case_id: str, municipality: str = Form(...)):
         try:
             svc.create_city_criteria(db(), case_id, municipality)
@@ -213,7 +220,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
             raise HTTPException(status_code=422, detail=str(exc))
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
-    @router.post("/cases/{case_id}/lupademo/admin/criteria")
+    @router.post("/cases/{case_id}/lupademo/admin/criteria", dependencies=[Depends(require_case_owner)])
     def criteria_admin_post(case_id: str, permit_type: str = Form(...), criteria_json: str = Form(...), municipality: str = Form("")):
         try:
             payload = json.loads(criteria_json)
@@ -222,7 +229,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
         svc.save_criteria_version(db(), case_id, permit_type, payload, municipality=municipality)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
-    @router.post("/cases/{case_id}/lupademo/admin/criteria/rule")
+    @router.post("/cases/{case_id}/lupademo/admin/criteria/rule", dependencies=[Depends(require_case_owner)])
     def criteria_rule_post(
         case_id: str,
         permit_type: str = Form(...),
@@ -245,7 +252,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
             raise HTTPException(status_code=422, detail=str(exc))
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
-    @router.post("/cases/{case_id}/lupademo/admin/criteria/rule/delete")
+    @router.post("/cases/{case_id}/lupademo/admin/criteria/rule/delete", dependencies=[Depends(require_case_owner)])
     def criteria_rule_delete_post(case_id: str, permit_type: str = Form(...), rule_id: str = Form(...), municipality: str = Form("")):
         try:
             svc.delete_criteria_rule(db(), case_id, permit_type, rule_id, municipality=municipality)
@@ -253,7 +260,7 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
             raise HTTPException(status_code=422, detail=str(exc))
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
-    @router.post("/cases/{case_id}/lupademo/admin/criteria/restore")
+    @router.post("/cases/{case_id}/lupademo/admin/criteria/restore", dependencies=[Depends(require_case_owner)])
     def criteria_restore_post(case_id: str, permit_type: str = Form(...), history_index: int = Form(...), municipality: str = Form("")):
         try:
             svc.restore_criteria_version(db(), case_id, permit_type, history_index, municipality=municipality)
@@ -261,12 +268,12 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
             raise HTTPException(status_code=422, detail=str(exc))
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
-    @router.post("/cases/{case_id}/lupademo/admin/criteria/test")
+    @router.post("/cases/{case_id}/lupademo/admin/criteria/test", dependencies=[Depends(require_case_owner)])
     def criteria_test_post(case_id: str, permit_type: str = Form(...), municipality: str = Form("")):
         svc.run_criteria_test(db(), settings(), case_id, permit_type, municipality=municipality)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
 
-    @router.post("/cases/{case_id}/lupademo/admin/source-materials/ingest")
+    @router.post("/cases/{case_id}/lupademo/admin/source-materials/ingest", dependencies=[Depends(require_case_owner)])
     def source_materials_ingest(case_id: str):
         app_settings = settings()
         svc.ingest_source_materials(db(), app_settings, case_id, source_dir=getattr(app_settings, "source_material_dir", "source_materials"))

@@ -539,7 +539,7 @@ class ApplicantJourney(unittest.TestCase):
         """An incomplete application must be blocked at the submit gate."""
         response = client.post(f"{base}/submit", data={})
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], f"{base}/wizard/5#check-blocking")
+        self.assertEqual(response.headers["location"], f"{base}/wizard/4#check-blocking")
 
     def test_wizard_steps_all_render(self) -> None:
         for step in range(1, 7):
@@ -723,3 +723,14 @@ class AuthorityJourney(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuthorityPhantomApplication(unittest.TestCase):
+    """F13: GET on an unknown application id must 404 without creating artifacts."""
+
+    def test_unknown_application_returns_404_and_creates_nothing(self) -> None:
+        before = {row["id"] for row in db.list_artifacts(case)}
+        response = client.get(f"/cases/{case}/lupademo/authority/applications/does_not_exist")
+        self.assertEqual(response.status_code, 404)
+        after = {row["id"] for row in db.list_artifacts(case)}
+        self.assertEqual(before, after)

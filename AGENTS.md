@@ -39,9 +39,8 @@ app/
                                 data, packaging, chat/voice (~382 lines)
       authority.py              9 handlers — queue, detail, observations, summary/memo
       api_v1.py                  7 handlers — external suggestion-service endpoints
-      admin.py                   22 handlers — criteria admin, API demo/playground,
-                                internal AI job API
-      demo_lab.py               14 handlers — benchmark, metrics, audit, UI-only demo
+      admin.py                   12 handlers — criteria admin, API demo/playground
+      demo_lab.py               24 handlers — benchmark, metrics, audit, UI-only demo
     services/                Business logic package:
       domain.py                 Dataclasses, type contracts, schemas, path constants,
                                 prompt loading. No intra-package deps. (~350 lines)
@@ -73,9 +72,9 @@ app/
     scenarios.py             Demo scenario definitions + case creation (4 built-in scenarios, fallback in code)
     security.py              API key / tenant auth for suggestion-service endpoints
     static/style.css          Single CSS file
-    templates/*.html          22 Jinja2 templates (wizard, authority, admin, API demo, etc.)
+    templates/*.html          30 Jinja2 templates (wizard, authority, admin, API demo, etc.)
     specs/                     JSON specs: form schemas, permit criteria, scenarios, roles, eval definitions
-docs/specs/                   Additional reference specs (not loaded at runtime)
+docs/archive/v5-specs/        Archived v5 reference specs (not loaded at runtime)
 data/                         Created at first run: SQLite DB + uploads/ (gitignored)
 testiaineisto/                Test packages (sample zip uploads)
 tests/                        Smoke tests (mock LLM, temp DB)
@@ -246,7 +245,7 @@ When `KEHA_LV_LLM_PROVIDER=mock` (default), `mock_llm.py` responds instantly:
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ./run.sh
-# → http://127.0.0.1:8001
+# → http://127.0.0.1:8002
 ```
 
 ## How to test
@@ -272,11 +271,10 @@ contracts, current limitations, and sanitized validation results.
 
 Jinja2 templates in `app/domains/lupademo/templates/`. Base template:
 
-- `light_base.html` — Root layout (full HTML doc, header, nav, footer); used by all 23 templates
+- `shared/light_base.html` — Root layout (full HTML doc, header, nav, footer); used by all leaf templates
 
-Template inheritance: all 23 templates extend `light_base.html` directly.
-The former `base.html` (empty shim) was deleted — it added an unnecessary
-indirection layer. When adding a new template, extend `light_base.html`.
+Template inheritance: all leaf templates extend `shared/light_base.html` directly.
+When adding a new template, extend `shared/light_base.html`.
 
 ## Files to never read in full unless essential
 

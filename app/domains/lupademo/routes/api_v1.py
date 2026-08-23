@@ -88,11 +88,22 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         if found["job"].get("tenant_id") != client["tenant_id"]:
             raise HTTPException(status_code=403, detail="job_tenant_forbidden")
 
+    def _auth_find(job_id: str, request: Request) -> dict[str, Any]:
+        """F11: authenticate before any job-existence check (no 404 oracle)."""
+        client = security.require_api_client(request)
+        found = _find_or_404(job_id)
+        if found["job"].get("tenant_id") != client["tenant_id"]:
+            raise HTTPException(status_code=403, detail="job_tenant_forbidden")
+        return found
+
     @router.post("/api/v1/ai/jobs")
     async def api_v1_ai_jobs(request: Request):
         client = security.require_api_client(request)
         payload = security.validate_client_payload(client, await json_payload(request))
         case_id = _case_for_api_client(client)
+        job_type = str(payload.get("job_type") or "intake_analysis")
+        if job_type not in {"intake_analysis", "structure_extraction", "field_suggestions", "application_check", "package_analysis", "authority_summary"}:
+            raise HTTPException(status_code=422, detail="unknown_job_type")
         application_id = svc.application_id_for(str(payload.get("application_id") or payload.get("permit_type") or "building_residential"))
         if application_id not in client["permit_types"]:
             raise HTTPException(status_code=403, detail=f"Tenant {client['tenant_id']} cannot use permit_type {application_id}")
@@ -111,28 +122,24 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/api/v1/jobs/{job_id}")
     def api_v1_job_status(job_id: str, request: Request):
-        found = _find_or_404(job_id)
-        _authorize_job_request(request, found)
+        found = _auth_find(job_id, request)
         return svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
 
     @router.get("/api/v1/jobs/{job_id}/stream")
     def api_v1_job_stream(job_id: str, request: Request):
-        found = _find_or_404(job_id)
-        _authorize_job_request(request, found)
+        found = _auth_find(job_id, request)
         payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
         return Response("event: status\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n", media_type="text/event-stream")
 
     @router.get("/api/v1/jobs/{job_id}/events")
     def api_v1_job_events(job_id: str, request: Request):
-        found = _find_or_404(job_id)
-        _authorize_job_request(request, found)
+        found = _auth_find(job_id, request)
         payload = svc.ai_job_status_payload(found["job"], case_id=found["case_id"], application_id=found["application_id"])
         return {"job_id": job_id, "status": payload["status"], "events": payload["events"]}
 
     @router.get("/api/v1/jobs/{job_id}/result")
     def api_v1_job_result(job_id: str, request: Request):
-        found = _find_or_404(job_id)
-        _authorize_job_request(request, found)
+        found = _auth_find(job_id, request)
         result = svc.artifact_json(db(), found["case_id"], "api_job_result", job_id, {})
         if not result:
             raise HTTPException(status_code=404, detail="result_not_ready")
@@ -140,9 +147,11 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
 
     @router.post("/api/v1/jobs/{job_id}/cancel")
     def api_v1_job_cancel(job_id: str, request: Request):
+        client = security.require_api_client(request)
         try:
             found = svc.find_ai_job(db(), job_id)
-            _authorize_job_request(request, found)
+            if found["job"].get("tenant_id") != client["tenant_id"]:
+                raise HTTPException(status_code=403, detail="job_tenant_forbidden")
             if found["job"].get("status") not in {"pending", "running"}:
                 raise HTTPException(status_code=409, detail="job_not_cancellable")
             job = svc.cancel_ai_job(db(), job_id)
@@ -152,9 +161,11 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
 
     @router.post("/api/v1/jobs/{job_id}/retry")
     def api_v1_job_retry(job_id: str, request: Request):
+        client = security.require_api_client(request)
         try:
             original = svc.find_ai_job(db(), job_id)
-            _authorize_job_request(request, original)
+            if original["job"].get("tenant_id") != client["tenant_id"]:
+                raise HTTPException(status_code=403, detail="job_tenant_forbidden")
             if original["job"].get("status") not in {"failed", "cancelled"}:
                 raise HTTPException(status_code=409, detail="job_not_retryable")
             job = svc.retry_ai_job(db(), job_id)
@@ -177,6 +188,7 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         result = security.annotate_api_response(client, svc.suggestion_service_field(service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
         completed = _complete_api_job(case_id, application_id, job, result)
         envelope = api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
+        svc.append_suggestion_service_log(db(), case_id, "field_suggestions", client["tenant_id"], application_id, result.get("criteria_version", ""), endpoint="/api/v1/field-suggestions", request_id=request_id, status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
         svc.save_artifact(db(), case_id, "api_job_result", completed["id"], envelope)
         return envelope
 
@@ -192,16 +204,16 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         result = security.annotate_api_response(client, svc.suggestion_service_check(service_payload(payload, request_id, application_id), db=db(), settings=settings(), case_id=case_id))
         completed = _complete_api_job(case_id, application_id, job, result)
         envelope = api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
+        svc.append_suggestion_service_log(db(), case_id, "precheck", client["tenant_id"], application_id, result.get("criteria_version", ""), endpoint="/api/v1/applications:precheck", request_id=request_id, status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
         svc.save_artifact(db(), case_id, "api_job_result", completed["id"], envelope)
         return envelope
-
     @router.post("/api/v1/application-packages:analyze")
     async def api_v1_application_packages_analyze(request: Request):
+        client = security.require_api_client(request)  # F07b: auth before body parse
         try:
             body = await request.json()
         except Exception:
             raise HTTPException(status_code=422, detail="Invalid JSON in request body")
-        client = security.require_api_client(request)
         payload = security.validate_client_payload(client, body)
         application_id = svc.application_id_for(str(payload.get("permit_type") or "building_residential"))
         validate_municipality_criteria(client, payload, application_id)
@@ -283,9 +295,9 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
         result = security.annotate_api_response(client, result)
         completed = _complete_api_job(case_id, application_id, job, result)
         envelope = api_response(client, request_id, completed, result, case_id=case_id, application_id=application_id)
+        svc.append_suggestion_service_log(db(), case_id, "authority_summary", client["tenant_id"], application_id, result.get("criteria_version", ""), endpoint="/api/v1/authority:summarize", request_id=request_id, status="ok", fallback_used=False)
         svc.save_artifact(db(), case_id, "api_job_result", completed["id"], envelope)
         return envelope
-
 
 
 
@@ -300,7 +312,7 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
             case_id = _case_for_api_client(client)
             result = _legacy_api_response(
                 client, payload, application_id, "field_suggestion", "Legacy field suggestion API", ["field_suggestion_agent"],
-                svc.suggestion_service_field(payload, db=db(), settings=settings(), case_id=case_id),
+                svc.suggestion_service_field(service_payload(payload, str(payload.get("request_id") or ""), application_id), db=db(), settings=settings(), case_id=case_id),
                 case_id,
             )
             svc.append_suggestion_service_log(db(), case_id, "api_v1_field", client["tenant_id"], payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/suggestions/field", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
@@ -320,7 +332,7 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
             case_id = _case_for_api_client(client)
             result = _legacy_api_response(
                 client, payload, application_id, "form_suggestion", "Legacy form suggestion API", ["form_suggestion_agent"],
-                svc.suggestion_service_form(payload, db=db(), settings=settings(), case_id=case_id),
+                svc.suggestion_service_form(service_payload(payload, str(payload.get("request_id") or ""), application_id), db=db(), settings=settings(), case_id=case_id),
                 case_id,
             )
             svc.append_suggestion_service_log(db(), case_id, "api_v1_form", client["tenant_id"], payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/suggestions/form", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))
@@ -340,7 +352,7 @@ def create_api_v1_router(ctx: RouteContext) -> APIRouter:
             case_id = _case_for_api_client(client)
             result = _legacy_api_response(
                 client, payload, application_id, "precheck", "Legacy application check API", ["precheck_agent"],
-                svc.suggestion_service_check(payload, db=db(), settings=settings(), case_id=case_id),
+                svc.suggestion_service_check(service_payload(payload, str(payload.get("request_id") or ""), application_id), db=db(), settings=settings(), case_id=case_id),
                 case_id,
             )
             svc.append_suggestion_service_log(db(), case_id, "api_v1_check", client["tenant_id"], payload.get("permit_type", ""), result.get("criteria_version", ""), endpoint="/api/v1/checks/application", request_id=payload.get("request_id", ""), status="ok", fallback_used=result.get("model_audit", {}).get("fallback_used", False))

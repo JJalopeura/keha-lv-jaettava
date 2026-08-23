@@ -129,7 +129,20 @@ def effective_criteria(db: Any, case_id: str, permit_type: str, municipality: An
     return criteria
 
 
+def _validate_criteria_payload(criteria: Any) -> None:
+    """F15/F26: reject non-object payloads and unknown severities with clear errors."""
+    if not isinstance(criteria, dict):
+        raise ValueError("criteria_payload_must_be_object")
+    for rule in criteria.get("rules") or []:
+        if not isinstance(rule, dict):
+            raise ValueError("criteria_rule_must_be_object")
+        severity = str(rule.get("severity") or "major").strip().lower()
+        if severity not in SEVERITY_ORDER:
+            raise ValueError(f"unknown_severity:{severity}")
+
+
 def save_criteria_version(db: Any, case_id: str, permit_type: str, criteria: dict[str, Any], editor: str = "admin", municipality: Any = None) -> dict[str, Any]:
+    _validate_criteria_payload(criteria)
     permit_type = application_id_for(permit_type)
     name = _criteria_name(permit_type, municipality)
     current = effective_criteria(db, case_id, permit_type, municipality)
@@ -228,9 +241,12 @@ def upsert_criteria_rule(db: Any, case_id: str, permit_type: str, rule: dict[str
     if not isinstance(rules, list):
         rules = []
         updated["rules"] = rules
+    rule_severity = str(rule.get("severity") or "major").strip().lower()
+    if rule_severity not in SEVERITY_ORDER:
+        raise ValueError(f"unknown_severity:{rule_severity}")
     clean_rule = {
         "id": rule_id,
-        "severity": str(rule.get("severity") or "major"),
+        "severity": rule_severity,
         "instruction": str(rule.get("instruction") or "").strip(),
         "field_id": str(rule.get("field_id") or "").strip(),
         "attachment_type": str(rule.get("attachment_type") or "").strip(),

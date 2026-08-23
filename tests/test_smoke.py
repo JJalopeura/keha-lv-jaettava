@@ -21,9 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, so `i
 os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 os.environ["KEHA_LV_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="keha-test-"), "test.db")
 
+from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import app.domains.lupademo.security as security  # noqa: E402
+from app.domains.lupademo.routes import create_lupademo_router  # noqa: E402
+from app.domains.lupademo.services import intake as intake_mod  # noqa: E402
 import app.domains.lupademo.services as svc  # noqa: E402
 from app.infra.azure_client import AzureOpenAIClient  # noqa: E402
 from app.infra.config import Settings, load_settings  # noqa: E402
@@ -115,6 +118,16 @@ class AgentPipeline(unittest.TestCase):
         )
 
         self.assertIsInstance(payload["suggestions"][0], svc.Suggestion)
+
+    def test_precheck_report_normalizes_missing_code_owned_fields(self) -> None:
+        # F1: Azure returns summary+sections only; readiness/score are code-owned.
+        payload = svc.normalize_agent_payload(
+            svc.ApplicantPrecheckReport,
+            {"summary": "OK", "sections": [{"title": "t", "items": []}]},
+        )
+        report = svc.ApplicantPrecheckReport(**payload)
+        self.assertEqual(report.readiness, "needs_completion")
+        self.assertEqual(report.score, 0)
 
     def test_check_report_is_a_populated_dict(self) -> None:
         report = svc.artifact_json(db, case, "check_report", PERMIT, {})
@@ -494,6 +507,17 @@ class RetrievalContracts(unittest.TestCase):
         self.assertFalse(audit["fallback_used"])
         self.assertIsNone(audit["error"])
 
+    def test_empty_delivery_scopes_return_no_excerpts(self) -> None:
+        """F21: guidance-only scopes authorize nothing — never the unfiltered set."""
+        svc.save_artifact(
+            self.db, self.case_id, "retrieval_materials", "building_residential",
+            {"excerpts": [{"id": "e1", "delivery_scope": "official_submission", "text": "secret"}]},
+        )
+        result = intake_mod.build_retrieval_context(
+            self.db, self.case_id, "building_residential", "op", ["guidance_reference"]
+        )
+        self.assertEqual(result["excerpts"], [])
+
     def test_applicant_cannot_request_benchmark_or_authority_examples(self) -> None:
         for scope in ("example_case_benchmark", "authority_example"):
             with self.subTest(scope=scope):
@@ -786,11 +810,15 @@ class Authentication(unittest.TestCase):
         for path in (
             "/api/v1/suggestions/field",
             "/api/v1/suggestions/form",
-            "/api/v1/checks/application",
         ):
             with self.subTest(path=path):
                 response = client.post(path, json={"junk": True}, headers=KEY)
                 self.assertEqual(response.status_code, 422)
+
+    def test_legacy_check_matches_modern_leniency(self) -> None:
+        """F06a unified: /checks/application now fills form_schema itself like :precheck."""
+        response = client.post("/api/v1/checks/application", json={"junk": True}, headers=KEY)
+        self.assertEqual(response.status_code, 200)
 
     def test_precheck_defaults_missing_fields_instead_of_failing(self) -> None:
         """precheck fills permit_type/form_schema itself, so junk keys are dropped, not fatal."""
@@ -1641,3 +1669,97 @@ class Pages(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CriteriaAdminValidation(unittest.TestCase):
+    """F15/F26: criteria admin rejects malformed payloads with clear errors, not 500s."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db = DB(str(Path(self.temp_dir.name) / "crit.db"))
+        self.case = self.db.create_case("Criteria validation")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_non_object_payload_raises_value_error(self) -> None:
+        with self.assertRaises(ValueError):
+            svc.save_criteria_version(self.db, self.case, "building_residential", ["not", "a", "dict"])
+
+    def test_unknown_severity_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            svc.upsert_criteria_rule(
+                self.db, self.case, "building_residential",
+                {"id": "r1", "severity": "critical", "instruction": "x"},
+            )
+
+
+class CommonDataSyncSchemaGuard(unittest.TestCase):
+    """F19: sync must never write non-schema fields into application form_data."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db = DB(str(Path(self.temp_dir.name) / "sync.db"))
+        self.case = self.db.create_case("Sync guard")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_municipality_never_enters_form_data(self) -> None:
+        # municipality is a COMMON_FIELD absent from every schema — sync must skip it.
+        svc.update_lv_common_data(self.db, self.case, {"municipality": "Vantaa"})
+        svc.accept_common_data_sync(self.db, self.case, "municipality", "lv_to_app")
+        for permit_type in svc.PERMIT_SCHEMAS:
+            app = svc.artifact_json(self.db, self.case, "permit_application", permit_type, {})
+            self.assertNotIn("municipality", app.get("form_data", {}), permit_type)
+
+
+class MetricsSnapshotCounts(unittest.TestCase):
+    """F16: auto-created placeholder applications are not counted."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db = DB(str(Path(self.temp_dir.name) / "metrics.db"))
+        self.case = self.db.create_case("Metrics")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_fresh_case_counts_zero_applications(self) -> None:
+        snapshot = svc.metrics_snapshot(self.db, self.case)
+        self.assertEqual(snapshot["application_count"], 0)
+
+    def test_existing_application_is_counted(self) -> None:
+        svc.ensure_application(self.db, self.case, "building_residential")
+        snapshot = svc.metrics_snapshot(self.db, self.case)
+        self.assertEqual(snapshot["application_count"], 1)
+
+
+class FixEffortHttpRegression(unittest.TestCase):
+    """Reviewer follow-ups: reject 404 symmetry and criteria admin 422 at HTTP layer."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db = DB(str(Path(self.temp_dir.name) / "fv.db"))
+        self.case = self.db.create_case("HTTP regression")
+        svc.ensure_seed_state(self.db, self.case)
+        app = FastAPI(title="fv")
+        app.include_router(create_lupademo_router(lambda: self.db, lambda: load_settings()))
+        self.client = TestClient(app, raise_server_exceptions=False)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_reject_unknown_suggestion_returns_404_not_500(self) -> None:
+        response = self.client.post(
+            f"/cases/{self.case}/lupademo/application/building_residential/suggestions/nope/reject"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_criteria_admin_anonymous_is_403_before_validation(self) -> None:
+        # F28: auth-first on admin mutations; validation errors (422) only for owners.
+        response = self.client.post(
+            f"/cases/{self.case}/lupademo/admin/criteria",
+            data={"permit_type": "building_residential", "criteria_json": "[1,2]", "municipality": ""},
+        )
+        self.assertEqual(response.status_code, 403)

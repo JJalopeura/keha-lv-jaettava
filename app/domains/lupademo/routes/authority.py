@@ -1,16 +1,10 @@
 from __future__ import annotations
-import json
-import io
-import time
-import uuid
-import zipfile
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from pydantic import ValidationError
+from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
-from .. import scenarios, security, services as svc
+from .. import scenarios, services as svc
 from .common import RouteContext
 
 def create_authority_router(ctx: RouteContext) -> APIRouter:
@@ -46,6 +40,10 @@ def create_authority_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/cases/{case_id}/lupademo/authority/applications/{application_id}", response_class=HTMLResponse)
     def authority_detail(request: Request, case_id: str, application_id: str):
+        # F13: read endpoint must not create phantom applications via ensure_application.
+        permit_type = svc.application_id_for(application_id)
+        if not svc.artifact_json(db(), case_id, "permit_application", permit_type, {}):
+            raise HTTPException(status_code=404, detail="application_not_found")
         return templates.TemplateResponse(
             "authority/authority_detail.html",
             {
@@ -91,10 +89,21 @@ def create_authority_router(ctx: RouteContext) -> APIRouter:
 
     @router.post("/cases/{case_id}/lupademo/authority/applications/{application_id}/status")
     def update_authority_status(case_id: str, application_id: str, status: str = Form(...)):
+        # F14: validate against the shared status vocabulary; unknown application -> 404.
+        allowed = {"draft", "submitted", "in_review", "needs_more_info", "decided"}
+        if status not in allowed:
+            raise HTTPException(status_code=422, detail="unknown_status")
+        permit_type = svc.application_id_for(application_id)
+        if not svc.artifact_json(db(), case_id, "permit_application", permit_type, {}):
+            raise HTTPException(status_code=404, detail="application_not_found")
         queue = svc.artifact_json(db(), case_id, "authority_queue", "main", {"items": []})
+        matched = False
         for item in queue.get("items", []):
-            if item.get("application_id") == svc.application_id_for(application_id):
+            if item.get("application_id") == permit_type:
                 item["status"] = status
+                matched = True
+        if not matched:
+            queue.setdefault("items", []).append({"application_id": permit_type, "status": status})
         svc.save_artifact(db(), case_id, "authority_queue", "main", queue)
         svc.event(db(), case_id, "authority.status.updated", "Authority status updated", {"application_id": application_id, "status": status})
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/authority/applications/{application_id}", status_code=303)

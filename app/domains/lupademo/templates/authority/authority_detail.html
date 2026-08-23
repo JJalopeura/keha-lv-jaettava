@@ -24,7 +24,7 @@
   {{ recommended_action('Tarkista avoimet asiat', 'Käy käsittelijän tarkistuslista ja aktiiviset havainnot läpi ennen seuraavaa ratkaisua.', '#review', 'Siirry tarkistettaviin asioihin') }}
 </div>
 
-<form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/status" class="case-status-form case-status-toolbar"><label>Päivitä käsittelyn tila<select name="status"><option>Käsittelyssä</option><option>Täydennyspyyntö luonnosteltu</option><option>Päätetty</option></select></label><button class="secondary compact">Tallenna tila</button></form>
+<form method="post" action="/cases/{{ case_id }}/lupademo/authority/applications/{{ application.application_id }}/status" class="case-status-form case-status-toolbar"><label>Päivitä käsittelyn tila<select name="status" aria-label="Käsittelyn tila"><option value="in_review">Käsittelyssä</option><option value="needs_more_info">Täydennyspyyntö luonnosteltu</option><option value="decided">Päätetty</option></select></label><button class="secondary compact">Tallenna tila</button></form>
 
 {% if not precheck_gate.is_fresh %}
 {% set stale_reason_text = namespace(value='') %}
@@ -107,8 +107,8 @@
 {% endif %}
   <div class="section-heading-line"><div><p class="section-kicker">Luonnokset</p><h2>Muokkaa tai kopioi ennen käyttöä</h2><p class="muted">Luonnoksen muokkauksia ei tallenneta automaattisesti.</p></div></div>
   <div class="draft-grid">
-    <article><h3>Täydennyspyyntö</h3>{% if additional_info_draft %}<label>Otsikko<input value="{{ authority_copy(additional_info_draft.get('subject', '')) }}"></label><label>Sisältö<textarea rows="10">{{ authority_copy(additional_info_draft.get('body_md', '')) }}</textarea></label>{% for item in additional_info_draft.get('requested_items', []) %}<div class="open-question"><span>!</span><div><strong>{{ authority_copy(item.title) }}</strong><small>{{ authority_copy(item.reason) }}</small></div></div>{% endfor %}{% else %}<p class="empty-copy">Täydennyspyyntöä ei ole vielä muodostettu.</p>{% endif %}</article>
-    <article><h3>Käsittelymuistio</h3>{% if authority_memo %}<textarea rows="12">{{ authority_copy(authority_memo.get('memo_md', '')) }}</textarea>{% for check in authority_memo.get('caseworker_checks', []) %}<div class="review-row needs_review"><span class="review-icon">!</span><div>{{ authority_copy(check) }}</div></div>{% endfor %}{% else %}<p class="empty-copy">Käsittelymuistiota ei ole vielä muodostettu.</p>{% endif %}</article>
+    <article><h3>Täydennyspyyntö</h3>{% if additional_info_draft %}<label>Otsikko<input value="{{ authority_copy(additional_info_draft.get('subject', '')) }}"></label><label>Sisältö<textarea aria-label="Täydennyppyynnön sisältö" rows="10">{{ authority_copy(additional_info_draft.get('body_md', '')) }}</textarea></label>{% for item in additional_info_draft.get('requested_items', []) %}<div class="open-question"><span>!</span><div><strong>{{ authority_copy(item.title) }}</strong><small>{{ authority_copy(item.reason) }}</small></div></div>{% endfor %}{% else %}<p class="empty-copy">Täydennyspyyntöä ei ole vielä muodostettu.</p>{% endif %}</article>
+    <article><h3>Käsittelymuistio</h3>{% if authority_memo %}<textarea aria-label="Käsittelymuistion luonnos" rows="12">{{ authority_copy(authority_memo.get('memo_md', '')) }}</textarea>{% for check in authority_memo.get('caseworker_checks', []) %}<div class="review-row needs_review"><span class="review-icon">!</span><div>{{ authority_copy(check) }}</div></div>{% endfor %}{% else %}<p class="empty-copy">Käsittelymuistiota ei ole vielä muodostettu.</p>{% endif %}</article>
   </div>
 </section>
 
