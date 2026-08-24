@@ -22,8 +22,9 @@
 {% set common_labels = {"applicant_name": "Hakija", "business_id": "Y-tunnus", "contact_person": "Yhteyshenkilö", "phone": "Puhelin", "email": "Sähköposti", "municipality": "Kunta", "address": "Osoite", "property_id": "Kiinteistötunnus", "project_name": "Hankkeen nimi"} %}
 {% set pending_extraction_count = wizard.get('pending_extraction_count', field_extraction_queue.get('items', [])|selectattr('status', 'equalto', 'pending')|list|length) %}
 {% set pending_field_suggestion_count = wizard.get('pending_field_suggestion_count', suggestions|selectattr('status', 'equalto', 'pending')|list|length) %}
-{% set pending_field_suggestions = suggestions|selectattr('status', 'equalto', 'pending')|selectattr('suggested_value')|list %}
-{% set has_ai_review = pending_extraction_count or pending_field_suggestions|length %}
+{% set pending_any_suggestions = suggestions|selectattr('status', 'equalto', 'pending')|list %}
+{% set pending_field_suggestions = pending_any_suggestions|selectattr('suggested_value')|list %}
+{% set has_ai_review = pending_extraction_count or pending_any_suggestions|length %}
 {% set suggestion_status_labels = {'pending': 'Odottaa tarkistusta', 'accepted': 'Hyväksytty', 'rejected': 'Hylätty'} %}
 {% set current_step_status = wizard.step_status.get(step, {}) %}
 <header class="application-header">
@@ -359,27 +360,38 @@
     {% endfor %}
   </div>
   {% endif %}
-  {% if suggestions|selectattr('suggested_value')|list %}
+  {% if suggestions|selectattr('suggested_value')|list or pending_any_suggestions %}
   <div class="field-suggestions-history" id="field-suggestions">
     <div class="field-suggestions-history-list">
-      {% for suggestion in suggestions if suggestion.suggested_value %}
+      {% for suggestion in suggestions if suggestion.suggested_value or suggestion.status == 'pending' %}
       <article class="field-suggestion-history-row">
         <div class="field-suggestion-history-copy">
           <strong>{{ field_labels.get(suggestion.field_id, "Valittu kenttä") }}</strong>
           <small>{{ suggestion_status_labels.get(suggestion.status, "Tarkistettava") }}{% if suggestion.fallback_used %} · Paikallinen tekoälysimulaatio{% endif %}</small>
         </div>
+        {% if suggestion.suggested_value %}
         <div class="field-suggestion-history-value">
           <span>{{ "Hyväksytty arvo" if suggestion.status == "accepted" else "Tekoälyn ehdotus" }}</span>
           <p>{{ suggestion.get('accepted_value') or suggestion.suggested_value }}</p>
         </div>
+        {% else %}
+        <div class="field-suggestion-history-value">
+          <span>Tekoälyn arvio</span>
+          <p>{% for warning in suggestion.warnings %}{{ warning }}{% if not loop.last %} {% endif %}{% endfor %}{% if not suggestion.warnings %}{{ suggestion.rationale }}{% endif %}</p>
+        </div>
+        {% endif %}
         <div class="field-suggestion-history-status">
           <span class="status {% if suggestion.status == 'accepted' %}good{% elif suggestion.status == 'rejected' %}warn{% endif %}">{{ suggestion_status_labels.get(suggestion.status, "Tarkistettava") }}</span>
         </div>
         {% if suggestion.status == "pending" %}
         <div class="suggestion-review-actions">
           <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/accept" class="suggestion-edit-form">
+            {% if suggestion.suggested_value %}
             <textarea name="edited_value" rows="3" aria-label="Muokattu ehdotus kentälle {{ field_labels.get(suggestion.field_id, suggestion.field_id) }}">{{ suggestion.suggested_value }}</textarea>
-            <button>Hyväksy ehdotus</button>
+            {% else %}
+            <textarea name="edited_value" rows="2" aria-label="Anna arvo kentälle {{ field_labels.get(suggestion.field_id, suggestion.field_id) }}" placeholder="{{ "Kirjoita arvo, jos sinulla on se tiedossa." }}"></textarea>
+            {% endif %}
+            <button>{{ "Hyväksy ehdotus" if suggestion.suggested_value else "Tallenna arvo" }}</button>
           </form>
           <form method="post" action="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/suggestions/{{ suggestion.id }}/reject">
             <button class="secondary" type="submit">Hylkää</button>

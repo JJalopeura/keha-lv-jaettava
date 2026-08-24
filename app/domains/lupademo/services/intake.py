@@ -458,6 +458,7 @@ def run_json_agent(
     max_output_tokens: int = 4000,
     reasoning_effort: str = "medium",
     timeout_s: float | None = None,
+    task_id: Optional[str] = None,
 ) -> Any:
     prompt = render_agent_prompt(agent, prompt_values)
     retrieval_manifest = azure_vector_store_manifest(db, settings, case_id, vector_ids or [])
@@ -479,7 +480,7 @@ def run_json_agent(
             prompt,
             db=db,
             case_id=case_id,
-            task_id=None,
+            task_id=task_id,
             agent=f"lupademo.{agent}",
             vector_store_ids_list=vids,
             max_output_tokens=max_output_tokens,

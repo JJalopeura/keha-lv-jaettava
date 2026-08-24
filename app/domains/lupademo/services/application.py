@@ -265,6 +265,7 @@ def _run_check_agents(
     vector_ids: list[str] | None = None,
     max_output_tokens: int = 5000,
     timeout_s: float | None = None,
+    task_id: str = "",
 ) -> list[Issue]:
     """Run completeness and consistency validator agents and return merged issues."""
     if vector_ids is None:
@@ -282,6 +283,7 @@ def _run_check_agents(
             fallback={"issues": []},
             max_output_tokens=max_output_tokens,
             timeout_s=timeout_s,
+            task_id=task_id or None,
         )
         issues: list[Issue] = []
         if isinstance(response, IssueListResponse):
@@ -1110,6 +1112,7 @@ def create_field_suggestion(db: Any, case_id: str, permit_type: str, field_id: s
             max_output_tokens=3000,
             reasoning_effort="low",
             timeout_s=600,
+            task_id=job_id or None,
         )
         if isinstance(response, FieldSuggestionResponse) and response.suggestions:
             suggestion = response.suggestions[0]
@@ -1209,15 +1212,24 @@ def accept_selected_suggestions(db: Any, case_id: str, permit_type: str, suggest
 
 def accept_all_suggestions(db: Any, case_id: str, permit_type: str) -> dict[str, int]:
     permit_type = application_id_for(permit_type)
+    app = ensure_application(db, case_id, permit_type)
     pending = artifact_json(db, case_id, "ai_suggestions", permit_type, {"suggestions": []}).get("suggestions", [])
-    field_suggestion_ids = [
-        str(item.get("id"))
-        for item in pending
-        if isinstance(item, dict) and item.get("status") == "pending" and item.get("suggested_value") and item.get("id")
-    ]
-    accept_selected_suggestions(db, case_id, permit_type, field_suggestion_ids)
+    field_suggestion_ids: list[str] = []
+    no_value_ids: list[str] = []
+    for item in pending:
+        if not isinstance(item, dict) or item.get("status") != "pending" or not item.get("id"):
+            continue
+        # Suggestions without a suggested_value (AI found nothing usable) cannot be
+        # accepted as-is; resolve them against the user's current form value.
+        if item.get("suggested_value"):
+            field_suggestion_ids.append(str(item["id"]))
+        elif str(app.get("form_data", {}).get(item.get("field_id"), "") or "").strip():
+            no_value_ids.append(str(item["id"]))
+        else:
+            reject_suggestion(db, case_id, permit_type, str(item["id"]))
+    accept_selected_suggestions(db, case_id, permit_type, field_suggestion_ids + no_value_ids)
     extraction_count = accept_all_extraction_queue_items(db, case_id, permit_type)
-    return {"field_suggestions": len(field_suggestion_ids), "extractions": extraction_count}
+    return {"field_suggestions": len(field_suggestion_ids) + len(no_value_ids), "extractions": extraction_count}
 
 
 def reject_suggestion(db: Any, case_id: str, permit_type: str, suggestion_id: str) -> dict[str, Any]:
@@ -1651,6 +1663,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             vector_ids=vector_ids,
             max_output_tokens=5000,
             timeout_s=PACKAGE_ANALYSIS_TIMEOUT_SECONDS,
+            task_id=job_id,
         )
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")
@@ -1665,6 +1678,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             vector_ids=vector_ids,
             fallback={"criteria_results": []},
             max_output_tokens=6000,
+            task_id=job_id or None,
         )
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "criteria_assessor", "Kriteeriarviointi valmis.")
@@ -1738,6 +1752,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             },
             max_output_tokens=5000,
             reasoning_effort="low",
+            task_id=job_id or None,
         )
         if isinstance(precheck, ApplicantPrecheckReport):
             precheck_dict = asdict(precheck)

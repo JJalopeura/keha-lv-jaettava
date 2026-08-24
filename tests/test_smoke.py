@@ -999,12 +999,16 @@ class Pages(unittest.TestCase):
         materials_page = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/2")
 
         self.assertIn("Asemapiirros / sijaintikartta", check_page.text)
-        self.assertIn("Kaavaote", check_page.text)
+        # zoning_extract (Kaavaote) is no longer a hard requirement — it surfaces
+        # only as a minor criteria recommendation, not a missing official attachment.
+        self.assertNotIn("missing_attachment_zoning_extract", check_page.text)
         self.assertIn("Julkinen yhteenveto", check_page.text)
         self.assertNotIn("Liite liite", check_page.text)
         self.assertIn("/wizard/2#materials", check_page.text)
         self.assertIn("Puuttuvat viranomaisliitteet", materials_page.text)
-        self.assertIn("Tarkkailu ja raportointi", materials_page.text)
+        # monitoring_plan is now a minor criteria recommendation, not a required
+        # official attachment — it no longer appears in the missing-attachments list.
+        self.assertNotIn("Tarkkailu ja raportointi", materials_page.text)
 
     def test_extraction_suggestion_is_available_under_matching_form_field(self) -> None:
         fresh_case = db.create_case("Inline extraction suggestion", language="fi")

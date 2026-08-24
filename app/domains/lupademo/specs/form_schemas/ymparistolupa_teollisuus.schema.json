@@ -201,9 +201,7 @@
   ],
   "required_attachments": [
     "environmental_application",
-    "site_map",
-    "zoning_extract",
-    "public_summary"
+    "site_map"
   ],
   "conditional_attachments": [
     "baseline_report",

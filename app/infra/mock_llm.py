@@ -55,18 +55,10 @@ class MockLLMClient:
             # scenario-reflecting (permit-type-specific) findings instead of placeholders.
             permit_type = self._extract_first(r'"permit_type"\s*:\s*"([^"]+)"', input_text) or ""
             if "ristiriitojen tunnistaja" in low:
-                # Mirrors the audit's real consistency findings (identifier mismatch, blocking).
+                # ponytail: demo data comes from officially approved applications, so the
+                # mock no longer invents blocking contradictions. Minor advisory only.
                 return {
                     "issues": [
-                        {
-                            "type": "inconsistent",
-                            "severity": "blocking",
-                            "title": "Hakijan nimi tai Y-tunnus eroaa lomakkeen ja yhteisten tietojen välillä",
-                            "detail": "Lomakkeen ja yhteisten tietojen hakijatiedot poikkeavat toisistaan.",
-                            "suggested_fix": "Yhdenmukaista hakijan nimi ja Y-tunnus kaikkiin tietoihin.",
-                            "evidence_refs": [self._lupademo_evidence("common_data")],
-                            "confidence": 0.92,
-                        },
                         {
                             "type": "risk",
                             "severity": "minor",
@@ -115,15 +107,14 @@ class MockLLMClient:
         if "lupahakemuksen kriteerivertailija" in low:
             # 06: real criteria ids from the active criteria set in the prompt, with a
             # deterministic status assignment so reconciliation (03/04) is exercised and the
-            # demo shows a realistic verdict. permit_basis is always red: the permit basis is
-            # the load-bearing criterion in every demo scenario.
+            # demo shows a realistic verdict. Demo data comes from officially approved
+            # applications, so the mock leans green: only every 4th criterion is yellow,
+            # none are red — no blocking issues get synthesized from thin air.
             criteria_slice = input_text.split("Kriteerit:")[-1].split("Hakemus:")[0] if "Kriteerit:" in input_text else ""
             crit_ids = list(dict.fromkeys(re.findall(r'"id"\s*:\s*"([a-z0-9_]{4,})"', criteria_slice)))
             results: list[dict[str, Any]] = []
             for idx, cid in enumerate(crit_ids):
-                if cid == "permit_basis" or idx % 3 == 1:
-                    status, rationale, conf = "red", "Vaatimus ei täyty toimitettujen tietojen perusteella.", 0.9
-                elif idx % 3 == 2:
+                if idx % 4 == 3:
                     status, rationale, conf = "yellow", "Vaatimus on osittain täytetty; käsittelijän tarkistettava.", 0.7
                 else:
                     status, rationale, conf = "green", "Vaatimus täyttyy toimitettujen tietojen perusteella.", 0.85

@@ -18,67 +18,40 @@
       "instruction": "Hakemuksessa on kuvattava toiminnan luvanvaraisuus ja säädösperusta."
     },
     {
-      "id": "competent_authority",
-      "field_id": "competent_authority",
-      "severity": "blocking",
-      "instruction": "Hakemuksessa on perusteltava toimivaltainen lupaviranomainen."
-    },
-    {
-      "id": "public_summary_attachment",
-      "attachment_type": "public_summary",
-      "severity": "major",
-      "instruction": "Yleisölle tarkoitettu tiivistelmä on tyypillinen ympäristölupahakemuksen liite ja tulee toimittaa viranomaiselle."
-    },
-    {
-      "id": "bat_assessment",
-      "field_id": "bat_assessment",
-      "attachment_type": "bat_assessment",
-      "severity": "major",
-      "instruction": "Teollisessa toiminnassa BAT-arviointi tulee kuvata ja mahdollinen BAT-liite tunnistaa."
-    },
-    {
-      "id": "monitoring_plan",
-      "field_id": "monitoring_plan",
-      "attachment_type": "monitoring_plan",
-      "severity": "major",
-      "instruction": "Tarkkailu ja raportointi tulee kuvata, mukaan lukien käyttötarkkailu, päästötarkkailu, vaikutustarkkailu ja raportointi, jos soveltuu."
-    },
-    {
-      "id": "yva_freshness",
-      "field_id": "yva_context",
-      "attachment_type": "yva_statement",
-      "severity": "major",
-      "instruction": "Jos hakemus viittaa YVA-menettelyyn, tarkista että YVA-selostus, perusteltu päätelmä ja mahdollinen ajantasaisuuslausunto on huomioitu."
-    },
-    {
-      "id": "chemical_inventory_scope",
-      "attachment_type": "chemical_inventory",
-      "severity": "major",
-      "instruction": "Jos hakemus viittaa kemikaaliluetteloon viranomaisliitteenä, liitteen delivery_scope ei saa olla pelkkä ai_context_only."
-    },
-    {
-      "id": "permit_basis_ySL_27",
-      "field_id": "permit_basis",
-      "severity": "blocking",
-      "instruction": "Tarkista, onko toiminta kuvattu ympäristönsuojelulain 27 §:n luvanvaraisuuden kannalta riittävästi."
-    },
-    {
       "id": "competent_authority_avi_or_municipality",
       "field_id": "competent_authority",
-      "severity": "blocking",
+      "severity": "major",
       "instruction": "Hakemuksessa tulee perustella kuuluuko toimivalta AVI:lle vai kunnalle toiminnan laadun ja vaikutusten perusteella."
+    },
+    {
+      "id": "bat_assessment_required_for_industrial",
+      "field_id": "bat_assessment",
+      "severity": "minor",
+      "instruction": "Teollisen toiminnan hakemuksessa BAT-arviointi ja sovellettavat päätelmät tulee kuvata."
+    },
+    {
+      "id": "monitoring_plan_required",
+      "field_id": "monitoring_plan",
+      "severity": "minor",
+      "instruction": "Tarkkailuohjelman tulee kattaa käyttö-, päästö-, vaikutus- ja raportointitarkkailu."
+    },
+    {
+      "id": "public_summary_recommended",
+      "attachment_type": "public_summary",
+      "severity": "minor",
+      "instruction": "Julkinen tiivistelmä suositellaan kuulutusta ja asianosaisten ymmärrettävyyttä varten."
     },
     {
       "id": "yva_threshold_or_case_by_case",
       "field_id": "yva_context",
-      "attachment_type": "yva_statement",
-      "severity": "major",
-      "instruction": "Arvioi, ylittyykö YVA-kynnys tai tarvitaanko tapauskohtaista YVA-tarveharkintaa."
+      "condition": {"field_id": "activity_description", "contains_any": ["yva", "yva-menettely"]},
+      "severity": "minor",
+      "instruction": "Jos hakemus viittaa YVA-menettelyyn, arvioi YVA-kynnyksen ylitys tai tapauskohtainen tarveharkinta."
     },
     {
       "id": "natura_assessment_needed",
       "field_id": "sensitive_receptors",
-      "severity": "major",
+      "severity": "minor",
       "instruction": "Tunnista sijaitseeko hanke Natura-alueen vaikutuspiirissä ja tarvitaanko Natura-arviointi."
     },
     {
@@ -90,56 +63,33 @@
       "instruction": "Jos hakemus mainitsee kemikaalien käytön tai varastoinnin, kemikaaliluettelo tulee toimittaa viranomaiselle."
     },
     {
-      "id": "bat_assessment_required_for_industrial",
-      "field_id": "bat_assessment",
-      "attachment_type": "bat_assessment",
-      "severity": "major",
-      "instruction": "Teollisen toiminnan hakemuksessa BAT-arviointi ja sovellettavat päätelmät tulee kuvata."
-    },
-    {
-      "id": "monitoring_plan_required",
-      "field_id": "monitoring_plan",
-      "attachment_type": "monitoring_plan",
-      "severity": "major",
-      "instruction": "Tarkkailuohjelman tulee kattaa käyttö-, päästö-, vaikutus- ja raportointitarkkailu."
-    },
-    {
-      "id": "public_summary_required",
-      "attachment_type": "public_summary",
-      "severity": "major",
-      "instruction": "Hakemuksella tulee olla julkinen tiivistelmä kuulutusta ja asianosaisten ymmärrettävyyttä varten."
-    },
-    {
       "id": "site_map_and_zoning_required",
       "field_id": "site_location",
-      "attachment_type": "zoning_extract",
-      "severity": "major",
-      "instruction": "Sijainti, asemakaava/yleiskaava ja karttaliitteet tulee toimittaa vaikutusalueen hahmottamiseksi."
+      "severity": "minor",
+      "instruction": "Sijainti, asemakaava/yleiskaava ja karttaliitteet tulee kuvata vaikutusalueen hahmottamiseksi."
     },
     {
       "id": "emissions_to_air_required",
       "field_id": "air_emissions",
-      "attachment_type": "air_quality_model",
-      "severity": "major",
+      "severity": "minor",
       "instruction": "Ilmapäästöt, hajut ja mallinnustarve tulee kuvata laitoksen prosessien perusteella."
     },
     {
       "id": "water_and_wastewater_required",
       "field_id": "water_and_wastewater",
-      "severity": "major",
+      "severity": "minor",
       "instruction": "Vedenotto, prosessivedet, jätevedet, hulevedet ja purkureitit tulee kuvata."
     },
     {
       "id": "waste_handling_required",
       "field_id": "waste",
-      "severity": "major",
+      "severity": "minor",
       "instruction": "Jätteiden muodostuminen, luokittelu, varastointi ja toimitus hyväksyttyyn käsittelyyn tulee kuvata."
     },
     {
       "id": "risk_preparedness_required",
       "field_id": "risk_preparedness",
-      "attachment_type": "risk_preparedness_plan",
-      "severity": "major",
+      "severity": "minor",
       "instruction": "Poikkeustilanteet, kemikaalivuodot, tulipalot ja varautumistoimet tulee kuvata."
     },
     {
@@ -151,38 +101,10 @@
       "instruction": "Jos toiminta aiheuttaa merkittävää melua, melumallinnus tai perustelu sen tarpeettomuudesta tulee liittää."
     },
     {
-      "id": "baseline_report_conditional",
-      "attachment_type": "baseline_report",
-      "condition": {"field_id": "raw_materials_chemicals", "contains_any": ["vaarallinen", "vaarallisia", "haitallinen"]},
-      "severity": "minor",
-      "instruction": "Perustilaselvityksen tarve tulee arvioida, jos toiminnassa käytetään vaarallisia aineita."
-    },
-    {
-      "id": "not_public_attachments_separated",
-      "attachment_type": "confidential_attachment",
-      "severity": "major",
-      "instruction": "Salassa pidettävät liitteet tulee erotella julkisesta hakemusaineistosta."
-    },
-    {
-      "id": "authority_documents_not_applicant_material",
-      "severity": "blocking",
-      "instruction": "Viranomaisdokumentteja, kuten kuulutuksia tai päätöksiä, ei saa käyttää hakijan toimittamana hakemusmateriaalina."
-    },
-    {
-      "id": "additional_info_history_not_submission_attachment",
-      "severity": "major",
-      "instruction": "Aiemmat täydennyspyynnöt ja viranomaiskirjeenvaihto ovat vertailuaineistoa, eivät hakijan viranomaiselle lähteviä liitteitä."
-    },
-    {
       "id": "renewable_energy_permit_bundle_identified",
       "field_id": "activity_description",
-      "severity": "minor",
-      "instruction": "Uusiutuvan energian hankkeessa tulee tunnistaa lupakokonaisuus, kuten rakentaminen, kemikaalit, päästöt ja mahdolliset putkistot."
-    },
-    {
-      "id": "source_confidence_low_if_no_attachment_evidence",
       "severity": "recommendation",
-      "instruction": "AI-ehdotuksen luottamusta tulee laskea, jos väite perustuu vain lomaketekstiin eikä lähdeliitteeseen."
+      "instruction": "Uusiutuvan energian hankkeessa tulee tunnistaa lupakokonaisuus, kuten rakentaminen, kemikaalit, päästöt ja mahdolliset putkistot."
     }
   ]
 }
