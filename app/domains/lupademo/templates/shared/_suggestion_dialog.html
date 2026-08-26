@@ -1,12 +1,13 @@
 <dialog class="suggestion-dialog" data-suggestion-dialog aria-labelledby="suggestion-dialog-title">
   <div class="suggestion-dialog__header">
     <div>
-      <p class="section-kicker">AI-ehdotus</p>
+      <p class="section-kicker" data-dialog-kicker>AI-ehdotus</p>
       <h2 id="suggestion-dialog-title" data-dialog-field>Ehdotuksen tarkistus</h2>
     </div>
     <button type="button" class="secondary compact" data-dialog-close>Sulje</button>
   </div>
   <div class="suggestion-dialog__body">
+    <div data-dialog-ai-section>
     <p class="suggestion-dialog__confidence" data-dialog-confidence></p>
     <p data-dialog-rationale></p>
     <details class="evidence-disclosure suggestion-dialog__evidence">
@@ -21,6 +22,7 @@
         <button type="button" class="secondary" data-dialog-reject>Hylkää</button>
       </div>
     </form>
+    </div>
     <section class="suggestion-dialog__common-data" data-dialog-common-data hidden>
       <h3>Yhteinen tieto</h3>
       <p class="suggestion-dialog__common-data-intro" data-dialog-common-intro></p>
@@ -28,13 +30,22 @@
         <div><dt>LV:n yhteinen tieto</dt><dd data-dialog-common-lv></dd></div>
         <div><dt>Tämän hakemuksen arvo</dt><dd data-dialog-common-app></dd></div>
       </dl>
-      <div class="suggestion-dialog__actions suggestion-dialog__common-data-actions">
+      <div class="suggestion-dialog__common-data-actions">
         <form method="post" data-dialog-common-form>
           <input type="hidden" name="field_id" data-dialog-common-field-id>
           <input type="hidden" name="redirect_to" value="">
-          <button type="submit" class="secondary compact" name="action" value="keep" data-dialog-common-keep>Eroavaisuus on ok — pidä erillään</button>
-          <button type="submit" class="secondary compact" name="action" value="pull" data-dialog-common-pull>Päivitä kentän arvo LV:n arvolla</button>
-          <button type="submit" class="secondary compact" name="action" value="push" data-dialog-common-push>Päivitä kentän arvo LV:n yhteisiin tietoihin</button>
+          <button type="submit" class="common-data-choice" name="action" value="keep" data-dialog-common-keep>
+            <strong>Eroavaisuus on ok</strong>
+            <small>Pidä arvot erillään — älä kopioi kumpaakaan suuntaan</small>
+          </button>
+          <button type="submit" class="common-data-choice" name="action" value="pull" data-dialog-common-pull>
+            <strong>Päivitä kenttä LV:n arvolla</strong>
+            <small>Käytä tässä hakemuksessa LV:n yhteistä tietoa</small>
+          </button>
+          <button type="submit" class="common-data-choice common-data-choice--primary" name="action" value="push" data-dialog-common-push>
+            <strong>Päivitä kentän arvo LV:n yhteisiin tietoihin</strong>
+            <small>Vie tämä arvo kaikkien hakemusten yhteiseen tietoon</small>
+          </button>
         </form>
       </div>
     </section>
@@ -48,6 +59,8 @@
   var rejectButton = dialog.querySelector("[data-dialog-reject]");
   var closeButton = dialog.querySelector("[data-dialog-close]");
   var field = dialog.querySelector("[data-dialog-field]");
+  var kicker = dialog.querySelector("[data-dialog-kicker]");
+  var aiSection = dialog.querySelector("[data-dialog-ai-section]");
   var confidence = dialog.querySelector("[data-dialog-confidence]");
   var evidenceSummary = dialog.querySelector("[data-dialog-evidence-summary]");
   var rationale = dialog.querySelector("[data-dialog-rationale]");
@@ -87,6 +100,11 @@
       activeButton = button;
       activePayload = JSON.parse(button.dataset.suggestionPayload || "{}");
       field.textContent = activePayload.field_label || "Ehdotuksen tarkistus";
+      // Shared-data-only payloads (no AI suggestion behind the button) hide the
+      // AI section entirely — the dialog is then just the common-data resolver.
+      var commonOnly = !activePayload.accept_url && activePayload.common_data;
+      aiSection.hidden = Boolean(commonOnly);
+      kicker.textContent = commonOnly ? "Yhteinen tieto" : "AI-ehdotus";
       var confidenceValue = parseFloat(activePayload.confidence);
       var isFallback = Boolean(activePayload.fallback_used);
       var noSource = isNoSourceSupport(activePayload);

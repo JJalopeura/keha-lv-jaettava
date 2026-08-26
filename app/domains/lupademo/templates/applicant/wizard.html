@@ -127,11 +127,8 @@
             </span>
           {% endif %}
           {% if field_change.item %}
-            <button type="button" class="field-suggestion-trigger field-discrepancy-trigger" aria-label="Avaa yhteisen tiedon eroavaisuusdialogi kentälle {{ field.label }}" title="Yhteisen tiedon eroavaisuus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': application.form_data.get(field.id, ''), 'confidence': 0, 'fallback_used': false, 'rationale': 'Kentän arvo eroaa LV:n yhteisistä tiedoista.', 'warnings': [], 'evidence_refs': [], 'accept_url': '', 'reject_url': '', 'accept_field_id': '', 'common_data': common_ctx} | tojson | forceescape }}">{{ "Eroaa LV:n tiedoista" if field_change.item.direction in ("lv_to_app", "conflict") else "Ehdota LV:hen" }}</button>
+            <button type="button" class="field-suggestion-trigger" aria-label="Avaa yhteisen tiedon dialogi kentälle {{ field.label }}" title="Yhteisen tiedon eroavaisuus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': application.form_data.get(field.id, ''), 'confidence': 0, 'fallback_used': false, 'rationale': 'Kentän arvo eroaa LV:n yhteisistä tiedoista.', 'warnings': [], 'evidence_refs': [], 'accept_url': '', 'reject_url': '', 'accept_field_id': '', 'common_data': common_ctx} | tojson | forceescape }}">{{ "Eroaa LV:n tiedoista" if field_change.item.direction in ("lv_to_app", "conflict") else "Ehdota LV:hen" }}</button>
           {% endif %}</span>
-          {% if field_change.item %}
-          <span class="field-note attention"><i aria-hidden="true"></i>{{ "Muuttunut LV:ssä" if field_change.item.direction == "lv_to_app" else ("Ehdotettu LV:hen" if field_change.item.direction == "app_to_lv" else "Konflikti") }}</span>
-          {% endif %}
         </label>
         {% endfor %}
       </div>

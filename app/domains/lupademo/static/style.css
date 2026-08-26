@@ -886,17 +886,59 @@ section {
 }
 
 .suggestion-dialog__common-data-actions form {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
   margin: 0;
 }
 
-.field-discrepancy-trigger {
-  margin-left: 6px;
-  border-color: #e9b866;
-  color: #8a4b08;
-  background: #fff7e6;
+/* Stacked full-width choice buttons in the shared-data dialog. */
+.common-data-choice {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+}
+
+.common-data-choice strong {
+  color: #101828;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.common-data-choice small {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.common-data-choice:hover,
+.common-data-choice:focus-visible {
+  border-color: #9ccdbb;
+  background: #f2faf6;
+  outline: 2px solid #9ccdbb;
+  outline-offset: 1px;
+}
+
+.common-data-choice--primary {
+  border-color: #9ccdbb;
+  background: #e6f4ee;
+}
+
+.common-data-choice--primary strong {
+  color: #0d5f57;
+}
+
+.common-data-choice--primary:hover,
+.common-data-choice--primary:focus-visible {
+  border-color: #0d5f57;
+  background: #d9efe5;
+  outline-color: #0d5f57;
 }
 
 @media (max-width: 900px) {
