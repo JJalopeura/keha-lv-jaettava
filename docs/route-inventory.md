@@ -48,6 +48,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | POST | `/customer/profile` | `update_customer_profile` | — (redirect) | — |
 | POST | `/lv/projects/{case_id}/common-data` | `update_lv` | — (redirect) | — |
 | POST | `/lv/projects/{case_id}/sync` | `accept_sync` | — (redirect) | — |
+| POST | `/cases/{case_id}/lupademo/application/{application_id}/common-data/field-sync` | `field_common_data_sync` | — (redirect) | **B** |
 | GET | `/api/lv/projects/{case_id}/common-data` | `common_data` | JSON | — |
 | POST | `/api/lv/events` | `lv_events` | JSON | — |
 | GET | `/cases/{case_id}/lupademo/start` | `start` | — (redirect) | **B** |

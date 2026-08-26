@@ -49,14 +49,13 @@
         <span>{{ "Hanketieto on muuttunut" if change.direction == "lv_to_app" else ("Hakemuksessa on uusi arvo" if change.direction == "app_to_lv" else "Arvot ovat ristiriidassa") }}</span>
         <p>Hankkeen tieto: {{ change.lv_value or "Ei arvoa" }} · Hakemuksen tieto: {{ change.app_values|join(", ") or "Ei arvoa" }}</p>
         {% if change.source_application_id %}<small>Lähdehakemus: {{ permit_labels.get(change.source_application_id, change.source_application_id) }}</small>{% endif %}
-        <form method="post" action="/lv/projects/{{ case_id }}/sync">
-          <input type="hidden" name="field_id" value="{{ change.field_id }}"><input type="hidden" name="direction" value="{{ change.direction }}"><input type="hidden" name="source_application_id" value="{{ change.source_application_id }}">
-          {% if change.direction == "conflict" %}<select name="resolution" aria-label="Ristiriidan ratkaisu"><option value="lv_wins">Käytä LV:n arvoa kaikissa</option><option value="app_wins">Käytä hakemuksen arvoa LV:ssä</option><option value="keep_separate">Pidä erillään</option><option value="manual">Muokkaa käsin</option></select><input name="manual_value" value="{{ change.lv_value }}" aria-label="Arvo käsin syötettynä">{% endif %}
-          <button>{{ "Ratkaise ristiriita" if change.direction == "conflict" else "Hyväksy muutos" }}</button>
-        </form>
+        <span class="field-suggestion-inline">
+          <button type="button" class="field-suggestion-trigger" aria-label="Avaa yhteisen tiedon dialogi kentälle {{ labels.get(change.field_id, change.field_id) }}" title="Ratkaise eroavaisuus" data-suggestion-open data-suggestion-payload="{{ {'field_id': change.field_id, 'field_label': labels.get(change.field_id, change.field_id), 'suggested_value': change.app_value, 'confidence': 0, 'fallback_used': false, 'rationale': 'Yhteisen tiedon arvo eroaa hakemuksen ja hankkeen välillä.', 'warnings': [], 'evidence_refs': [], 'accept_url': '', 'reject_url': '', 'accept_field_id': '', 'common_data': {'is_common_field': true, 'differs': true, 'lv_value': change.lv_value, 'app_value': change.app_value}} | tojson | forceescape }}">Ratkaise dialogissa</button>
+        </span>
       </div>
       {% endfor %}
 </section>
+{% include 'shared/_suggestion_dialog.html' %}
 {% endif %}
 
 <section class="hanke-applications" id="applications" aria-labelledby="applications-heading">

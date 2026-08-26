@@ -21,6 +21,23 @@
         <button type="button" class="secondary" data-dialog-reject>Hylkää</button>
       </div>
     </form>
+    <section class="suggestion-dialog__common-data" data-dialog-common-data hidden>
+      <h3>Yhteinen tieto</h3>
+      <p class="suggestion-dialog__common-data-intro" data-dialog-common-intro></p>
+      <dl class="suggestion-dialog__common-data-values">
+        <div><dt>LV:n yhteinen tieto</dt><dd data-dialog-common-lv></dd></div>
+        <div><dt>Tämän hakemuksen arvo</dt><dd data-dialog-common-app></dd></div>
+      </dl>
+      <div class="suggestion-dialog__actions suggestion-dialog__common-data-actions">
+        <form method="post" data-dialog-common-form>
+          <input type="hidden" name="field_id" data-dialog-common-field-id>
+          <input type="hidden" name="redirect_to" value="">
+          <button type="submit" class="secondary compact" name="action" value="keep" data-dialog-common-keep>Eroavaisuus on ok — pidä erillään</button>
+          <button type="submit" class="secondary compact" name="action" value="pull" data-dialog-common-pull>Päivitä kentän arvo LV:n arvolla</button>
+          <button type="submit" class="secondary compact" name="action" value="push" data-dialog-common-push>Päivitä kentän arvo LV:n yhteisiin tietoihin</button>
+        </form>
+      </div>
+    </section>
   </div>
 </dialog>
 <script>
@@ -38,6 +55,13 @@
   var value = dialog.querySelector("[data-dialog-value]");
   var fieldId = dialog.querySelector("[data-dialog-field-id]");
   var reject = dialog.querySelector("[data-dialog-reject]");
+  var commonSection = dialog.querySelector("[data-dialog-common-data]");
+  var commonIntro = dialog.querySelector("[data-dialog-common-intro]");
+  var commonLv = dialog.querySelector("[data-dialog-common-lv]");
+  var commonApp = dialog.querySelector("[data-dialog-common-app]");
+  var commonForm = dialog.querySelector("[data-dialog-common-form]");
+  var commonFieldId = dialog.querySelector("[data-dialog-common-field-id]");
+  var commonRedirect = commonForm ? commonForm.querySelector("input[name='redirect_to']") : null;
   var activeButton;
   var activePayload;
 
@@ -118,6 +142,19 @@
       fieldId.value = activePayload.accept_field_id || "";
       acceptForm.action = activePayload.accept_url || "";
       reject.hidden = !activePayload.reject_url;
+      // Shared-data discrepancy section (wayfinder T3): shown only when the
+      // payload carries common-data context and the values actually differ.
+      var common = activePayload.common_data || null;
+      if (common && common.is_common_field && common.differs) {
+        commonSection.hidden = false;
+        commonFieldId.value = activePayload.field_id;
+        commonRedirect.value = window.location.pathname + window.location.search;
+        commonLv.textContent = common.lv_value || "Ei arvoa";
+        commonApp.textContent = common.app_value || "Ei arvoa";
+        commonIntro.textContent = "Tämä kenttä on asiointikokonaisuuden yhteinen tieto, ja sen arvo eroaa LV:n yhteisistä tiedoista. Valitse, miten toimit.";
+      } else {
+        commonSection.hidden = true;
+      }
       dialog.showModal();
       value.focus();
     });

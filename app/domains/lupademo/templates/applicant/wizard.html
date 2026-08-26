@@ -113,14 +113,25 @@
           {% set inline_suggestions = inline_field_suggestions|selectattr('field_id', 'equalto', field.id)|selectattr('status', 'equalto', 'pending')|selectattr('suggested_value')|list %}
           {% set inline_suggestion = inline_suggestions[0] if inline_suggestions else none %}
           {% set source_key = application.field_sources.get(field.id, "käyttäjän syöttämä") %}
+          {% set field_change = namespace(item=none) %}
+          {% for change in sync.changes if change.field_id == field.id %}{% set field_change.item = change %}{% endfor %}
+          {% set common_ctx = {
+            'is_common_field': field.get('common_data', false) == true,
+            'differs': field_change.item is not none,
+            'lv_value': field_change.item.lv_value if field_change.item else '',
+            'app_value': field_change.item.app_value if field_change.item else application.form_data.get(field.id, '')
+          } %}
           <span class="field-note"><i aria-hidden="true"></i>{{ source_labels.get(source_key, source_key) }}{% if inline_suggestion %}
             <span class="field-suggestion-inline" data-inline-suggestion>
-              <button type="button" class="field-suggestion-trigger" aria-label="Avaa tekoälyn ehdotus kentälle {{ field.label }}" title="Avaa tekoälyn ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.get('suggested_value', ''), 'confidence': inline_suggestion.get('confidence', 0), 'fallback_used': inline_suggestion.get('fallback_used', false), 'rationale': inline_suggestion.get('rationale', 'Aineistosta poimittu ehdotus.'), 'warnings': inline_suggestion.get('warnings', []), 'evidence_refs': inline_suggestion.get('evidence_refs', []), 'accept_url': inline_suggestion.get('accept_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/accept'), 'reject_url': inline_suggestion.get('reject_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/reject'), 'accept_field_id': inline_suggestion.get('field_id', '') if inline_suggestion.get('source_kind') == 'extraction' else ''} | tojson | forceescape }}">Tekoälyn ehdotus</button>
+              <button type="button" class="field-suggestion-trigger" aria-label="Avaa tekoälyn ehdotus kentälle {{ field.label }}" title="Avaa tekoälyn ehdotus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': inline_suggestion.get('suggested_value', ''), 'confidence': inline_suggestion.get('confidence', 0), 'fallback_used': inline_suggestion.get('fallback_used', false), 'rationale': inline_suggestion.get('rationale', 'Aineistosta poimittu ehdotus.'), 'warnings': inline_suggestion.get('warnings', []), 'evidence_refs': inline_suggestion.get('evidence_refs', []), 'accept_url': inline_suggestion.get('accept_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/accept'), 'reject_url': inline_suggestion.get('reject_url', '/cases/' ~ case_id ~ '/lupademo/application/' ~ application.application_id ~ '/suggestions/' ~ inline_suggestion.get('id', '') ~ '/reject'), 'accept_field_id': inline_suggestion.get('field_id', '') if inline_suggestion.get('source_kind') == 'extraction' else '', 'common_data': common_ctx} | tojson | forceescape }}">Tekoälyn ehdotus</button>
             </span>
+          {% endif %}
+          {% if field_change.item %}
+            <button type="button" class="field-suggestion-trigger field-discrepancy-trigger" aria-label="Avaa yhteisen tiedon eroavaisuusdialogi kentälle {{ field.label }}" title="Yhteisen tiedon eroavaisuus" data-suggestion-open data-suggestion-payload="{{ {'field_id': field.id, 'field_label': field.label, 'suggested_value': application.form_data.get(field.id, ''), 'confidence': 0, 'fallback_used': false, 'rationale': 'Kentän arvo eroaa LV:n yhteisistä tiedoista.', 'warnings': [], 'evidence_refs': [], 'accept_url': '', 'reject_url': '', 'accept_field_id': '', 'common_data': common_ctx} | tojson | forceescape }}">{{ "Eroaa LV:n tiedoista" if field_change.item.direction in ("lv_to_app", "conflict") else "Ehdota LV:hen" }}</button>
           {% endif %}</span>
-          {% for change in sync.changes if change.field_id == field.id %}
-          <span class="field-note attention"><i aria-hidden="true"></i>{{ "Muuttunut LV:ssä" if change.direction == "lv_to_app" else ("Ehdotettu LV:hen" if change.direction == "app_to_lv" else "Konflikti") }}</span>
-          {% endfor %}
+          {% if field_change.item %}
+          <span class="field-note attention"><i aria-hidden="true"></i>{{ "Muuttunut LV:ssä" if field_change.item.direction == "lv_to_app" else ("Ehdotettu LV:hen" if field_change.item.direction == "app_to_lv" else "Konflikti") }}</span>
+          {% endif %}
         </label>
         {% endfor %}
       </div>

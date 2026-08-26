@@ -41,9 +41,16 @@
     {% set current_service_name = service_names.get(application.permit_type if application is defined else '', 'Lupa-asiointi') %}
     {% set workspace_brand = 'LV' %} {% set workspace_brand_sub
     = 'Luvat ja valvonta' %}
+    {# Service identity (wayfinder T1): the header names the service the user
+       is in. The customer workspace (hankkeet, yhteiset tiedot) is LV's own
+       service; the case workbench (wizard) is the kunta's permit service —
+       the header shows the municipality so moving between "apps" is visible. #}
+    {% set service_kind = 'other' if authority_workspace or demo_workspace else 'lv' %}
+    {% set service_municipality = criteria_municipality if criteria_municipality is defined and criteria_municipality else (common.data.municipality if common is defined and common.data is defined and common.data.get('municipality') else '') %}
     {% if case_workbench %}
     {% set workspace_brand = current_service_name %}
-    {% set workspace_brand_sub = 'LV:n asiointipalvelu' %}
+    {% set workspace_brand_sub = (service_municipality ~ 'n asiointipalvelu') if service_municipality else 'Kunnan asiointipalvelu' %}
+    {% set service_kind = 'kunta' %}
     {% elif package_workbench %}
     {% set workspace_brand = 'Hakemuspaketin tarkistus' %}
     {% set workspace_brand_sub = 'Aineistotyöpöytä' %}
@@ -132,12 +139,13 @@
         <header
           class="app-header"
           data-workspace="{{ 'caseworker' if authority_workspace else ('platform' if demo_workspace else ('workbench' if case_workbench else 'customer')) }}"
+          data-service="{{ service_kind }}"
         >
           <a
             href="{{ workspace_home }}"
             class="app-brand"
           >
-            {% if not hide_brand_mark %}
+            {% if not hide_brand_mark and service_kind == 'lv' %}
             <span class="brand-mark" aria-hidden="true">LV</span>
             {% endif %}
             <span

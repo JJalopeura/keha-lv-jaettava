@@ -216,7 +216,13 @@ def accept_common_data_sync(
         # F19: only sync fields the target schema actually defines — never pollute form_data.
         return {f["id"] for f in load_form_schema(permit_type).get("fields", [])}
 
-    if direction == "lv_to_app" or (direction == "conflict" and resolution == "lv_wins"):
+    # "Eroavaisuus on ok": keep the values separate without copying either way,
+    # regardless of the change direction. For conflicts this preserves the old
+    # keep_separate behavior; for lv_to_app/app_to_lv it resolves the proposal
+    # without writing anything.
+    if resolution == "keep_separate":
+        value_for_base = common["data"].get(field_id, "")
+    elif direction == "lv_to_app" or (direction == "conflict" and resolution == "lv_wins"):
         for permit_type in PERMIT_SCHEMAS:
             if field_id not in _schema_field_ids(permit_type):
                 continue  # F19: field absent from this schema — skip instead of writing it in.
@@ -246,8 +252,6 @@ def accept_common_data_sync(
         common["version"] = int(common.get("version", 1)) + 1
         save_artifact(db, case_id, "lv_common_data", "main", common)
         value_for_base = manual_value
-    elif direction == "conflict" and resolution == "keep_separate":
-        value_for_base = common["data"].get(field_id, "")
     sync = artifact_json(db, case_id, "common_data_sync_state", "main", {"base": DEFAULT_COMMON_DATA.copy(), "changes": []})
     sync["base"][field_id] = value_for_base
     save_artifact(db, case_id, "common_data_sync_state", "main", sync)

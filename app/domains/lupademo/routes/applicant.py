@@ -665,6 +665,42 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         svc.accept_common_data_sync(db(), case_id, field_id, direction, source_application_id=source_application_id, resolution=resolution, manual_value=manual_value)
         return RedirectResponse(url=f"/lv/projects/{case_id}", status_code=303)
 
+    @router.post("/cases/{case_id}/lupademo/application/{application_id}/common-data/field-sync")
+    async def field_common_data_sync(case_id: str, application_id: str, request: Request):
+        """Field-level shared-data dialog (wayfinder T3/T4): resolve a common-data
+        discrepancy from inside the wizard or the project page.
+
+        Actions:
+        - keep: "eroavaisuus on ok" — resolve the proposal without copying values
+        - pull: take LV's shared value into this application's field
+        - push: push this application's field value into LV shared data
+        """
+        form = await request.form()
+        action = str(form.get("action") or "")
+        field_id = str(form.get("field_id") or "")
+        if not field_id:
+            raise HTTPException(status_code=422, detail="field_id_required")
+        permit_type = svc.application_id_for(application_id)
+        app = svc.ensure_application(db(), case_id, permit_type)
+        common = svc.artifact_json(db(), case_id, "lv_common_data", "main", {"data": svc.DEFAULT_COMMON_DATA.copy()})
+        sync = svc.detect_common_data_changes(db(), case_id)
+        change = next((c for c in sync.get("changes", []) if c.get("field_id") == field_id), None)
+        direction = str((change or {}).get("direction") or "")
+        if action == "keep":
+            svc.accept_common_data_sync(db(), case_id, field_id, direction or "app_to_lv", source_application_id=permit_type, resolution="keep_separate")
+        elif action == "pull":
+            svc.accept_common_data_sync(db(), case_id, field_id, "lv_to_app", source_application_id=permit_type, resolution="lv_wins")
+        elif action == "push":
+            field_value = str(app.get("form_data", {}).get(field_id, "") or "")
+            svc.update_lv_common_data(db(), case_id, {field_id: field_value})
+            svc.accept_common_data_sync(db(), case_id, field_id, "app_to_lv", source_application_id=permit_type, resolution="app_wins")
+        else:
+            raise HTTPException(status_code=422, detail="unknown_action")
+        redirect_to = str(form.get("redirect_to") or "")
+        if redirect_to.startswith("/"):
+            return RedirectResponse(url=redirect_to, status_code=303)
+        return RedirectResponse(url=f"/lv/projects/{case_id}", status_code=303)
+
     @router.get("/api/lv/projects/{case_id}/common-data")
     def common_data(case_id: str):
         svc.ensure_seed_state(db(), case_id)
