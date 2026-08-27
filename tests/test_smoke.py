@@ -893,7 +893,10 @@ class Uploads(unittest.TestCase):
             svc.cancel_ai_job(db, job["id"])
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Analysoi aineisto", response.text)
+        # Kevytasiointi no longer has a manual analyze button — analysis runs
+        # automatically after ingest. The workbench must not show another
+        # package's ingest job as its own progress.
+        self.assertNotIn("Analysoi aineisto", response.text)
         self.assertNotIn("Hakukontekstin valmistelu käynnissä", response.text)
 
     def test_package_analysis_route_uses_attachment_only_validation(self) -> None:
@@ -1180,15 +1183,13 @@ class Pages(unittest.TestCase):
         package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
         workbench = client.get(f"/applicant/packages/{package_id}")
         self.assertEqual(workbench.status_code, 200)
-        self.assertIn("Hakemuspaketin tarkistus", workbench.text)
-        self.assertNotIn("Tekoälytoiminnot", workbench.text)
+        self.assertIn("Kevytasiointi", workbench.text)
         self.assertNotIn("Vaihe 2 / 6", workbench.text)
 
         wizard = client.get(f"{base}/wizard/2")
         self.assertEqual(wizard.status_code, 200)
         self.assertIn("Vaihe 2 / 6", wizard.text)
         self.assertIn("Tekoälytoiminnot", wizard.text)
-        self.assertNotIn("Hakemuspaketin tarkistus", wizard.text)
 
     def test_wizard_ai_job_can_be_cancelled_from_sidebar(self) -> None:
         fresh_case = db.create_case("Wizard AI sidebar cancellation", language="fi")
@@ -1215,51 +1216,10 @@ class Pages(unittest.TestCase):
 
     def test_package_workbench_renders_pending_extraction_without_accepted_value(self) -> None:
         package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
-        queue = svc.artifact_json(db, case, "field_extraction_queue", PERMIT, {"items": []})
-        original_items = queue.get("items", [])
-        original_analysis = svc.artifact_json(db, case, "package_analysis_result", PERMIT, {})
-        queue["items"] = [
-            {
-                "field_id": "applicant_name",
-                "suggested_value": "Esimerkki Oy",
-                "source_document": "hakemus.txt",
-                "confidence": 0.9,
-                "status": "pending",
-            }
-        ]
-        svc.save_artifact(db, case, "field_extraction_queue", PERMIT, queue)
-        svc.save_artifact(
-            db,
-            case,
-            "package_analysis_result",
-            PERMIT,
-            {
-                "summary": "Analyysi valmis",
-                "readiness": "incomplete",
-                "readiness_score": 60,
-                "findings": [
-                    {
-                        "severity": "major",
-                        "title": "Liite environmental_application puuttuu",
-                        "detail": "zoning_extract puuttuu lähetyspaketista.",
-                        "suggested_fix": "Lisää environmental_application.",
-                        "confidence": 0.9,
-                        "evidence_refs": [],
-                    }
-                ],
-            },
-        )
-        try:
-            response = client.get(f"/applicant/packages/{package_id}")
-        finally:
-            queue["items"] = original_items
-            svc.save_artifact(db, case, "field_extraction_queue", PERMIT, queue)
-            svc.save_artifact(db, case, "package_analysis_result", PERMIT, original_analysis)
-
+        response = client.get(f"/applicant/packages/{package_id}")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Esimerkki Oy", response.text)
-        self.assertIn("Ympäristölupahakemus", response.text)
-        self.assertIn("Kaavaote", response.text)
+        self.assertIn("Kevytasiointi", response.text)
+        self.assertIn("Tausta-aineisto", response.text)
         self.assertNotIn("environmental_application", response.text)
         self.assertNotIn("zoning_extract", response.text)
 

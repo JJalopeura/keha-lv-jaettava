@@ -25,7 +25,7 @@ from docx import Document as DocxDocument
 from app.infra.llm_factory import LLMUnavailableError, create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
-from .core import ApplicantPrecheckReport, AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
+from .core import ApplicantPrecheckReport, AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, ProseSuggestionField, ProseSuggestionResponse, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
 from .jobs import complete_ai_job, mark_agent_complete, start_ai_job
 
 
@@ -659,6 +659,33 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
         except (TypeError, ValueError):
             normalized["score"] = 0
         return normalized
+    if response_model is ProseSuggestionResponse:
+        normalized = dict(payload) if isinstance(payload, dict) else {}
+        raw_fields = normalized.get("fields", [])
+        clean_fields: list[ProseSuggestionField] = []
+        if isinstance(raw_fields, list):
+            for f in raw_fields:
+                if not isinstance(f, dict):
+                    continue
+                field_id = str(f.get("field_id") or f.get("id") or "").strip()
+                if not field_id:
+                    continue
+                clean_fields.append(
+                    ProseSuggestionField(
+                        field_id=field_id,
+                        label=str(f.get("label") or field_id),
+                        value=str(f.get("value") or ""),
+                        source=str(f.get("source") or ""),
+                    )
+                )
+        return {
+            "request_id": str(normalized.get("request_id") or ""),
+            "criteria_version": str(normalized.get("criteria_version") or ""),
+            "prose_md": str(normalized.get("prose_md") or normalized.get("prose") or ""),
+            "fields": clean_fields,
+            "provider": str(normalized.get("provider") or ""),
+            "fallback_used": bool(normalized.get("fallback_used", False)),
+        }
     if response_model is not IssueListResponse:
         return payload
     issues = payload.get("issues", []) if isinstance(payload, dict) else []

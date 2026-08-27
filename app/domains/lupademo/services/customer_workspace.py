@@ -263,6 +263,14 @@ def _application_row(db: Any, case_id: str, permit_type: str, project: dict[str,
     ]
     package = artifact_json(db, case_id, "material_package", permit_type, {})
     attachments = list_attachments(db, case_id, permit_type)
+    wizard_url = f"/cases/{case_id}/lupademo/application/{permit_type}/wizard/1"
+    # Kevytasiointi hankkeet (created_from="kevytasiointi") open the service view
+    # directly — never the wizard (decision 2026-08-27).
+    application_url = wizard_url
+    if str(project.get("created_from") or "") == "kevytasiointi":
+        pid = str(package.get("package_id") or "")
+        if pid:
+            application_url = f"/applicant/packages/{pid}"
     if status == "submitted":
         task = "Hakemus lähetetty"
         task_kind = "done"
@@ -288,7 +296,7 @@ def _application_row(db: Any, case_id: str, permit_type: str, project: dict[str,
         "status_label": STATUS_LABELS.get(status, status),
         "task": task,
         "task_kind": task_kind,
-        "application_url": f"/cases/{case_id}/lupademo/application/{permit_type}/wizard/1",
+        "application_url": application_url,
         "package": package,
     }
 
@@ -354,6 +362,12 @@ def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
         applications = [_application_row(db, case_id, permit_type, project) for permit_type in permit_types]
         actionable = [item for item in applications if item["task_kind"] != "done"]
         next_task = actionable[0] if actionable else None
+        # Kevytasiointi hankkeet open the service view ("Avaa hanke" → palvelunäkymä);
+        # wizard hankkeet keep the project workspace.
+        if str(project.get("created_from") or "") == "kevytasiointi" and applications:
+            project_url = applications[0]["application_url"]
+        else:
+            project_url = f"/projects/{case_id}"
         case_row = {
             "case_id": case_id,
             "name": str(project.get("name") or case.get("title") or "Lupahanke"),
@@ -364,7 +378,9 @@ def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
             "applications": applications,
             "application_count": len(applications),
             "next_task": next_task,
-            "project_url": f"/projects/{case_id}",
+            "project_url": project_url,
+            # Origin marker for the home view ("Kevytasiointi" badge).
+            "created_from": str(project.get("created_from") or ""),
         }
         cases.append(case_row)
         for application in actionable:

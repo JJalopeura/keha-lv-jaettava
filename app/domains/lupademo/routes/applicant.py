@@ -218,6 +218,14 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         package_name: str = Form("Hakemusaineisto"),
         permit_type: str = Form("environmental_industrial"),
         municipality: str = Form(""),
+        project_name: str = Form(""),
+        applicant_name: str = Form(""),
+        business_id: str = Form(""),
+        contact_person: str = Form(""),
+        phone: str = Form(""),
+        email: str = Form(""),
+        address: str = Form(""),
+        property_id: str = Form(""),
         files: list[UploadFile] = File(default=[]),
         zip_file: Optional[UploadFile] = File(default=None),
         text_body: str = Form(""),
@@ -263,38 +271,69 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         customer = current_customer(request)
         if not customer:
             return RedirectResponse(url="/login", status_code=303)
-        display_name = package_name or "Tarkistettava hakemuspaketti"
-        case_id = db().create_package_review(customer["id"], application_id, municipality, display_name)
-        svc.save_artifact(
-            db(),
-            case_id,
-            "package_review_context",
-            "main",
-            {
-                "customer_id": customer["id"],
-                "permit_type": application_id,
-                "municipality": municipality,
-                "display_name": display_name,
-            },
+        # Kevytasiointi (Polku 2): the LV-side form collects the same shared fields
+        # as the wizard plus the hanke's tausta-aineisto. Submitting creates a REAL
+        # hanke (created_from="kevytasiointi") — no standalone package_review session.
+        submitted_profile = {
+            "applicant_name": applicant_name,
+            "business_id": business_id,
+            "contact_person": contact_person,
+            "phone": phone,
+            "email": email,
+            "municipality": municipality,
+            "address": address,
+            "property_id": property_id,
+        }
+        project_profile = dict(customer.get("profile") or {})
+        project_profile.update(
+            {key: str(value).strip() for key, value in submitted_profile.items() if value is not None and str(value).strip()}
         )
-        package = svc.create_pending_material_package(db(), case_id, application_id, display_name, document_count)
+        display_name = project_name.strip() or package_name.strip() or "Kevytasiointi"
+        started = scenarios.create_generic_project(
+            db(),
+            project_name=display_name,
+            permit_type=application_id,
+            applicant_name=applicant_name,
+            municipality=municipality,
+            address=address,
+            customer_id=customer["id"],
+            customer_profile=project_profile,
+            created_from="kevytasiointi",
+        )
+        case_id = started["case_id"]
+        permit_type = started["permit_type"]
+        svc.event(db(), case_id, "kevytasiointi.started", "Kevytasiointi started from LV", {"permit_type": permit_type})
+        package = svc.create_pending_material_package(db(), case_id, permit_type, display_name, document_count)
         azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
         job = svc.start_material_ingest_job(
-            db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
+            db(), case_id, permit_type, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
         )
-        background_tasks.add_task(
-            svc.execute_material_ingest_job,
-            db(),
-            settings(),
-            case_id,
-            application_id,
-            package["package_id"],
-            job["id"],
-            display_name,
-            zip_payload=zip_payload,
-            files_payload=upload_payload,
-            text_body=text_body,
-        )
+        route_db = db()
+        route_settings = settings()
+
+        def _ingest_then_analyze() -> None:
+            # Kevytasiointi: intake analysis runs automatically after the material
+            # ingest finishes — there is no manual "Analysoi aineisto" step. The
+            # wizard path (Path B) keeps its explicit analyze button.
+            svc.execute_material_ingest_job(
+                route_db,
+                route_settings,
+                case_id,
+                permit_type,
+                package["package_id"],
+                job["id"],
+                display_name,
+                zip_payload=zip_payload,
+                files_payload=upload_payload,
+                text_body=text_body,
+            )
+            stored = (svc.find_material_package(route_db, package["package_id"]) or {}).get("package") or {}
+            if str(stored.get("status") or "") != "ready":
+                return
+            analysis_job = svc.start_intake_analysis_job(route_db, case_id, permit_type, route_settings, managed_background=True)
+            svc.execute_intake_analysis_job(route_db, case_id, permit_type, analysis_job["id"], route_settings)
+
+        background_tasks.add_task(_ingest_then_analyze)
         return RedirectResponse(url=f"/applicant/packages/{package['package_id']}", status_code=303)
 
     def standalone_package_context(review_id: str, permit_type: str, review: dict[str, Any]) -> dict[str, Any]:
@@ -389,6 +428,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         out.update(
             {
                 "is_package_review": bool(found.get("review")),
+                "service_mode": str((out.get("project") or {}).get("service_mode") or "kevytasiointi"),
                 "package_id": package_id,
                 "material_package": material_package,
                 "attachments": attachments,
@@ -399,17 +439,25 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
                 "active_job": active_job_view,
                 "failed_analysis_job": failed_analysis_job,
                 "package_analysis": svc.artifact_json(db(), case_id, "package_analysis_result", permit_type, {}),
-                "field_extraction_queue": svc.artifact_json(db(), case_id, "field_extraction_queue", permit_type, {"items": []}),
+                "prose_suggestion": svc.artifact_json(db(), case_id, "prose_suggestion", permit_type, {}),
+                "submitted": bool((out.get("application") or {}).get("status") == "submitted"),
+                "receipt": svc.artifact_json(db(), case_id, "receipt", permit_type, {}),
                 "can_start_analysis": material_package.get("status") == "ready" and active_job is None,
                 "ai_execution_label": ai_execution_label(case_id),
+                "kevyt_permit_label": customer_ws.PERMIT_LABELS.get(permit_type, permit_type),
+                "kevyt_municipality": str(
+                    (out.get("common") or {}).get("data", {}).get("municipality")
+                    or material_package.get("municipality")
+                    or ""
+                ),
             }
         )
         return out
 
     @router.get("/applicant/packages/{package_id}", response_class=HTMLResponse)
-    def applicant_package_workbench(request: Request, package_id: str):
+    def kevytasiointi_workbench(request: Request, package_id: str):
         try:
-            return templates.TemplateResponse(request, "applicant/package_workbench.html", package_context(package_id))
+            return templates.TemplateResponse(request, "applicant/kevytasiointi.html", package_context(package_id))
         except KeyError:
             raise HTTPException(status_code=404, detail="Package not found")
 
@@ -447,49 +495,48 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         )
         return RedirectResponse(url=f"/applicant/packages/{package_id}#analysis", status_code=303)
 
-    @router.post("/applicant/packages/{package_id}/promote")
-    def promote_package_review(request: Request, package_id: str):
+    @router.post("/applicant/packages/{package_id}/ai-prose")
+    def kevytasiointi_ai_prose(package_id: str):
+        """AI-apuri (Kevytasiointipalvelu): LV returns a prose-form suggestion modal payload."""
         try:
             found = svc.find_material_package(db(), package_id)
         except KeyError:
             raise HTTPException(status_code=404, detail="Package not found")
-        review = found.get("review")
-        customer = current_customer(request)
-        if not review or not customer or review.get("customer_id") != customer["id"]:
-            raise HTTPException(status_code=409, detail="package_review_not_promotable")
-        permit_type = found["permit_type"]
-        started = scenarios.create_generic_project(
-            db(),
-            project_name=str(review.get("display_name") or "Uusi lupahanke"),
-            permit_type=permit_type,
-            applicant_name=str(customer["profile"].get("applicant_name") or ""),
-            municipality=str(review.get("municipality") or ""),
-            customer_id=customer["id"],
-            customer_profile=customer["profile"],
-            created_from="lv",
+        # Prose suggestions need the intake analysis; without it the LLM has no
+        # retrieval context and returns junk. Analysis runs automatically after
+        # ingest, so this only triggers if it failed or is still running.
+        analysis = svc.artifact_json(db(), found["case_id"], "intake_analysis", found["permit_type"], {})
+        if not analysis:
+            raise HTTPException(status_code=409, detail="analysis_not_ready")
+        return JSONResponse(svc.kevytasiointi_prose(db(), found["case_id"], found["permit_type"], settings()))
+
+    @router.post("/applicant/packages/{package_id}/save")
+    async def kevytasiointi_save(package_id: str, request: Request):
+        """Save the Kevytasiointipalvelu form values (no review, no submit)."""
+        try:
+            found = svc.find_material_package(db(), package_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Package not found")
+        form = await request.form()
+        values = {str(k): str(v) for k, v in form.items() if k not in {"redirect_to", "submit"}}
+        svc.update_application_data(db(), found["case_id"], found["permit_type"], values)
+        return RedirectResponse(url=f"/applicant/packages/{package_id}?saved=1", status_code=303)
+
+    @router.post("/applicant/packages/{package_id}/submit")
+    async def kevytasiointi_submit(package_id: str, request: Request):
+        """Submit the Kevytasiointipalvelu application straight to the authority (no review phase)."""
+        try:
+            found = svc.find_material_package(db(), package_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Package not found")
+        form = await request.form()
+        values = {str(k): str(v) for k, v in form.items() if k not in {"redirect_to", "submit"}}
+        if values:
+            svc.update_application_data(db(), found["case_id"], found["permit_type"], values)
+        receipt = svc.submit_application(
+            db(), found["case_id"], found["permit_type"], settings(), require_precheck=False
         )
-        target_case_id = started["case_id"]
-        db().copy_artifacts(review["id"], target_case_id)
-        # F27: the review is consumed — drop its copied artifacts so the promoted
-        # hanke holds the only copy. ponytail: hard delete; tombstones if audit needs them.
-        with db()._conn() as conn:
-            conn.execute("DELETE FROM artifacts WHERE case_id=?", (review["id"],))
-        db().move_files(review["id"], target_case_id)
-        for artifact_name in ("material_package", "material_packages"):
-            copied = svc.artifact_json(db(), target_case_id, artifact_name, permit_type, {})
-            if artifact_name == "material_package" and copied:
-                copied["project_id"] = target_case_id
-            elif artifact_name == "material_packages":
-                for item in copied.get("packages", []):
-                    item["project_id"] = target_case_id
-            if copied:
-                svc.save_artifact(db(), target_case_id, artifact_name, permit_type, copied)
-        db().update_package_review(review["id"], status="promoted", promoted_case_id=target_case_id)
-        svc.event(db(), target_case_id, "materials.package.promoted", "Package review promoted to hanke", {"package_id": package_id})
-        return RedirectResponse(
-            url=f"/cases/{target_case_id}/lupademo/application/{permit_type}/wizard/2#materials",
-            status_code=303,
-        )
+        return RedirectResponse(url=f"/applicant/packages/{package_id}?submitted=1#receipt", status_code=303)
 
     @router.get("/projects/new", response_class=HTMLResponse)
     def project_new(request: Request):

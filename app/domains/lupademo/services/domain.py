@@ -292,6 +292,24 @@ class StructureExtractionResponse:
     extracted_fields: list[ExtractedField] = field(default_factory=list)
 
 
+@dataclass
+class ProseSuggestionField:
+    field_id: str
+    label: str
+    value: str
+    source: str = ""
+
+
+@dataclass
+class ProseSuggestionResponse:
+    request_id: str
+    criteria_version: str
+    prose_md: str = ""
+    fields: list[ProseSuggestionField] = field(default_factory=list)
+    provider: str = ""
+    fallback_used: bool = False
+
+
 def load_json(path: Path, default: Any) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -311,6 +329,7 @@ def _load_prompt(agent: str) -> str:
         "caseworker_summary_agent": "caseworker_summary",
         "additional_info_request_agent": "additional_info_request",
         "authority_memo_draft_agent": "authority_memo_draft",
+        "prose_suggestion_agent": "prose_suggestion",
     }.get(agent, agent)
     filename = f"{prompt_agent}.prompt.md"
     if not filename:

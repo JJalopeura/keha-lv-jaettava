@@ -202,75 +202,64 @@ Writes `check_report`, `criteria_assessment`, `applicant_precheck_report`,
 The banner (`templates/shared/_ai_job_bar.html`) polls every 4s and auto-reloads
 with a `?t=` cache-buster when all jobs reach a terminal state.
 
-## Package workbench → API calls
+## Kevytasiointi service view → API calls
 
-The package workbench (`/applicant/packages/*`) is a **separate path** from the
-wizard. It starts from a permit type, municipality, and raw material, then runs
-a criteria-based review in a standalone package-review session. It does not
-create a hanke or `permit_application` until the user promotes the result.
-Routes live in `routes/applicant.py`.
+The kevytasiointi service view (`/applicant/packages/*`) is a **separate path**
+from the wizard. It starts from a permit type, municipality, and raw material,
+then fills the application with AI prose suggestions in a persistent side
+panel. Submitting the LV-side form creates a REAL customer-owned hanke
+(`created_from="kevytasiointi"`) and `permit_application` immediately — there
+is no promote step. Routes live in `routes/applicant.py`.
 
-> **Do not mix-match.** The workbench (Path A, package review) and the wizard
-> (Path B, form-first) are two distinct entry flows. Path A uses a standalone
-> review scope until promotion; Path B creates the customer-owned hanke and
-> application immediately. Their routes, templates, and handlers are separate.
-> See `AGENTS.md` → "Two entry paths (do NOT mix-match)" for the full comparison.
+> **Do not mix-match.** The kevytasiointi view (Path A, material-first) and the
+> wizard (Path B, form-first) are two distinct entry flows. Both create the
+> customer-owned hanke and application immediately; Path A links back to its own
+> service view, Path B to the wizard. Their routes, templates, and handlers are
+> separate. See `AGENTS.md` → "Two entry paths (do NOT mix-match)" for the full
+> comparison.
 
 ### Create + ingest
 
 | Method | Path | Purpose | AI job |
 |--------|------|---------|--------|
 | `GET` | `/applicant/packages/new` | New-package form | — |
-| `POST` | `/applicant/packages/new` | Create a standalone package-review session and pending package, start ingest | `material_ingest` |
-| `GET` | `/applicant/packages/{package_id}` | Render workbench (polls active job) | — |
+| `POST` | `/applicant/packages/new` | Create a real hanke + application + pending package, start ingest | `material_ingest` |
+| `GET` | `/applicant/packages/{package_id}` | Render service view (polls active job) | — |
 
 `POST /applicant/packages/new` validates the signed-in customer's permit type
-and municipality, creates a `package_reviews` row, and calls
-`create_pending_material_package(...)` plus `start_material_ingest_job` and
-`execute_material_ingest_job` in the background. It never creates a case or
-application. The review uses the municipality's criteria set and marks the
-package `ready`.
+and municipality, calls `scenarios.create_generic_project(...,
+created_from="kevytasiointi")`, then `create_pending_material_package(...)`
+plus `start_material_ingest_job` and `execute_material_ingest_job` in the
+background. The package uses the municipality's criteria set and is marked
+`ready`.
 
-`POST /applicant/packages/{package_id}/promote` is the explicit handoff. It
-creates the customer-owned hanke/application, copies review artifacts, moves
-uploaded files, marks the review promoted, and redirects to wizard step 2.
-
-### Analyze (full pipeline)
+### AI prose side panel
 
 | Method | Path | Purpose | AI job |
 |--------|------|---------|--------|
-| `POST` | `/applicant/packages/{package_id}/analyze` | **"Analysoi hakemuspaketti AI:lla"** — full analysis | `intake_analysis` (`full_check=True`) |
+| `POST` | `/applicant/packages/{package_id}/ai-prose` | Prose suggestion payload for the side panel | synchronous |
+
+Returns JSON with `prose_md` and a `fields` list; the side panel renders it and
+offers per-field copy buttons. No criteria gate — prose suggestions come from
+the material only.
+
+### Analyze (attachment-only pipeline)
+
+| Method | Path | Purpose | AI job |
+|--------|------|---------|--------|
+| `POST` | `/applicant/packages/{package_id}/analyze` | **"Analysoi aineisto tekoälyä varten"** — attachment-only analysis | `intake_analysis` (`attachment_only=True`) |
 
 Guards: 409 if package not `ready` or an `intake_analysis` job is already
-running. Runs `start_intake_analysis_job` (default `full_check=True`) +
+running. Runs `start_intake_analysis_job` (`attachment_only=True`) +
 `execute_intake_analysis_job` in the background.
-
-The full path (`_build_intake_analysis_result` with `full_check=True`) runs the
-**entire** pipeline in one job:
-1. `material_classifier` — classify attachments
-2. `structure_extractor` — extract fields into `field_extraction_queue`
-3. `gap_analyzer` — `package_analysis_from_current_state` (completeness,
-   consistency agents, criteria, findings, readiness score)
-4. `question_generator` — build questions
-
-Writes `intake_analysis`, `field_extraction_queue`, `package_analysis_result`,
-`structure_extraction_result`. It does **not** run the step-4 `application_check`
-— that's a separate job the user triggers from the wizard.
-
-### Handoff to wizard
-
-The workbench links into the wizard for review/fix:
-- "Katso kaikki tarkistukset" → `wizard/4`
-- "Korjaa" / "Muokkaa aineistoa" → `wizard/2`
-- Accept extraction → `.../extractions/accept` (shared with wizard step 3)
 
 ### Job polling
 
 Same endpoints as the wizard banner: `GET /api/v1/jobs/{job_id}` (+ `/stream`,
-`/events`). The workbench's `package_context` tracks the active
+`/events`). The service view's `package_context` tracks the active
 `material_ingest` / `intake_analysis` job and shows it in the progress bar.
 
-> **Note:** the workbench runs ingest → full analysis as two separate jobs
+> **Note:** the service view runs ingest → analysis as two separate jobs
 > (each triggered by its own button). It does **not** auto-chain them — the
 > user clicks "Analysoi" after the package is `ready`.
 

@@ -196,7 +196,7 @@ def create_generic_project(
     allowed_roles = {"person", "company", "consultant", "authority", "integrator"}
     if applicant_role not in allowed_roles:
         applicant_role = "company"
-    allowed_sources = {"lv", "municipality_site", "direct_demo", "api_import", "package_workbench"}
+    allowed_sources = {"lv", "municipality_site", "direct_demo", "api_import", "package_workbench", "kevytasiointi"}
     if created_from not in allowed_sources:
         created_from = "direct_demo"
     if not tenant_id:
@@ -205,7 +205,7 @@ def create_generic_project(
     _real_llm = _real_llm_enabled_from_env()
     common = (
         {key: "" for key in svc.DEFAULT_COMMON_DATA}
-        if created_from in {"package_workbench", "lv"} or _real_llm
+        if created_from in {"package_workbench", "lv", "kevytasiointi"} or _real_llm
         else dict(svc.DEFAULT_COMMON_DATA)
     )
     if customer_profile:
@@ -233,6 +233,7 @@ def create_generic_project(
         "customer_id": customer_id,
         "name": common["project_name"],
         "created_from": created_from,
+        "service_mode": "kevytasiointi" if created_from == "kevytasiointi" else "lv",
         "applicant_role": applicant_role,
         "presenter_mode": False,
         "common_data": common.copy(),
@@ -254,11 +255,19 @@ def create_generic_project(
         "applications": [permit],
         "permits": [permit],
         "statuses": statuses,
-        "integration_events": [
-            {"id": "G1", "label": "Hanke luotu", "status": "done"},
-            {"id": "G2", "label": "Aineisto odottaa latausta", "status": "active"},
-            {"id": "G3", "label": "AI-analyysi käynnistetään hakemusstudiosta", "status": "waiting"},
-        ],
+        "integration_events": (
+            [
+                {"id": "K1", "label": "Hanke luotu LV:ssä", "status": "done"},
+                {"id": "K2", "label": "Tausta-aineisto ladattu LV:ssä", "status": "active"},
+                {"id": "K3", "label": "Asiointi käynnissä Kevytasiointipalvelussa", "status": "waiting"},
+            ]
+            if created_from == "kevytasiointi"
+            else [
+                {"id": "G1", "label": "Hanke luotu", "status": "done"},
+                {"id": "G2", "label": "Aineisto odottaa latausta", "status": "active"},
+                {"id": "G3", "label": "AI-analyysi käynnistetään hakemusstudiosta", "status": "waiting"},
+            ]
+        ),
         "created_at": now,
         "updated_at": now,
     }
@@ -271,7 +280,7 @@ def create_generic_project(
         {"scenario": {"id": "generic_project", "label": "Uusi hanke", "permit_types": [permit]}, "started_at": time.time(), "seed_version": "generic"},
     )
     svc.ensure_seed_state(db, case_id)
-    if created_from == "package_workbench":
+    if created_from in {"package_workbench", "kevytasiointi"}:
         schema = svc.load_form_schema(permit)
         form_data = {field["id"]: common.get(field["id"], "") for field in schema.get("fields", [])}
         app = svc.ensure_application(db, case_id, permit)

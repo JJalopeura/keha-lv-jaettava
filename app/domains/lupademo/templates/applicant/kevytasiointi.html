@@ -1,0 +1,279 @@
+{% extends "shared/light_base.html" %}
+{% set hide_floating_chat = submitted %}
+{% block title %}{{ project.get('name', 'Kevytasiointi') }} · {{ kevyt_permit_label }}n kevytasiointi{% endblock %}
+{% block content %}
+{% set field_labels = {} %}
+{% for field in schema.fields %}{% set _ = field_labels.update({field.id: field.label}) %}{% endfor %}
+
+<nav class="flow-progress" aria-label="Kevytasioinnin vaiheet">
+  <span class="complete"><b>1</b> LV · hanke ja aineisto</span>
+  <span class="active"><b>2</b> Kevytasiointipalvelu · täytä hakemus</span>
+  <span class="{% if submitted %}complete{% endif %}"><b>3</b> Lähetys viranomaiselle</span>
+</nav>
+
+<header class="workbench-header">
+  <div>
+    <a class="flow-back-link" href="/">← Omat asiat</a>
+    <p class="section-kicker">{{ kevyt_permit_label }}n kevytasiointi</p>
+    <h1>{{ project.get('name', 'Kevytasiointi') }}</h1>
+    <p>{{ official_attachments|length }} lähetettävää liitettä · {{ context_attachments|length }} tausta-aineistoa · {{ attachments|length }} asiakirjaa yhteensä</p>
+  </div>
+</header>
+
+{% if submitted %}
+<section class="kevyt-receipt" id="receipt" role="status">
+  <span class="kevyt-receipt__mark" aria-hidden="true">✓</span>
+  <div>
+    <p class="section-kicker">Hakemus lähetetty viranomaiselle</p>
+    <h2>Kiitos! Hakemuksesi on vastaanotettu.</h2>
+    <p>Kuittinumero <strong>{{ receipt.get('receipt_id', '') }}</strong> · {{ receipt.get('authority', 'Viranomainen') }} · {{ receipt.get('received_at', '') }}</p>
+  </div>
+</section>
+{% endif %}
+
+{% if not submitted %}
+<section class="kevyt-material" aria-live="polite" data-ai-jobs-panel data-analysis-ready="{{ 'true' if package_analysis else 'false' }}">
+  <div class="kevyt-material__head">
+    <div>
+      <p class="section-kicker">Tausta-aineisto LV:stä</p>
+      <h2 id="kevyt-material-heading">
+        {%- if active_job and active_job.kind == 'material_ingest' -%}
+          Aineistoa valmistellaan
+        {%- elif active_job -%}
+          Tekoäly lukee aineistoa
+        {%- elif package_analysis -%}
+          Aineisto on valmista — Tekoälyapuri voi auttaa
+        {%- else -%}
+          Aineisto vastaanotettu
+        {%- endif -%}
+      </h2>
+      <p>
+        {%- if active_job and active_job.kind == 'material_ingest' -%}
+          Dokumentit luetaan ja hakukonteksti muodostetaan. Voit jatkaa lomakkeen täyttämistä samalla.
+        {%- elif active_job -%}
+          LV erottaa hakemuksen, liitteet ja tausta-aineiston. Ei mitään lähetetä viranomaiselle vielä.
+        {%- elif package_analysis -%}
+          Aineistosta on poimittu kenttätietoja ehdotuksia varten.
+        {%- else -%}
+          Käytä Tekoälyapuria, kun aineisto on käsitelty — se kokoaa ehdotuksen tästä aineistosta.
+        {%- endif -%}
+      </p>
+    </div>
+    {% if active_job %}
+    <article class="job-progress" data-ai-job data-status-url="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ active_job.id }}" data-stream-url="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/jobs/{{ active_job.id }}/stream">
+      <div class="job-progress-meta">
+        <strong data-job-summary>{{ active_job.summary or active_job.title }}</strong>
+        <span><b data-job-progress>{{ active_job.progress_percent }}</b>% · <span data-job-eta>{{ active_job.estimated_seconds_remaining }}</span> s</span>
+      </div>
+      <div class="progress-track"><span data-job-progress-bar style="--p: {{ active_job.progress_percent }}"></span></div>
+    </article>
+    {% else %}
+    <div class="kevyt-material__meta">
+      <span class="scope-dot official"></span><strong>{{ official_attachments|length }} lähetettävää</strong>
+      <span class="scope-dot context"></span><strong>{{ context_attachments|length }} tausta-aineistoa</strong>
+    </div>
+    {% endif %}
+</section>
+{% endif %}
+
+<div class="kevyt-layout">
+  <div class="kevyt-main">
+    <section class="application-form-workspace">
+      <div class="application-fields-panel">
+        <div class="section-heading-line">
+          <div><p class="section-kicker">Hakemuksen tiedot</p><h2>Lomake</h2></div>
+        </div>
+        {% if not submitted %}
+        <form method="post" action="/applicant/packages/{{ package_id }}/submit" data-kevyt-form>
+          {% for tab in schema.tabs or [] if tab.id != 'attachments' and tab.id != 'summary' %}
+          {% set tab_fields = schema.fields|selectattr('tab', 'equalto', tab.id)|list %}
+          {% if tab_fields %}
+          <details class="field-section" open>
+            <summary id="tab-{{ tab.id }}"><span>{{ tab.label }}</span><small>Avaa ja täytä</small></summary>
+            <div class="application-field-grid" aria-labelledby="tab-{{ tab.id }}">
+              {% for field in tab_fields %}
+              <label class="application-field {% if field.type == 'textarea' %}wide-field{% endif %}" id="field-{{ field.id }}"><span class="field-label-text">{{ field.label }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}</span>
+                {% if field.type == "textarea" %}
+                <textarea name="{{ field.id }}" rows="4">{{ application.form_data.get(field.id, "") }}</textarea>
+                {% else %}
+                <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}">
+                {% endif %}
+              </label>
+              {% endfor %}
+            </div>
+          </details>
+          {% endif %}
+          {% endfor %}
+          <div class="kevyt-form-actions">
+            <button type="submit" formaction="/applicant/packages/{{ package_id }}/save" class="button secondary">Tallenna luonnos</button>
+            <button type="submit" class="primary-cta">Lähetä hakemus viranomaiselle <span aria-hidden="true">→</span></button>
+          </div>
+        </form>
+        {% else %}
+        <p class="kevyt-submitted-note">Hakemus on lähetetty viranomaiselle. Tämä näkymä on nyt vain luku — muutoksia ei voi enää tehdä.</p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  {% if not submitted %}
+  <aside class="kevyt-panel" data-prose-panel aria-label="Tekoälyapuri">
+    <div class="kevyt-panel__head">
+      <span class="ai-orbit" aria-hidden="true"><i></i></span>
+      <div>
+        <p class="section-kicker">Tekoälyapuri</p>
+        <h2>Ehdotus LV:n tausta-aineistosta</h2>
+      </div>
+    </div>
+    <div class="kevyt-panel__body" data-prose-body>
+      {% if package_analysis %}
+      <p class="kevyt-panel__empty">LV kokoaa hakemuksesi tausta-aineistosta ja yhteisistä tiedoista proosamuotoisen ehdotuksen. Kopioi haluamasi tiedot käsin lomakkeelle — mikään ei kirjoitu automaattisesti.</p>
+      <form method="post" action="/applicant/packages/{{ package_id }}/ai-prose" data-prose-fetch>
+        <button type="submit" class="primary-cta">Hae tekoälyehdotus <span aria-hidden="true">→</span></button>
+      </form>
+      {% else %}
+      <p class="kevyt-panel__empty">Tekoäly lukee tausta-aineistoa. Ehdotus on saatavilla, kun aineiston analyysi on valmis.</p>
+      {% endif %}
+    </div>
+    <small class="kevyt-ai-meta">{{ ai_execution_label }}</small>
+  </aside>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  // --- Job polling (material ingest / analysis) ---
+  var row = document.querySelector("[data-ai-job]");
+  if (row) {
+    var terminal = new Set(["succeeded", "failed", "cancelled"]);
+    var pollingId = null;
+    function apply(payload) {
+      var progress = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
+      row.querySelector("[data-job-progress]").textContent = progress;
+      row.querySelector("[data-job-eta]").textContent = payload.estimated_seconds_remaining ?? 0;
+      row.querySelector("[data-job-progress-bar]").style.setProperty("--p", progress);
+      if (payload.events && payload.events.length) row.querySelector("[data-job-summary]").textContent = payload.events[payload.events.length - 1].message;
+      if (terminal.has(payload.status)) {
+        if (pollingId) window.clearInterval(pollingId);
+        window.location.reload();
+        return true;
+      }
+      return false;
+    }
+    function poll() {
+      return fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } })
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .then(function (payload) { return payload ? apply(payload) : false; })
+        .catch(function () { return false; });
+    }
+    if (row.dataset.streamUrl && "EventSource" in window) {
+      var source = new EventSource(row.dataset.streamUrl);
+      source.addEventListener("status", function (event) { if (apply(JSON.parse(event.data))) source.close(); });
+      source.onerror = function () { source.close(); };
+    }
+    poll().then(function (done) { if (!done) pollingId = window.setInterval(poll, 5000); });
+  }
+
+  // --- Markdown-lite renderer for the prose payload ---
+  function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function renderProse(md) {
+    // Render each "**Label** value" pair as its own block so the fields read as
+    // separate rows instead of one continuous wall of text.
+    var html = "";
+    escapeHtml(md).split(/\n/).forEach(function (rawLine) {
+      var line = rawLine.trim();
+      if (!line) return;
+      if (/^##\s+/.test(line) || /^#\s+/.test(line)) {
+        html += "<h3>" + line.replace(/^#+\s+/, "") + "</h3>";
+        return;
+      }
+      var match = line.match(/^\*\*(.+?)\*\*\s*(.*)$/);
+      if (match) {
+        html += '<div class="prose-row"><strong>' + match[1] + "</strong><p>" + (match[2] || "") + "</p></div>";
+      } else {
+        html += "<p>" + line + "</p>";
+      }
+    });
+    return html;
+  }
+
+  // --- Prose side panel: fetch replaces content, per-field copy buttons ---
+  var panel = document.querySelector("[data-prose-panel]");
+  if (!panel) return;
+  var body = panel.querySelector("[data-prose-body]");
+  function copyText(text, button) {
+    function done() {
+      button.textContent = "Kopioitu!";
+      setTimeout(function () { button.textContent = "Kopioi"; }, 1500);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(done);
+    } else {
+      done();
+    }
+  }
+  panel.addEventListener("submit", function (event) {
+    var form = event.target.closest("form[data-prose-fetch]");
+    if (!form) return;
+    event.preventDefault();
+    var button = form.querySelector("button");
+    button.disabled = true;
+    button.textContent = "Kootaan ehdotusta …";
+    fetch(form.action, { method: "POST", headers: { "Accept": "application/json" } })
+      .then(function (response) { return response.ok ? response.json() : Promise.reject(new Error("ai-prose failed")); })
+      .then(function (payload) {
+        body.replaceChildren();
+        var prose = document.createElement("div");
+        prose.className = "prose-content";
+        prose.innerHTML = renderProse(payload.prose_md || "");
+        var fields = document.createElement("div");
+        fields.className = "prose-fields";
+        (payload.fields || []).forEach(function (field) {
+          var item = document.createElement("div");
+          item.className = "prose-field-row";
+          var text = document.createElement("div");
+          text.className = "prose-field-text";
+          var label = document.createElement("strong");
+          label.textContent = field.label || field.field_id;
+          var value = document.createElement("p");
+          value.textContent = field.value || "—";
+          var source = document.createElement("small");
+          source.textContent = field.source ? "Lähde: " + field.source : "";
+          text.append(label, value, source);
+          var copy = document.createElement("button");
+          copy.type = "button";
+          copy.className = "secondary compact";
+          copy.textContent = "Kopioi";
+          copy.addEventListener("click", function () { copyText(field.value || "", copy); });
+          item.append(text, copy);
+          fields.appendChild(item);
+        });
+        body.append(prose, fields);
+        var tech = document.createElement("details");
+        tech.className = "technical-details";
+        tech.innerHTML =
+          '<summary>Tekniset tiedot</summary><div class="technical-details__content">' +
+          "<p>Kriteeriversio: " + escapeHtml(payload.criteria_version || "-") +
+          "</p><p>AI-tila: " + escapeHtml(payload.provider || "-") +
+          (payload.fallback_used ? " · deterministinen varavastaus" : "") + "</p></div>";
+        body.appendChild(tech);
+      })
+      .catch(function () {
+        body.replaceChildren();
+        var error = document.createElement("p");
+        error.className = "kevyt-panel__empty";
+        error.textContent = "Ehdotuksen kokoaminen epäonnistui. Yritä hetken kuluttua uudelleen.";
+        body.appendChild(error);
+      })
+      .finally(function () {
+        button.disabled = false;
+        button.textContent = "Hae uusi ehdotus";
+      });
+  });
+})();
+</script>
+{% endblock %}

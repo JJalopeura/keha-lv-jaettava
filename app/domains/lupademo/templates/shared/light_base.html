@@ -28,7 +28,9 @@
     applicant flow is the Customer Workspace (manage projects/applications). #}
     {% set package_review = is_package_review is defined and is_package_review %}
     {% set package_workbench = current_path.startswith('/applicant/packages/') %}
-    {% set case_context = case_id is defined and not package_review %}
+    {# Kevytasiointi workbench has its own header block with the hanke name —
+       the generic "Avoin hanke" bar would duplicate it. #}
+    {% set case_context = case_id is defined and not package_review and not package_workbench %}
     {% set case_workbench = not authority_workspace and not demo_workspace and
     '/lupademo/application/' in current_path %}
     {% set wizard_view = case_workbench and '/wizard/' in current_path %}
@@ -52,8 +54,17 @@
     {% set workspace_brand_sub = (service_municipality ~ 'n asiointipalvelu') if service_municipality else 'Kunnan asiointipalvelu' %}
     {% set service_kind = 'kunta' %}
     {% elif package_workbench %}
-    {% set workspace_brand = 'Hakemuspaketin tarkistus' %}
-    {% set workspace_brand_sub = 'Aineistotyöpöytä' %}
+    {# Kevytasiointi follows the wizard naming: "{Lupatyypin nimi}n kevytasiointi"
+       over "{Kunta}n asiointipalvelu". kevyt_permit_label comes from
+       package_context(); fall back to the generic name when absent. #}
+    {% set kevyt_names = {
+    'building_residential': 'Rakennusluvan kevytasiointi',
+    'environmental_industrial': 'Ympäristöluvan kevytasiointi',
+    'event_public': 'Tapahtumaluvan kevytasiointi'
+    } %}
+    {% set workspace_brand = kevyt_names.get(application.permit_type if application is defined else '', (kevyt_permit_label ~ 'n kevytasiointi') if kevyt_permit_label is defined and kevyt_permit_label else 'Kevytasiointi') %}
+    {% set workspace_brand_sub = (service_municipality ~ 'n asiointipalvelu') if service_municipality else 'Luvat ja valvonta' %}
+    {% set service_kind = 'kevyt' %}
     {% endif %}
     {% set workspace_home = ('/lv/projects/' ~ case_id)
     if (case_workbench and case_id is defined) else '/' %}
@@ -75,7 +86,7 @@
             <div class="sidebar-subnav">
               <a class="sidebar-link{% if current_path == '/' %} active{% endif %}" href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Omat asiat</a>
               <a class="sidebar-link{% if current_path == '/projects/new' %} active{% endif %}" href="/projects/new" {% if current_path == '/projects/new' %}aria-current="page"{% endif %}>Uusi hanke</a>
-              <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Tarkista uusi hakemuspaketti</a>
+              <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Kevytasiointi</a>
               {% if case_context %}
               {% set sidebar_permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
               {% set sidebar_statuses = {'draft': 'Luonnos', 'not_started': 'Ei aloitettu', 'submitted': 'Lähetetty', 'application_draft': 'Luonnos'} %}
@@ -195,6 +206,8 @@
         </main>
       </div>
     </div>
+    {% if not hide_floating_chat | default(false) %}
     {% include 'shared/_floating_chat.html' %}
+    {% endif %}
   </body>
 </html>

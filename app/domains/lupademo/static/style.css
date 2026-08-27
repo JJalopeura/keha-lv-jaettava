@@ -2697,6 +2697,244 @@ body.service-light {
   color: #c2447c;
 }
 
+/* Kevytasiointipalvelu identity (wayfinder polku 2): neutral header, the
+   service name in the header carries the identity — no amber tint. */
+.app-header[data-service="kevyt"] {
+  border-bottom-color: var(--line);
+  background: var(--color-surface);
+}
+
+/* ===== Kevytasiointipalvelu (Polku 2) ===== */
+
+.kevyt-receipt {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 26px;
+  padding: 18px 20px;
+  background: #eefaf4;
+  border: 1px solid #b7d6cf;
+  border-left: 4px solid #2b8a78;
+  border-radius: var(--radius);
+}
+
+.kevyt-receipt__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  background: #2b8a78;
+  color: #fff;
+  font-weight: 800;
+}
+
+.kevyt-receipt h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.kevyt-receipt p {
+  margin: 0;
+  color: #344054;
+}
+
+.kevyt-material {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 26px;
+  padding: 18px 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.kevyt-material__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.kevyt-material__head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.kevyt-material__head p {
+  margin: 0;
+  max-width: 640px;
+  color: #475467;
+}
+
+.kevyt-material__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  color: #344054;
+  font-size: 13px;
+}
+
+.kevyt-material__meta .scope-dot {
+  margin-right: 4px;
+}
+
+.kevyt-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.kevyt-main,
+.kevyt-panel {
+  min-width: 0;
+}
+
+.kevyt-panel {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.06);
+}
+
+.kevyt-panel__head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.kevyt-panel__head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.kevyt-panel__head p {
+  margin: 0;
+}
+
+.kevyt-panel__body {
+  display: grid;
+  gap: 12px;
+}
+
+.kevyt-panel__empty {
+  margin: 0;
+  color: #475467;
+}
+
+.kevyt-ai-meta {
+  color: #667085;
+}
+
+.kevyt-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.kevyt-submitted-note {
+  margin: 0;
+  padding: 12px 14px;
+  color: #344054;
+  background: #f8fafb;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+/* Tekoälyapuri prose panel content */
+.prose-content {
+  white-space: normal;
+}
+
+.prose-content h3 {
+  margin: 18px 0 8px;
+  font-size: 15px;
+}
+
+.prose-content p {
+  margin: 6px 0;
+}
+
+/* One block per suggested field: label line + value paragraph, separated. */
+.prose-row {
+  padding: 10px 0 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.prose-row:last-child {
+  border-bottom: 0;
+}
+
+.prose-row strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13px;
+  color: #172033;
+}
+
+.prose-row p {
+  margin: 0;
+  color: #344054;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prose-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.prose-field-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #f8faf9;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+}
+
+.prose-field-text strong {
+  display: block;
+  font-size: 13px;
+}
+
+.prose-field-text p {
+  margin: 2px 0;
+  color: #101828;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prose-field-text small {
+  color: #667085;
+}
+
+@media (max-width: 980px) {
+  .kevyt-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .kevyt-panel {
+    position: static;
+  }
+}
+
 
 .project-context {
   display: flex;
@@ -6864,6 +7102,11 @@ body.service-light {
 }
 
 @media (max-width: 980px) {
+  html,
+  body.service-light {
+    min-width: 0;
+  }
+
   .app-shell,
   .app-shell--login {
     display: grid;

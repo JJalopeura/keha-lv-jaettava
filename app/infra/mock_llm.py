@@ -212,6 +212,9 @@ class MockLLMClient:
                 ]
             }
 
+        if "proosamuotoon kokoava ai-avustaja" in low or "proosamuotoinen ehdotus" in low:
+            return self._mock_prose_response(input_text)
+
         if '"criteria"' in low or "kriteerien arviointi" in low or "7 §" in low:
             return {"criteria": self._criteria_template(seed)}
 
@@ -281,6 +284,76 @@ class MockLLMClient:
         import re
 
         return re.findall(pattern, text or "", flags=re.IGNORECASE)
+
+    def _extract_json_after(self, text: str, marker: str):
+        """Parse the first JSON value (object or array) that starts after `marker`."""
+        idx = (text or "").find(marker)
+        if idx < 0:
+            return None
+        idx += len(marker)
+        while idx < len(text) and text[idx] in " \t\r\n:":
+            idx += 1
+        if idx >= len(text) or text[idx] not in "[{":
+            return None
+        open_ch = text[idx]
+        close_ch = "]" if open_ch == "[" else "}"
+        depth = 0
+        for i in range(idx, len(text)):
+            if text[i] == open_ch:
+                depth += 1
+            elif text[i] == close_ch:
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[idx:i + 1])
+                    except Exception:
+                        return None
+        return None
+
+    def _mock_prose_response(self, input_text: str) -> dict[str, Any]:
+        """Kevytasiointipalvelu AI-apuri: prose-form suggestion from the prompt's
+        extracted fields + LV shared data, so mock mode works fully offline."""
+        schema = self._extract_json_after(input_text, "Kenttämääritelmät:") or {"fields": []}
+        common = self._extract_json_after(input_text, "LV:n yhteiset tiedot:") or {}
+        extractions = self._extract_json_after(input_text, "Aineistosta poimitut kenttäehdotukset:") or []
+        labels = {
+            str(f.get("id")): str(f.get("label") or f.get("id"))
+            for f in schema.get("fields", [])
+            if isinstance(f, dict)
+        }
+        used: set[str] = set()
+        fields: list[dict[str, Any]] = []
+        blocks: list[str] = ["## Tekoälyapurin ehdotus — mock", ""]
+        for item in extractions:
+            if not isinstance(item, dict):
+                continue
+            fid = str(item.get("field_id") or "")
+            val = str(item.get("accepted_value") or item.get("suggested_value") or item.get("extracted_value") or "").strip()
+            if not fid or not val or fid in used:
+                continue
+            used.add(fid)
+            label = labels.get(fid, fid)
+            source = str(item.get("source_document") or "Hakemusaineisto")
+            fields.append({"field_id": fid, "label": label, "value": val, "source": source})
+            blocks.extend([f"**{label}**", val, ""])
+        for fid, val in common.items():
+            val = str(val or "").strip()
+            if not val or fid in used or fid not in labels:
+                continue
+            used.add(fid)
+            label = labels[fid]
+            fields.append({"field_id": fid, "label": label, "value": val, "source": "LV:n yhteiset tiedot"})
+            blocks.extend([f"**{label}**", val, ""])
+        if not fields:
+            blocks.append("Aineistosta ei löytynyt vielä täytettäviä kenttiä. Lisää tai analysoi aineisto ensin.")
+        return {
+            "request_id": f"mock-{self._seed(input_text or ''):08x}",
+            "criteria_version": "mock-criteria-v1",
+            "prose_md": "\n".join(blocks).strip(),
+            "fields": fields,
+            "provider": "mock",
+            "fallback_used": False,
+        }
 
     def _lupademo_evidence(self, source_id: str) -> dict[str, Any]:
         return {

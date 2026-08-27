@@ -27,9 +27,11 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | GET | `/applicant` | `applicant_start` | `applicant/applicant_start.html` | — |
 | GET | `/applicant/packages/new` | `applicant_package_new` | `applicant/package_new.html` | **A** |
 | POST | `/applicant/packages/new` | `applicant_package_create` | — (redirect) | **A** |
-| GET | `/applicant/packages/{package_id}` | `applicant_package_workbench` | `applicant/package_workbench.html` | **A** |
+| GET | `/applicant/packages/{package_id}` | `kevytasiointi_workbench` | `applicant/kevytasiointi.html` | **A** |
 | POST | `/applicant/packages/{package_id}/analyze` | `applicant_package_analyze` | — (redirect) | **A** |
-| POST | `/applicant/packages/{package_id}/promote` | `promote_package_review` | — (redirect) | **A** |
+| POST | `/applicant/packages/{package_id}/ai-prose` | `kevytasiointi_ai_prose` | JSON | **A** |
+| POST | `/applicant/packages/{package_id}/save` | `kevytasiointi_save` | — (redirect) | **A** |
+| POST | `/applicant/packages/{package_id}/submit` | `kevytasiointi_submit` | — (redirect) | **A** |
 | GET | `/projects/new` | `project_new` | `applicant/applicant_start.html` | **B** |
 | POST | `/demo/scenarios/start` | `scenario_start` | — (redirect) | — |
 | POST | `/demo/reset` | `demo_reset` | — (redirect) | — |

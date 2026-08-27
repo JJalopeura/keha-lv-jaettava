@@ -58,3 +58,4 @@ wizard-ai-sidebar-green.png
 .pi/
 .azure-venv/
 wayfinder/
+.npm-global/

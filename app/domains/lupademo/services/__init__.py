@@ -39,6 +39,8 @@ __all__ = [
     "StructureExtractionRequest",
     "ExtractedField",
     "StructureExtractionResponse",
+    "ProseSuggestionField",
+    "ProseSuggestionResponse",
     "load_form_schema",
     "render_agent_prompt",
     # --- db_helpers.py (persistence primitives) ---
@@ -170,4 +172,5 @@ __all__ = [
     "suggestion_service_form",
     "suggestion_service_check",
     "structure_extract",
+    "kevytasiointi_prose",
 ]

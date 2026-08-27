@@ -472,7 +472,7 @@ class ApplicantJourney(unittest.TestCase):
         self.assertEqual(context["package_analysis"]["criteria_version"], active["version"])
 
     def test_two_entry_paths_are_distinct(self) -> None:
-        """Path A (package workbench) and Path B (wizard) must stay separate.
+        """Path A (Kevytasiointi) and Path B (wizard) must stay separate.
 
         Guard against mix-match: the two entry routes render different templates
         and must not be conflated. See AGENTS.md -> 'Two entry paths'.
@@ -480,17 +480,17 @@ class ApplicantJourney(unittest.TestCase):
         login = client.post("/login", data={"customer_id": "p2x"})
         self.assertEqual(login.status_code, 303)
 
-        # Path A: material-first package workbench entry
+        # Path A: Kevytasiointi entry (materials + shared basics in LV -> Kevytasiointipalvelu)
         workbench_entry = client.get("/applicant/packages/new")
         self.assertEqual(workbench_entry.status_code, 200)
-        self.assertIn("Tarkista uusi hakemuspaketti", workbench_entry.text)
-        self.assertNotIn("Hankkeen perustiedot", workbench_entry.text)
+        self.assertIn("Kevytasiointi", workbench_entry.text)
+        self.assertIn("Hankkeen tausta-aineisto", workbench_entry.text)
 
         # Path B: form-first wizard entry
         wizard_entry = client.get("/projects/new")
         self.assertEqual(wizard_entry.status_code, 200)
         self.assertIn("Hankkeen lähtötiedot", wizard_entry.text)
-        self.assertNotIn("Lataa valmis hakemuspaketti AI-tarkistukseen", wizard_entry.text)
+        self.assertNotIn("Siirry Kevytasiointipalveluun", wizard_entry.text)
 
     def test_step1_saves_common_data_and_redirects(self) -> None:
         response = client.post(

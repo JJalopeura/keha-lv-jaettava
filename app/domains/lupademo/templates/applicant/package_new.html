@@ -1,73 +1,72 @@
 {% extends "shared/light_base.html" %}
-{% block title %}Tarkista uusi hakemuspaketti{% endblock %}
+{% set profile = customer.profile if customer is defined and customer else {} %}
+{% block title %}Kevytasiointi · LV{% endblock %}
 {% block content %}
-<nav class="flow-progress" aria-label="Hakemuspaketin tarkistuksen vaiheet">
-  <span class="active"><b>1</b> Tuo aineisto</span>
-  <span><b>2</b> AI:n tulkinta</span>
-  <span><b>3</b> Korjaa ja vahvista</span>
+<nav class="flow-progress" aria-label="Kevytasioinnin vaiheet">
+  <span class="active"><b>1</b> LV · hanke ja aineisto</span>
+  <span><b>2</b> Kevytasiointipalvelu · täytä hakemus</span>
+  <span><b>3</b> Lähetys viranomaiselle</span>
 </nav>
 
-<section class="page-heading upload-heading">
-  <a class="back-link" href="/">← Takaisin</a>
-  <p class="section-kicker">Hakemuspaketin tarkistus</p>
-  <h1>Tarkista uusi hakemuspaketti</h1>
-</section>
-
 <form method="post" enctype="multipart/form-data" action="/applicant/packages/new" class="upload-workspace" data-upload-form>
-  <div class="upload-main">
-    <section class="upload-zone" data-dropzone>
-      <input id="package-files" type="file" name="files" multiple accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.tif,.tiff,.webp" data-file-input>
-      <label for="package-files" class="upload-zone-label">
-        <span class="upload-symbol" aria-hidden="true">↑</span>
-        <strong>Valitse hakemus ja liitteet</strong>
-        <span>tai vedä tiedostot tähän</span>
-        <small>PDF, Word, Excel, kuvat ja tekstitiedostot</small>
-      </label>
-      <div class="selected-files" data-selected-files aria-live="polite"></div>
-    </section>
-
-    <div class="upload-divider"><span>tai</span></div>
-
-    <section class="zip-upload">
-      <div><strong>Tuo koko aineisto zip-pakettina</strong><p>Hakemukset ja liitteet tunnistetaan paketin sisältä automaattisesti.</p></div>
-      <label class="file-button" for="package-zip">Valitse zip</label>
-      <input id="package-zip" type="file" name="zip_file" accept=".zip" data-zip-input>
-      <span class="zip-name" data-zip-name>Ei valittua tiedostoa</span>
-    </section>
-
-    <details class="text-material">
-      <summary>Lisää myös hankkeen kuvaus tekstinä</summary>
-      <label>Vapaa kuvaus<textarea name="text_body" rows="5" placeholder="Kuvaile hanketta tai lisää saate. Teksti merkitään AI:n tausta-aineistoksi."></textarea></label>
-    </details>
-  </div>
-
-  <aside class="upload-details">
-    <div class="aside-heading"><span>Tarkistuksen kohde</span></div>
-    <label>Paketin nimi<input name="package_name" value="Uusi ympäristölupapaketti" required></label>
-    <label>Lupatyyppi
-      <select name="permit_type" required>
-        <option value="environmental_industrial" selected>Ympäristölupa</option>
-        <option value="building_residential">Rakennuslupa</option>
-        <option value="event_public">Tapahtuman luvat</option>
-      </select>
-    </label>
-    <label>Kunnan kriteeristö
-      <select name="municipality" required>
-        <option value="" disabled selected>Valitse sijainti</option>
-        <option value="general">Yleinen</option>
-        {% for municipality in municipalities %}
-        <option value="{{ municipality }}">{{ municipality }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <div class="data-boundary">
-      <strong>Mitä aineistolle tapahtuu?</strong>
-      <p>AI erottaa hakemuksen, lähetettävät liitteet ja vain tarkistuksessa käytettävän tausta-aineiston.</p>
-      <p><b>Viranomaisen omat asiakirjat ohitetaan</b>, eikä niitä tallenneta hakemuksen AI-hakukontekstiin.</p>
+  <section class="form-section" aria-labelledby="project-details">
+    <div class="form-section-heading"><div><h2 id="project-details">Hankkeen yhteiset tiedot</h2></div></div>
+    <div class="field-grid">
+      <label class="wide-field">Hankkeen nimi<input name="project_name" value="{{ profile.get('project_name', '') }}" placeholder="Esimerkiksi Koivutien pientalo" required></label>
+      <label class="wide-field">Hakija<input name="applicant_name" value="{{ profile.get('applicant_name', '') }}" autocomplete="organization"></label>
+      <label>Y-tunnus<input name="business_id" value="{{ profile.get('business_id', '') }}" autocomplete="off"></label>
+      <label>Yhteyshenkilö<input name="contact_person" value="{{ profile.get('contact_person', '') }}" autocomplete="name"></label>
+      <label>Puhelin<input name="phone" value="{{ profile.get('phone', '') }}" autocomplete="tel"></label>
+      <label class="wide-field">Sähköposti<input type="email" name="email" value="{{ profile.get('email', '') }}" autocomplete="email"></label>
+      <label>Kunta<input name="municipality" value="{{ profile.get('municipality', '') }}" autocomplete="address-level2" required></label>
+      <label class="wide-field">Osoite<input name="address" value="{{ profile.get('address', '') }}" autocomplete="street-address"></label>
+      <label class="wide-field">Kiinteistötunnus<input name="property_id" value="" autocomplete="off"></label>
     </div>
-    <button class="primary-cta" data-submit-button disabled>Tuo aineisto <span aria-hidden="true">→</span></button>
-    <p class="submit-hint" data-submit-hint>Valitse vähintään yksi tiedosto tai lisää kuvaus.</p>
-  </aside>
+  </section>
+
+  <section class="form-section" aria-labelledby="permit-choice">
+    <div class="form-section-heading"><div><h2 id="permit-choice">Lupatyyppi</h2></div></div>
+    <div class="choice-list">
+      <label class="choice-row"><input type="radio" name="permit_type" value="building_residential"><span><strong>Rakennuslupa</strong><small>Asuinrakennus, laajennus tai muu rakennushanke</small></span></label>
+      <label class="choice-row"><input type="radio" name="permit_type" value="environmental_industrial" checked><span><strong>Ympäristölupa</strong><small>Teollinen toiminta tai ympäristövaikutuksia aiheuttava hanke</small></span></label>
+      <label class="choice-row"><input type="radio" name="permit_type" value="event_public"><span><strong>Tapahtuman luvat</strong><small>Yleisötapahtuman lupa- ja ilmoitustarpeet</small></span></label>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="material-heading">
+    <div class="form-section-heading"><div><h2 id="material-heading">Hankkeen tausta-aineisto</h2><p>Tekoälyapuri käyttää tätä aineistoa ehdotustensa pohjana, kun täytät hakemusta Kevytasiointipalvelussa.</p></div></div>
+    <div class="upload-main">
+      <section class="upload-zone" data-dropzone>
+        <input id="package-files" type="file" name="files" multiple accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.tif,.tiff,.webp" data-file-input>
+        <label for="package-files" class="upload-zone-label">
+          <span class="upload-symbol" aria-hidden="true">↑</span>
+          <strong>Valitse hakemus ja liitteet</strong>
+          <span>tai vedä tiedostot tähän</span>
+          <small>PDF, Word, Excel, kuvat ja tekstitiedostot</small>
+        </label>
+        <div class="selected-files" data-selected-files aria-live="polite"></div>
+      </section>
+
+      <div class="upload-divider"><span>tai</span></div>
+
+      <section class="zip-upload">
+        <div><strong>Tuo koko aineisto zip-pakettina</strong><p>Hakemukset ja liitteet tunnistetaan paketin sisältä automaattisesti.</p></div>
+        <label class="file-button" for="package-zip">Valitse zip</label>
+        <input id="package-zip" type="file" name="zip_file" accept=".zip" data-zip-input>
+        <span class="zip-name" data-zip-name>Ei valittua tiedostoa</span>
+      </section>
+
+      <details class="text-material">
+        <summary>Lisää myös hankkeen kuvaus tekstinä</summary>
+        <label>Vapaa kuvaus<textarea name="text_body" rows="5" placeholder="Kuvaile hanketta tai lisää saate. Teksti merkitään AI:n tausta-aineistoksi."></textarea></label>
+      </details>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button class="primary-cta" data-submit-button disabled>Siirry Kevytasiointipalveluun <span aria-hidden="true">→</span></button>
+    <p class="submit-hint" data-submit-hint>Valitse vähintään yksi tiedosto tai lisää hankkeen kuvaus.</p>
+  </div>
 </form>
 
 <script>
@@ -80,6 +79,8 @@
   const submit = document.querySelector("[data-submit-button]");
   const hint = document.querySelector("[data-submit-hint]");
   const textarea = form.querySelector("textarea[name='text_body']");
+  const municipality = form.querySelector("input[name='municipality']");
+  const projectName = form.querySelector("input[name='project_name']");
   const dropzone = document.querySelector("[data-dropzone]");
   function render() {
     const chosen = Array.from(files.files || []);
@@ -93,19 +94,26 @@
       return item;
     }));
     zipName.textContent = zip.files && zip.files[0] ? zip.files[0].name : "Ei valittua tiedostoa";
-    const ready = chosen.length > 0 || (zip.files && zip.files.length > 0) || textarea.value.trim().length > 0;
+    const hasMaterial = chosen.length > 0 || (zip.files && zip.files.length > 0) || textarea.value.trim().length > 0;
+    const ready = hasMaterial && municipality.value.trim() && projectName.value.trim();
     submit.disabled = !ready;
-    hint.textContent = ready ? `${chosen.length + (zip.files && zip.files.length ? 1 : 0)} tiedostoa valittu. Voit jatkaa.` : "Valitse vähintään yksi tiedosto tai lisää kuvaus.";
+    if (!municipality.value.trim() || !projectName.value.trim()) {
+      hint.textContent = "Täytä hankkeen nimi ja kunta sekä valitse aineisto.";
+    } else {
+      hint.textContent = hasMaterial ? `${chosen.length + (zip.files && zip.files.length ? 1 : 0)} tiedostoa valittu. Voit jatkaa.` : "Valitse vähintään yksi tiedosto tai lisää hankkeen kuvaus.";
+    }
   }
   files.addEventListener("change", render);
   zip.addEventListener("change", render);
   textarea.addEventListener("input", render);
+  municipality.addEventListener("input", render);
+  projectName.addEventListener("input", render);
   ["dragenter", "dragover"].forEach((eventName) => dropzone.addEventListener(eventName, () => dropzone.classList.add("drag-active")));
   ["dragleave", "drop"].forEach((eventName) => dropzone.addEventListener(eventName, () => dropzone.classList.remove("drag-active")));
   form.addEventListener("submit", () => {
     submit.disabled = true;
-    submit.innerHTML = 'Aineistoa vastaanotetaan <span aria-hidden="true">…</span>';
-    hint.textContent = "Siirryt seuraavaksi etenemisnäkymään. Voit jatkaa työskentelyä käsittelyn aikana.";
+    submit.innerHTML = 'Hanke ja aineisto tallennetaan <span aria-hidden="true">…</span>';
+    hint.textContent = "Siirryt seuraavaksi Kevytasiointipalveluun. Aineisto käsitellään taustalla.";
     dropzone.classList.add("is-uploading");
   });
   render();

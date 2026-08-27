@@ -123,35 +123,37 @@ keyed `permit_application:<permit_type>` with `form_data`, `field_sources`, and
 
 ### Two entry paths (do NOT mix-match)
 
-There are **two distinct ways to work with an application**. The standalone
-package review is not an application or hanke until the user explicitly
-promotes it. The form-first journey creates the hanke and application first.
-Keep them independent — do not merge, alias, or cross-wire them.
+There are **two distinct ways to work with an application**. The kevytasiointi
+journey creates a real hanke and application immediately and links back to the
+service view; the form-first wizard journey also creates the hanke and
+application first. Keep them independent — do not merge, alias, or cross-wire
+them.
 
-| | **A. Package workbench** (material-first) | **B. Wizard** (form-first) |
+| | **A. Kevytasiointi** (material-first) | **B. Wizard** (form-first) |
 |---|---|---|
 | Entry URL | `/applicant/packages/new` | `/projects/new` (with `start_at=wizard`) |
-| Template | `applicant/package_new.html` → `applicant/package_workbench.html` | `applicant/applicant_start.html` → `applicant/wizard.html` |
+| Template | `applicant/package_new.html` → `applicant/kevytasiointi.html` | `applicant/applicant_start.html` → `applicant/wizard.html` |
 | POST handler | `applicant_package_create` | `create_project` |
 | Starts with | Permit type + municipality + raw material | New hanke basics + permit type |
 | First step | AI ingest & analysis | Wizard step 1 (common data) |
 | Landing | `/applicant/packages/{package_id}` | `/cases/{case_id}/lupademo/application/{application_id}/wizard/1` |
-| Promotion | `Aloita uusi hanke tarkastuksen pohjalta` | — |
-| Nav label | `Tarkista uusi hakemuspaketti` | `Uusi hanke` |
+| Nav label | `Kevytasiointi` | `Uusi hanke` |
 
-- **Path A** (`/applicant/packages/*`) is the **package workbench** — choose an
-  permit type and municipality, upload raw material, and let AI run a
-  criteria-based review. It stores a standalone `package_reviews` session and
-  does not create a hanke or `permit_application` until promotion. Routes live
-  in `routes/applicant.py` under the `applicant_package_*` handlers.
+- **Path A** (`/applicant/packages/*`) is the **Kevytasiointi service view** —
+  choose a permit type and municipality, upload raw material, and fill the
+  application with AI prose suggestions in a persistent side panel (per-field
+  copy buttons, no criteria gate, no review phase). Submitting the LV-side form
+  creates a REAL hanke (`created_from="kevytasiointi"`) right away — there is no
+  promote step. All links from dashboards and hanke pages for these hankes point
+  directly at `/applicant/packages/{package_id}`, never the wizard. Routes live
+  in `routes/applicant.py` under the `applicant_package_*` /
+  `kevytasiointi_*` handlers.
 - **Path B** (`/projects/new` → wizard) is the **6-step wizard** — fill the form
   first, add materials in step 2. Routes live in `routes/applicant.py` under the
   `create_project` / `application_wizard` handlers.
 
-The workbench intentionally links **into** the wizard for review/fix (e.g.
-"Korjaa" → `wizard/2`, "Katso kaikki tarkistukset" → `wizard/4`), but the two
-entry flows must never be conflated. When adding a feature, decide which path it
-belongs to and keep it there.
+The two entry flows must never be conflated. When adding a feature, decide which
+path it belongs to and keep it there.
 
 ### Artifacts
 
@@ -223,7 +225,8 @@ Separate UI at `/cases/{case_id}/lupademo/authority/`:
 
 - Single SQLite file at `data/keha_lv.db`
 - Tables: `customers`, `cases`, `files`, `artifacts`, `app_settings`, `llm_overrides`, `ai_logs`
-- `package_reviews` stores standalone package-review sessions before promotion.
+- `package_reviews` stores standalone package-review sessions (legacy review
+  rows; kevytasiointi no longer creates them).
 - `cases.customer_id` is the customer-workspace ownership key. API `tenant_id`
   remains a separate external suggestion-service concept.
 - `artifacts` is the main document store: `id = case_id:type:name`, JSON in `data_json`

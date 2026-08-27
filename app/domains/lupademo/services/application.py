@@ -53,7 +53,7 @@ from jinja2 import Template
 from app.infra.llm_factory import create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
-from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
+from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ProseSuggestionField, ProseSuggestionResponse, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
 from .criteria import *  # noqa: F401,F403
 from .criteria import _normalize_municipality
 from .jobs import complete_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
@@ -3102,9 +3102,10 @@ def ingest_source_materials(db: Any, settings: Any, case_id: str, source_dir: st
     return result
 
 
-def submit_application(db: Any, case_id: str, permit_type: str, settings: Any = None) -> dict[str, Any]:
+def submit_application(db: Any, case_id: str, permit_type: str, settings: Any = None, *, require_precheck: bool = True) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
-    ensure_fresh_precheck_or_raise(db, case_id, permit_type, settings=settings)
+    if require_precheck:
+        ensure_fresh_precheck_or_raise(db, case_id, permit_type, settings=settings)
     package = compose_submission_package(db, case_id, permit_type)
     receipt = {
         "receipt_id": f"LV-{time.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}",
@@ -3150,6 +3151,157 @@ def submit_application(db: Any, case_id: str, permit_type: str, settings: Any = 
     save_artifact(db, case_id, "authority_queue", "main", queue)
     event(db, case_id, "application.submitted", "Application submitted", {"application_id": permit_type, "receipt_id": receipt["receipt_id"]})
     return receipt
+
+
+def _prose_field_label(schema: dict[str, Any], field_id: str) -> str:
+    """Human-readable label for a schema field (falls back to the field id)."""
+    for field in schema.get("fields", []):
+        if str(field.get("id") or "") == field_id:
+            return str(field.get("label") or field_id)
+    return field_id
+
+
+def _deterministic_prose_suggestion(
+    schema: dict[str, Any],
+    extraction_items: list[dict[str, Any]],
+    common: dict[str, Any],
+    permit_type: str,
+) -> ProseSuggestionResponse:
+    """Build a deterministic Finnish prose suggestion from extraction results + shared data."""
+    request_id = f"prose-{uuid.uuid4().hex[:10]}"
+    used: set[str] = set()
+    fields: list[ProseSuggestionField] = []
+    blocks: list[str] = [f"## Tekoälyapurin ehdotus — {permit_type}", ""]
+    # 1) Extraction-queue items (strongest signal: value found in the tausta-aineisto).
+    for item in extraction_items:
+        field_id = str(item.get("field_id") or "")
+        value = str(item.get("accepted_value") or item.get("suggested_value") or item.get("extracted_value") or "").strip()
+        if not field_id or not value or field_id in used:
+            continue
+        used.add(field_id)
+        label = _prose_field_label(schema, field_id)
+        source = str(item.get("source_document") or "Hakemusaineisto")
+        fields.append(ProseSuggestionField(field_id=field_id, label=label, value=value, source=source))
+        blocks.extend([f"**{label}**", value, ""])
+    # 2) LV:n yhteiset tiedot (kentät joita käyttäjä täytti LV:ssä), jos ei jo katettu.
+    for field_id, value in common.items():
+        value = str(value or "").strip()
+        if not value or field_id in used or not any(f.get("id") == field_id for f in schema.get("fields", [])):
+            continue
+        used.add(field_id)
+        label = _prose_field_label(schema, field_id)
+        fields.append(ProseSuggestionField(field_id=field_id, label=label, value=value, source="LV:n yhteiset tiedot"))
+        blocks.extend([f"**{label}**", value, ""])
+    if not fields:
+        blocks.append("Aineistosta ei löytynyt vielä täytettäviä kenttiä. Lisää tai analysoi aineisto ensin.")
+    prose_md = "\n".join(blocks).strip()
+    return ProseSuggestionResponse(request_id=request_id, criteria_version="demo", prose_md=prose_md, fields=fields)
+
+
+def kevytasiointi_prose(db: Any, case_id: str, permit_type: str, settings: Any = None) -> dict[str, Any]:
+    """Kevytasiointipalvelu AI-apuri: LV returns a prose-form suggestion (fields separated).
+
+    Deterministic Finnish prose in mock mode (built from field-extraction results and LV
+    shared data); a prose LLM agent in Azure mode. Never writes to the form — the user
+    copies values by hand (that is the point of Polku 2 / Kevytasiointipalvelu).
+    """
+    permit_type = application_id_for(permit_type)
+    app = ensure_application(db, case_id, permit_type)
+    schema = load_form_schema(permit_type)
+    form_data = dict(app.get("form_data") or {})
+    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()}).get("data", {})
+    extraction_queue = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []}).get("items", [])
+    extraction_items = [
+        item for item in _list(extraction_queue)
+        if isinstance(item, dict) and str(item.get("suggested_value") or item.get("extracted_value") or "").strip()
+    ]
+    attachments = list_attachments(db, case_id, permit_type)
+    fallback = _deterministic_prose_suggestion(schema, extraction_items, common, permit_type)
+    municipality = str(form_data.get("municipality") or common.get("municipality") or "")
+    active_version = criteria_version(permit_type, db, case_id, municipality)
+    response = fallback
+    if db is not None and settings is not None:
+        # Feed the prose agent real document text, not just extraction-queue items.
+        # The structure extractor only covers environmental_industrial (and can come
+        # back empty), so a building_residential case would otherwise get zero source
+        # data and every field would read "ei löytynyt aineistosta". retrieval_context
+        # spreads up to max_chars evenly across all documents' extracted text.
+        retrieval = retrieval_context(db, case_id, permit_type, max_chars=48000)
+        excerpts = [
+            {
+                "filename": item.get("title"),
+                "delivery_scope": item.get("delivery_scope"),
+                "text": str(item.get("text") or ""),
+            }
+            for item in retrieval.get("excerpts", [])
+            if str(item.get("text") or "").strip()
+        ]
+        agent_response = run_json_agent(
+            db,
+            settings,
+            case_id,
+            "prose_suggestion_agent",
+            {
+                "request_id": fallback.request_id,
+                "criteria_version": active_version,
+                "permit_type": permit_type,
+                "form_schema": json.dumps(schema, ensure_ascii=False),
+                "form_data": json.dumps(form_data, ensure_ascii=False),
+                "common_data": json.dumps(common, ensure_ascii=False),
+                "extracted_fields": json.dumps(extraction_items, ensure_ascii=False),
+                "attachments": json.dumps(
+                    [
+                        {
+                            "filename": a.get("filename"),
+                            "primary_type": a.get("primary_type", ""),
+                            "excerpt": str(a.get("text_excerpt") or a.get("summary") or "")[:260],
+                        }
+                        for a in attachments
+                    ],
+                    ensure_ascii=False,
+                ),
+                "document_texts": json.dumps(excerpts, ensure_ascii=False),
+            },
+            ProseSuggestionResponse,
+            fallback=fallback,
+            max_output_tokens=4000,
+        )
+        if isinstance(agent_response, ProseSuggestionResponse) and str(agent_response.prose_md or "").strip():
+            response = agent_response
+        else:
+            response = fallback
+        response.criteria_version = active_version
+    agent_output = artifact_json(db, case_id, "agent_output", "prose_suggestion_agent", {})
+    provider = str(agent_output.get("provider") or getattr(settings, "llm_provider", "mock") or "mock").lower()
+    fallback_used = bool(agent_output.get("fallback_used")) or response is fallback
+    raw_fields = getattr(response, "fields", None) or []
+    normalized_fields = []
+    for f in raw_fields:
+        if isinstance(f, dict):
+            normalized_fields.append({
+                "field_id": f.get("field_id", ""),
+                "label": f.get("label", ""),
+                "value": f.get("value", ""),
+                "source": f.get("source", ""),
+            })
+        else:
+            normalized_fields.append({
+                "field_id": getattr(f, "field_id", ""),
+                "label": getattr(f, "label", ""),
+                "value": getattr(f, "value", ""),
+                "source": getattr(f, "source", ""),
+            })
+    payload = {
+        "request_id": getattr(response, "request_id", None) or fallback.request_id,
+        "criteria_version": getattr(response, "criteria_version", None) or active_version,
+        "prose_md": getattr(response, "prose_md", None) or fallback.prose_md,
+        "fields": normalized_fields,
+        "provider": provider,
+        "fallback_used": fallback_used,
+    }
+    save_artifact(db, case_id, "prose_suggestion", permit_type, payload)
+    event(db, case_id, "ai.prose_suggestion.requested", "Kevytasiointi AI-apuri prose suggestion requested", {"application_id": permit_type, "fallback_used": fallback_used})
+    return payload
 
 
 def _caseworker_observation_id(kind: str, raw_id: Any, index: int) -> str:

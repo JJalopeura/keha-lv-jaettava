@@ -101,12 +101,13 @@ class CustomerWorkspace(unittest.TestCase):
         self.assertEqual(response.text.count('class="row-action'), 3)
 
     def test_package_upload_does_not_create_another_hanke(self) -> None:
+        """Kevytasiointi (Polku 2): LV-side entry creates a real hanke directly."""
         client.post("/login", data={"customer_id": "ren-gas"})
         before = len(db.list_cases_for_customer("ren-gas"))
         response = client.post(
             "/applicant/packages/new",
             data={
-                "package_name": "Ren-Gas aineisto",
+                "project_name": "Ren-Gas biokaasuhanke",
                 "permit_type": "environmental_industrial",
                 "municipality": "Vantaa",
                 "text_body": "Biokaasulaitoksen kuvaus.",
@@ -114,27 +115,89 @@ class CustomerWorkspace(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 303)
         package_id = response.headers["location"].rsplit("/", 1)[-1]
-        self.assertEqual(len(db.list_cases_for_customer("ren-gas")), before)
-        review_id = find_material_package(db, package_id)["case_id"]
-        self.assertIsNone(db.get_case(review_id))
-        self.assertIsNone(db.get_artifact(review_id, "permit_application", "environmental_industrial"))
+        self.assertEqual(len(db.list_cases_for_customer("ren-gas")), before + 1)
+        found = find_material_package(db, package_id)
+        case_id = found["case_id"]
+        self.assertIsNotNone(db.get_case(case_id))
+        self.assertIsNotNone(db.get_artifact(case_id, "permit_application", "environmental_industrial"))
         workbench = client.get(response.headers["location"])
         self.assertEqual(workbench.status_code, 200)
-        self.assertNotIn("Jatka nykyistä hakemusta", workbench.text)
-        self.assertNotIn("Avoin hanke", workbench.text)
-        home = client.get("/")
-        self.assertIn("Hakemuspaketin tarkistukset", home.text)
-        self.assertIn("Ren-Gas aineisto", home.text)
-        self.assertEqual(client.post(f"/applicant/packages/{package_id}/analyze").status_code, 303)
-        self.assertIn("Aloita uusi hanke tarkastuksen pohjalta", client.get(response.headers["location"]).text)
-        promoted = client.post(f"/applicant/packages/{package_id}/promote")
-        self.assertEqual(promoted.status_code, 303)
-        target_case = promoted.headers["location"].split("/cases/", 1)[1].split("/", 1)[0]
-        self.assertEqual(len(db.list_cases_for_customer("ren-gas")), before + 1)
-        self.assertIsNotNone(db.get_artifact(target_case, "permit_application", "environmental_industrial"))
-        # F27: consumed review namespace holds no duplicated artifacts after promotion.
-        leftover = [a["id"] for a in db.list_artifacts(package_id)]
-        self.assertEqual(leftover, [])
+        self.assertIn("Kevytasiointi", workbench.text)
+
+        # AI-prose endpoint returns JSON modal payload
+        prose_resp = client.post(f"/applicant/packages/{package_id}/ai-prose")
+        self.assertEqual(prose_resp.status_code, 200)
+        prose_data = prose_resp.json()
+        self.assertIn("prose_md", prose_data)
+
+        # Save and verify save works without intermediate promote
+        save_resp = client.post(
+            f"/applicant/packages/{package_id}/save",
+            data={"activity_name": "Biokaasulaitos"},
+        )
+        self.assertEqual(save_resp.status_code, 303)
+        saved_view = client.get(save_resp.headers["location"])
+        self.assertEqual(saved_view.status_code, 200)
+        self.assertIn("Biokaasulaitos", saved_view.text)
+
+    def test_kevytasiointi_links_point_to_service_view_not_wizard(self) -> None:
+        """Decision 2026-08-27: kevytasiointi hankkeet link to /applicant/packages/{pid},
+        never the wizard — dashboard rows, next-task and project_url included."""
+        from app.domains.lupademo.services import customer_workspace as customer_ws
+
+        client.post("/login", data={"customer_id": "ren-gas"})
+        response = client.post(
+            "/applicant/packages/new",
+            data={
+                "project_name": "Ren-Gas kevytlinkkihanke",
+                "permit_type": "environmental_industrial",
+                "municipality": "Vantaa",
+                "text_body": "Biokaasulaitoksen kuvaus.",
+            },
+        )
+        self.assertEqual(response.status_code, 303)
+        package_id = response.headers["location"].rsplit("/", 1)[-1]
+        case_id = find_material_package(db, package_id)["case_id"]
+        service_url = f"/applicant/packages/{package_id}"
+
+        # Service-level rows
+        rows = customer_ws.case_application_rows(db, case_id)
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(row["application_url"], service_url)
+
+        # Dashboard: case row project_url + next-task url
+        dashboard = customer_ws.customer_dashboard(db, "ren-gas")
+        case_row = next(item for item in dashboard["cases"] if item["case_id"] == case_id)
+        self.assertEqual(case_row["project_url"], service_url)
+        task_urls = [task["url"] for task in dashboard["tasks"] if task["case_id"] == case_id]
+        for url in task_urls:
+            self.assertEqual(url, service_url)
+
+        # Rendered dashboard HTML contains the service URL, not a wizard URL for this hanke
+        page = client.get("/")
+        self.assertIn(service_url, page.text)
+
+    def test_ai_prose_endpoint_returns_prose_and_fields(self) -> None:
+        """Kevytasiointi side panel payload: non-empty prose_md plus fields list (mock mode)."""
+        client.post("/login", data={"customer_id": "ren-gas"})
+        response = client.post(
+            "/applicant/packages/new",
+            data={
+                "project_name": "Ren-Gas prose-testihanke",
+                "permit_type": "environmental_industrial",
+                "municipality": "Vantaa",
+                "text_body": "Biokaasulaitoksen kuvaus. Toiminnanharjoittaja Ren-Gas Oy.",
+            },
+        )
+        self.assertEqual(response.status_code, 303)
+        package_id = response.headers["location"].rsplit("/", 1)[-1]
+
+        prose_resp = client.post(f"/applicant/packages/{package_id}/ai-prose")
+        self.assertEqual(prose_resp.status_code, 200)
+        data = prose_resp.json()
+        self.assertTrue(data.get("prose_md"))
+        self.assertIsInstance(data.get("fields"), list)
 
     def test_anonymous_admin_mutation_is_forbidden(self) -> None:
         """F28: case-scoped criteria mutations require the owning customer's session."""
