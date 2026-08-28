@@ -55,6 +55,14 @@ ATTACHMENT_REQUIREMENT_ALIASES = {
     "site_map": {"site_map", "site_plan"},
     "zoning_extract": {"zoning_extract", "site_plan"},
     "public_summary": {"public_summary"},
+    # P2X/Ren-Gas/SharpCell case corpus: safety data sheets count as chemical inventory
+    "chemical_inventory_or_sds": {"chemical_inventory", "safety_data_sheet", "turvatiedote"},
+    # UUDELY lausunto / perustellun päätelmän ajantasaisuudesta
+    "judgement_freshness_assessment": {"judgement_freshness_assessment", "uuvely_lausunto"},
+    # DNSH-selvitys (EU talouskasvetsasetus)
+    "dnsh_statement": {"dnsh_statement", "dns_compliance"},
+    # Tukesin lausunto
+    "tukes_statement": {"tukes_statement", "lausunto_tukes"},
 }
 
 
@@ -63,6 +71,14 @@ ATTACHMENT_REQUIREMENT_TERMS = {
     "site_map": ("sijaintikart", "sijaintiperiaate", "asemapiirros", "tonttimuistio"),
     "zoning_extract": ("kaavatilanne", "kaavamuistio", "asemakaava", "kaavoitus"),
     "public_summary": ("yleistajuinen yhteenveto", "julkinen tiivistelmä", "tiivistelmä yleisölle"),
+    # Safety data sheets / turvatiedotteet → chemical inventory
+    "chemical_inventory_or_sds": ("turvatiedote", "safety data sheet", "sdn", "kemikaali"),
+    # UUDELY lausunto / perustellun päätelmän ajantasaisuudesta
+    "judgement_freshness_assessment": ("perustellun päätelmän ajantasaisuudesta", "uuvely", "ajantasaisuus"),
+    # DNSH-selvitys
+    "dnsh_statement": ("dns-h", "dns_h", "do no significant harm", "talouskasvetsasetus"),
+    # Tukesin lausunto
+    "tukes_statement": ("lausunto tukes", "turva-aineet", "vapaa-ajan rakentaminen"),
 }
 
 
@@ -118,6 +134,17 @@ def classify_attachment(filename: str) -> str:
         ("asemakaava", "zoning_extract"),
         ("kaavaote", "zoning_extract"),
         ("kaavoitus", "zoning_extract"),
+        # P2X/Ren-Gas/SharpCell: safety data sheets count as chemical inventory
+        ("turvatiedote", "chemical_inventory_or_sds"),
+        ("safety data sheet", "chemical_inventory_or_sds"),
+        # UUDELY lausunto / perustellun päätelmän ajantasaisuudesta
+        ("perustellun päätelmän ajantasaisuus", "judgement_freshness_assessment"),
+        ("uuvely_lausunto", "judgement_freshness_assessment"),
+        # DNSH-selvitys (EU talouskasvetsasetus)
+        ("dns-h", "dnsh_statement"),
+        # Tukesin lausunto
+        ("lausunto tukes", "tukes_statement"),
+        # Standard rules
         ("kemikaali", "chemical_inventory"),
         ("ilmanlaatu", "air_quality_model"),
         ("savukaasu", "air_quality_model"),
