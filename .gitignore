@@ -62,3 +62,4 @@ wayfinder/
 
 # KEHA LV example-package documentation (data itself stays ignored)
 !testiaineisto/*.md
+!testiaineisto/validate_docs.py
