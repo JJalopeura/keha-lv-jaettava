@@ -28,7 +28,7 @@ Thumbs.db
 
 # Logs
 *.log
-testiaineisto/
+testiaineisto/*
 .agents/skills/
 skills-lock.json
 .audit/
@@ -59,3 +59,6 @@ wizard-ai-sidebar-green.png
 .azure-venv/
 wayfinder/
 .npm-global/
+
+# KEHA LV example-package documentation (data itself stays ignored)
+!testiaineisto/*.md
