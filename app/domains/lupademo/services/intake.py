@@ -57,8 +57,10 @@ ATTACHMENT_REQUIREMENT_ALIASES = {
     "public_summary": {"public_summary"},
     # P2X/Ren-Gas/SharpCell case corpus: safety data sheets count as chemical inventory
     "chemical_inventory_or_sds": {"chemical_inventory", "safety_data_sheet", "turvatiedote"},
+    # Ilman tarkkailuohjelma: Tarkkailusuunnitelma-liite täyttää vaatimuksen
+    "air_monitoring_plan": {"air_monitoring_plan", "monitoring_plan"},
     # UUDELY lausunto / perustellun päätelmän ajantasaisuudesta
-    "judgement_freshness_assessment": {"judgement_freshness_assessment", "uuvely_lausunto"},
+    "judgement_freshness_assessment": {"judgement_freshness_assessment", "uudely_lausunto"},
     # DNSH-selvitys (EU talouskasvetsasetus)
     "dnsh_statement": {"dnsh_statement", "dns_compliance"},
     # Tukesin lausunto
@@ -74,9 +76,9 @@ ATTACHMENT_REQUIREMENT_TERMS = {
     # Safety data sheets / turvatiedotteet → chemical inventory
     "chemical_inventory_or_sds": ("turvatiedote", "safety data sheet", "sdn", "kemikaali"),
     # UUDELY lausunto / perustellun päätelmän ajantasaisuudesta
-    "judgement_freshness_assessment": ("perustellun päätelmän ajantasaisuudesta", "uuvely", "ajantasaisuus"),
+    "judgement_freshness_assessment": ("perustellun päätelmän ajantasaisuudesta", "uudely", "ajantasaisu"),
     # DNSH-selvitys
-    "dnsh_statement": ("dns-h", "dns_h", "do no significant harm", "talouskasvetsasetus"),
+    "dnsh_statement": ("dnsh", "dns-h", "dns_h", "do no significant harm", "talouskasvetsasetus"),
     # Tukesin lausunto
     "tukes_statement": ("lausunto tukes", "turva-aineet", "vapaa-ajan rakentaminen"),
 }
@@ -90,7 +92,7 @@ def attachment_requirement_covered(required: str, attachments: list[dict[str, An
             continue
         if str(attachment.get("primary_type") or "") in aliases:
             return True
-        haystack = f"{attachment.get('filename', '')}\n{attachment.get('summary', '')}\n{attachment.get('text_excerpt', '')}".lower()
+        haystack = unicodedata.normalize("NFC", f"{attachment.get('filename', '')}\n{attachment.get('summary', '')}\n{attachment.get('text_excerpt', '')}".lower())
         if any(term in haystack for term in terms):
             return True
     return False
@@ -116,7 +118,9 @@ def _extraction_has_substantive_value(item: dict[str, Any]) -> bool:
 
 
 def classify_attachment(filename: str) -> str:
-    name = filename.lower()
+    # Rules are first-match-wins: specific corpus rules (P2X/Ren-Gas/SharpCell)
+    # before generic ones so e.g. "UUDELY_..._YVA_ajantasaisuus" hits uudely, not yva.
+    name = unicodedata.normalize("NFC", filename.lower())
     rules = [
         ("asemapiir", "site_plan"),
         ("sijaintikart", "site_map"),
@@ -131,19 +135,27 @@ def classify_attachment(filename: str) -> str:
         ("lupahakemus", "environmental_application"),
         ("tiivistel", "public_summary"),
         ("perustila", "baseline_report"),
+        # Kaavat (asema-/yleiskaava ja määräykset) → zoning_extract
         ("asemakaava", "zoning_extract"),
+        ("yleiskaava", "zoning_extract"),
         ("kaavaote", "zoning_extract"),
-        ("kaavoitus", "zoning_extract"),
-        # P2X/Ren-Gas/SharpCell: safety data sheets count as chemical inventory
+        # UUDELY-lausunto / ajantasaisuuslausunto → judgement_freshness_assessment
+        # (ennen yleisiä perusteltu päätelmä -sääntöjä)
+        ("perustellun päätelmän ajantasaisu", "judgement_freshness_assessment"),
+        ("uudely", "judgement_freshness_assessment"),
+        ("ajantasaisu", "judgement_freshness_assessment"),
+        # YVA-bundle: selostus + perusteltu päätelmä = yva_statement
+        ("ympäristövaikutusten arviointi", "yva_statement"),
+        ("perusteltu päätelmä", "yva_statement"),
+        ("perustellun päätelmä", "yva_statement"),
+        # Selvityslahteen lausunnot
+        ("dnsh", "dnsh_statement"),
+        ("talouskasvets", "dnsh_statement"),
+        ("bat-", "bat_assessment"),
+        ("lausunto tukes", "tukes_statement"),
+        # Safety data sheets / turvatiedotteet lasketaan kemikaaliluetteloksi
         ("turvatiedote", "chemical_inventory_or_sds"),
         ("safety data sheet", "chemical_inventory_or_sds"),
-        # UUDELY lausunto / perustellun päätelmän ajantasaisuudesta
-        ("perustellun päätelmän ajantasaisuus", "judgement_freshness_assessment"),
-        ("uuvely_lausunto", "judgement_freshness_assessment"),
-        # DNSH-selvitys (EU talouskasvetsasetus)
-        ("dns-h", "dnsh_statement"),
-        # Tukesin lausunto
-        ("lausunto tukes", "tukes_statement"),
         # Standard rules
         ("kemikaali", "chemical_inventory"),
         ("ilmanlaatu", "air_quality_model"),

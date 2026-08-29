@@ -3769,6 +3769,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         api_case = _api_case_id(db, case_id)
         active_criteria = effective_criteria(db, api_case, req.permit_type, municipality)
     issues = deterministic_issues(req.permit_type, req.form_data, req.attachments, municipality=municipality, criteria=active_criteria)
+    criteria_results: list[dict[str, Any]] = []
     if db is not None and settings is not None:
         criteria = active_criteria
         base_values = {
@@ -3795,7 +3796,6 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             fallback={"criteria_results": []},
             max_output_tokens=6000,
         )
-        criteria_results: list[dict[str, Any]] = []
         if isinstance(criteria_response, CriteriaAssessmentResponse) and criteria_response.criteria_results:
             criteria_results = _plain(criteria_response.criteria_results)
             save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": criteria_results})
