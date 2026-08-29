@@ -56,7 +56,7 @@ ATTACHMENT_REQUIREMENT_ALIASES = {
     "zoning_extract": {"zoning_extract", "site_plan"},
     "public_summary": {"public_summary"},
     # P2X/Ren-Gas/SharpCell case corpus: safety data sheets count as chemical inventory
-    "chemical_inventory_or_sds": {"chemical_inventory", "safety_data_sheet", "turvatiedote"},
+    "chemical_inventory_or_sds": {"chemical_inventory_or_sds", "chemical_inventory", "safety_data_sheet", "turvatiedote"},
     # Ilman tarkkailuohjelma: Tarkkailusuunnitelma-liite täyttää vaatimuksen
     "air_monitoring_plan": {"air_monitoring_plan", "monitoring_plan"},
     # UUDELY lausunto / perustellun päätelmän ajantasaisuudesta
