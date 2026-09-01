@@ -122,13 +122,23 @@ class CustomerWorkspace(unittest.TestCase):
         self.assertIsNotNone(db.get_artifact(case_id, "permit_application", "environmental_industrial"))
         workbench = client.get(response.headers["location"])
         self.assertEqual(workbench.status_code, 200)
-        self.assertIn("Kevytasiointi", workbench.text)
+        self.assertIn("Kevyt integraatio", workbench.text)
 
         # AI-prose endpoint returns JSON modal payload
         prose_resp = client.post(f"/applicant/packages/{package_id}/ai-prose")
         self.assertEqual(prose_resp.status_code, 200)
         prose_data = prose_resp.json()
         self.assertIn("prose_md", prose_data)
+        workbench_after = client.get(f"/applicant/packages/{package_id}")
+        self.assertIn("Avaa suositukset", workbench_after.text)
+        self.assertIn("kevyt-material__actions", workbench_after.text)
+        self.assertIn('target="_blank"', workbench_after.text)
+        self.assertNotIn('class="kevyt-panel"', workbench_after.text)
+        self.assertNotIn('data-open-suggestions aria-disabled="true"', workbench_after.text)
+        suggestions_page = client.get(f"/applicant/packages/{package_id}/suggestions")
+        self.assertEqual(suggestions_page.status_code, 200)
+        self.assertIn("Tekoälyapurin suositukset", suggestions_page.text)
+        self.assertNotIn("Kopioi", suggestions_page.text)
 
         # Save and verify save works without intermediate promote
         save_resp = client.post(

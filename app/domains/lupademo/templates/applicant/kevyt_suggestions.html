@@ -1,0 +1,73 @@
+{% extends "shared/light_base.html" %}
+{% set standalone_page = true %}
+{% set prose_suggestion = prose_suggestion|default({}) %}
+{% set kevyt_permit_name = {'building_residential': 'Rakennusluvan', 'environmental_industrial': 'Ympäristöluvan', 'event_public': 'Tapahtumaluvan'}.get(application.permit_type, kevyt_permit_label ~ 'n') %}
+{% block title %}Tekoälyehdotukset · Kevyt integraatio{% endblock %}
+{% block content %}
+{% if prose_suggestion.get('prose_md') %}
+<section class="kevyt-suggestions-page" aria-labelledby="suggestions-heading">
+  <div class="kevyt-suggestions-page__head">
+    <div>
+      <p class="section-kicker">Tausta-aineistosta koottu</p>
+      <h2 id="suggestions-heading">Tekoälyapurin suositukset</h2>
+      <p>Voit tarkastella ehdotusta ja täydentää lomaketta sen perusteella. Lomakkeen tietoja ei muuteta automaattisesti.</p>
+    </div>
+    <a class="button secondary" href="/applicant/packages/{{ package_id }}">Palaa lomakkeelle</a>
+  </div>
+  <div class="kevyt-suggestions-page__body">
+    <div class="prose-content" data-prose-output>
+      <pre class="prose-fallback" data-prose-source>{{ prose_suggestion.get('prose_md')|replace('**Toiminnan luvanvaraisuus**', '**Toiminnan yleiskuvaus**') }}</pre>
+    </div>
+    <details class="technical-details">
+      <summary>Tekniset tiedot</summary>
+      <div class="technical-details__content">
+        <p>AI-tila: {{ prose_suggestion.get('provider', '-') }}{% if prose_suggestion.get('fallback_used') %} · deterministinen varavastaus{% endif %}</p>
+        <p>Pyynnön tunniste: {{ prose_suggestion.get('request_id', '-') }}</p>
+      </div>
+    </details>
+  </div>
+</section>
+{% else %}
+<section class="kevyt-suggestions-page" aria-labelledby="suggestions-empty-heading">
+  <div class="kevyt-suggestions-page__head">
+    <div>
+      <p class="section-kicker">Tekoälyapuri</p>
+      <h2 id="suggestions-empty-heading">Suositusta ei ole vielä muodostettu</h2>
+      <p>Palaa lomakkeelle ja hae ensin tekoälyehdotus, kun aineiston analyysi on valmis.</p>
+    </div>
+    <a class="button secondary" href="/applicant/packages/{{ package_id }}">Palaa lomakkeelle</a>
+  </div>
+</section>
+{% endif %}
+
+<script>
+(function () {
+  function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function renderProse(md) {
+    var html = "";
+    escapeHtml(md).split(/\n/).forEach(function (rawLine) {
+      var line = rawLine.trim();
+      if (!line) return;
+      if (/^##\s+/.test(line) || /^#\s+/.test(line)) {
+        html += "<h3>" + line.replace(/^#+\s+/, "") + "</h3>";
+        return;
+      }
+      var match = line.match(/^\*\*(.+?)\*\*\s*(.*)$/);
+      if (match) {
+        html += '<div class="prose-row"><strong>' + match[1] + "</strong><p>" + (match[2] || "") + "</p></div>";
+      } else {
+        html += "<p>" + line + "</p>";
+      }
+    });
+    return html;
+  }
+  var output = document.querySelector("[data-prose-output]");
+  var source = output && output.querySelector("[data-prose-source]");
+  if (source) output.innerHTML = renderProse(source.textContent || "");
+})();
+</script>
+{% endblock %}

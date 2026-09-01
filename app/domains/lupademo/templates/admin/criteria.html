@@ -146,11 +146,25 @@
       </form>
       {% set test_result = criteria_test_results.get(criteria.permit_type, {}) %}
       {% if test_result %}
-      <div class="result-item">
-        <h3>Viimeisin testipyyntö</h3>
-        <p class="criteria-test-context">Testattu kunta: <strong>{{ test_result.municipality or active_city }}</strong> · versio <code>{{ test_result.result.criteria_version }}</code></p>
-        <p>{{ test_result.result.suggestions|length }} ehdotusta muodostettu aktiivisella versiolla.</p>
-        {% for suggestion in test_result.result.suggestions %}<p><span class="status good">Ehdotus</span> {{ suggestion.suggested_value }}</p>{% endfor %}
+      <div class="result-item criteria-test-result">
+        {% set test = test_result.result %}
+        <div class="criteria-test-result__heading">
+          <div>
+            <h3>Viimeisin kriteeritesti</h3>
+            <p class="criteria-test-context">{{ test.test_case or "Valmis testipaketti" }} · versio <code>{{ test.criteria_version }}</code></p>
+          </div>
+          <span class="status {{ 'good' if test.readiness == 'ready' else 'warn' }}">{{ 'Lähetys sallittu' if test.readiness == 'ready' else 'Tarkennettava' }}</span>
+        </div>
+        <div class="criteria-test-counts" aria-label="Kriteeritestin tulokset">
+          <div><strong>{{ test.get('counts', {}).get('green', 0) }}</strong><span>täyttyy</span></div>
+          <div><strong>{{ test.get('counts', {}).get('yellow', 0) }}</strong><span>seurattavaa</span></div>
+          <div><strong>{{ test.get('counts', {}).get('red', 0) }}</strong><span>ei täyty</span></div>
+        </div>
+        {% set test_gaps = test.get('criteria_results', [])|selectattr('status', 'ne', 'green')|list %}
+        {% if test_gaps %}
+        <p class="muted">Testipaketin avoimet kohdat:</p>
+        {% for gap in test_gaps[:4] %}<p class="criteria-test-gap"><span class="status warn">{{ 'Seurattava' if gap.status == 'yellow' else 'Estävä' }}</span> {{ gap.rationale }}</p>{% endfor %}
+        {% else %}<p class="criteria-test-gap"><span class="status good">Kunnossa</span> Testipaketti täyttää aktiiviset kriteerit.</p>{% endif %}
         {% call technical_details("Testin tekniset tiedot") %}<p>Kriteeriversio: <code>{{ test_result.result.criteria_version }}</code></p>{% endcall %}
       </div>
       {% endif %}
@@ -178,6 +192,16 @@
       <div class="rule-list">
         {% for rule in rule_rows %}
         <div class="result-item">
+          {% set rule_attachment_label = namespace(value='') %}
+          {% for attachment_id in rule.attachment_type.split(',') if rule.attachment_type %}
+          {% set attachment_label = attachment_labels.get(attachment_id.strip(), attachment_id.strip()|replace('_', ' ')|capitalize) %}
+          {% set rule_attachment_label.value = rule_attachment_label.value ~ (" / " if rule_attachment_label.value else "") ~ attachment_label %}
+          {% endfor %}
+          <details class="criteria-rule-disclosure" {% if loop.first %}open{% endif %}>
+            <summary class="criteria-rule-summary">
+              <span><strong>{{ field_labels.get(rule.field_id, "Yleinen vaatimus") }}</strong><small>{{ rule_attachment_label.value or "Ei liitevaatimusta" }}</small></span>
+              <span class="status {{ 'bad' if rule.severity == 'blocking' else ('warn' if rule.severity == 'major' else 'good') }}">{{ severity_labels.get(rule.severity, rule.severity) }}</span>
+            </summary>
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule">
             <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
             <input type="hidden" name="municipality" value="{{ selected_municipality }}">
@@ -197,9 +221,10 @@
               <label>Vakavuus<select name="severity">{% for severity in ["blocking", "major", "minor", "recommendation"] %}<option value="{{ severity }}" {% if rule.severity == severity %}selected{% endif %}>{{ severity_labels.get(severity, severity) }}</option>{% endfor %}</select></label>
             </div>
             <label>Arviointiohje <span aria-hidden="true">*</span><textarea aria-label="Arviointiohje" name="instruction" required>{{ rule.instruction }}</textarea></label>
-            <p class="criteria-rule-impact"><strong>Vaikutus AI-tarkistukseen:</strong> {% if rule.field_id %}tarkistaa kentän {{ field_labels.get(rule.field_id, rule.field_id) }}{% endif %}{% if rule.field_id and rule.attachment_type %} ja {% endif %}{% if rule.attachment_type %}vaatii liitteen {{ attachment_labels.get(rule.attachment_type, rule.attachment_type) }}{% endif %}{% if not rule.field_id and not rule.attachment_type %}ohjaa yleistä arviointia{% endif %}.</p>
+            <p class="criteria-rule-impact"><strong>Vaikutus AI-tarkistukseen:</strong> {% if rule.field_id %}tarkistaa kentän {{ field_labels.get(rule.field_id, "valitun kentän") }}{% endif %}{% if rule.field_id and rule_attachment_label.value %} ja {% endif %}{% if rule_attachment_label.value %}vaatii liitteen {{ rule_attachment_label.value }}{% endif %}{% if not rule.field_id and not rule_attachment_label.value %}ohjaa yleistä arviointia{% endif %}.</p>
             <button>Tallenna sääntö</button>
           </form>
+          </details>
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule/delete" class="inline-action">
             <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="municipality" value="{{ selected_municipality }}"><input type="hidden" name="rule_id" value="{{ rule.id }}"><button class="secondary">Poista</button>
           </form>

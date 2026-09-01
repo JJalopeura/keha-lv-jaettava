@@ -28,6 +28,7 @@ is a permit type id (e.g. `building_residential`); handlers normalize it via
 | GET | `/applicant/packages/new` | `applicant_package_new` | `applicant/package_new.html` | **A** |
 | POST | `/applicant/packages/new` | `applicant_package_create` | — (redirect) | **A** |
 | GET | `/applicant/packages/{package_id}` | `kevytasiointi_workbench` | `applicant/kevytasiointi.html` | **A** |
+| GET | `/applicant/packages/{package_id}/suggestions` | `kevytasiointi_suggestions` | `applicant/kevyt_suggestions.html` | **A** |
 | POST | `/applicant/packages/{package_id}/analyze` | `applicant_package_analyze` | — (redirect) | **A** |
 | POST | `/applicant/packages/{package_id}/ai-prose` | `kevytasiointi_ai_prose` | JSON | **A** |
 | POST | `/applicant/packages/{package_id}/save` | `kevytasiointi_save` | — (redirect) | **A** |

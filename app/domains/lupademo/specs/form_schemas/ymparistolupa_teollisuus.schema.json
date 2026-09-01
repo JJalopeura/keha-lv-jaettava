@@ -65,7 +65,7 @@
     {
       "id": "permit_basis",
       "tab": "applicant",
-      "label": "Toiminnan luvanvaraisuus",
+      "label": "Toiminnan yleiskuvaus",
       "type": "textarea",
       "required": true,
       "ai_suggest": true
@@ -105,7 +105,7 @@
     {
       "id": "activity_description",
       "tab": "activity",
-      "label": "Toiminnan yleiskuvaus",
+      "label": "Toiminnan tarkempi kuvaus",
       "type": "textarea",
       "required": true,
       "ai_suggest": true

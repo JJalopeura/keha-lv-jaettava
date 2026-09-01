@@ -1,10 +1,10 @@
 {% extends "shared/light_base.html" %}
 {% set profile = customer.profile if customer is defined and customer else {} %}
-{% block title %}Kevytasiointi · LV{% endblock %}
+{% block title %}Kevyt integraatio · LV{% endblock %}
 {% block content %}
-<nav class="flow-progress" aria-label="Kevytasioinnin vaiheet">
+<nav class="flow-progress" aria-label="Kevyen integraation vaiheet">
   <span class="active"><b>1</b> LV · hanke ja aineisto</span>
-  <span><b>2</b> Kevytasiointipalvelu · täytä hakemus</span>
+  <span><b>2</b> Kevyt integraatio · täytä hakemus</span>
   <span><b>3</b> Lähetys viranomaiselle</span>
 </nav>
 
@@ -34,7 +34,7 @@
   </section>
 
   <section class="form-section" aria-labelledby="material-heading">
-    <div class="form-section-heading"><div><h2 id="material-heading">Hankkeen tausta-aineisto</h2><p>Tekoälyapuri käyttää tätä aineistoa ehdotustensa pohjana, kun täytät hakemusta Kevytasiointipalvelussa.</p></div></div>
+    <div class="form-section-heading"><div><h2 id="material-heading">Hankkeen tausta-aineisto</h2><p>Tekoälyapuri käyttää tätä aineistoa ehdotustensa pohjana, kun täytät hakemusta Kevyt integraatiossa.</p></div></div>
     <div class="upload-main">
       <section class="upload-zone" data-dropzone>
         <input id="package-files" type="file" name="files" multiple accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.tif,.tiff,.webp" data-file-input>
@@ -64,7 +64,7 @@
   </section>
 
   <div class="form-actions">
-    <button class="primary-cta" data-submit-button disabled>Siirry Kevytasiointipalveluun <span aria-hidden="true">→</span></button>
+    <button class="primary-cta" data-submit-button disabled>Siirry Kevyt integraatioon <span aria-hidden="true">→</span></button>
     <p class="submit-hint" data-submit-hint>Valitse vähintään yksi tiedosto tai lisää hankkeen kuvaus.</p>
   </div>
 </form>
@@ -113,7 +113,7 @@
   form.addEventListener("submit", () => {
     submit.disabled = true;
     submit.innerHTML = 'Hanke ja aineisto tallennetaan <span aria-hidden="true">…</span>';
-    hint.textContent = "Siirryt seuraavaksi Kevytasiointipalveluun. Aineisto käsitellään taustalla.";
+    hint.textContent = "Siirryt seuraavaksi Kevyt integraatioon. Aineisto käsitellään taustalla.";
     dropzone.classList.add("is-uploading");
   });
   render();

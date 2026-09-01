@@ -239,6 +239,8 @@ class ApplicantPrecheckReport:
     readiness: str
     score: int = 0
     sections: list[dict[str, Any]] = field(default_factory=list)
+    strengths: list[dict[str, Any]] = field(default_factory=list)
+    improvements: list[dict[str, Any]] = field(default_factory=list)
     blocking_issue_count: int = 0
     major_issue_count: int = 0
 

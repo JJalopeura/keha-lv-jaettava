@@ -56,21 +56,27 @@ def list_municipalities(db: Any = None, case_id: str = "") -> list[str]:
                 continue
             name = str(item.get("name") or "")
             if ":" in name:
-                city = name.split(":", 1)[1]
+                permit_type, city = name.split(":", 1)
+                if permit_type not in CRITERIA_BY_MUNICIPALITY:
+                    continue
                 if city:
                     seen.setdefault(city, city.title())
     return [seen[city] for city in seen]
 
 
 def create_city_criteria(db: Any, case_id: str, municipality: str, editor: str = "admin") -> dict[str, Any]:
-    """Create a city-scoped criteria set for every permit type, seeded from
-    the default criteria. Registers the city so it appears in the admin
-    dropdown. Returns the first created set."""
+    """Create city-scoped criteria for permit types with registered variants.
+
+    The sets are seeded from the default criteria and the city is registered
+    for the admin dropdown. Returns the first created set.
+    """
     city = str(municipality or "").strip()
     if not city:
         raise ValueError("municipality_required")
     result: dict[str, Any] = {}
     for permit_type in PERMIT_SCHEMAS:
+        if permit_type not in CRITERIA_BY_MUNICIPALITY:
+            continue
         name = _criteria_name(permit_type, city)
         existing = artifact_json(db, case_id, "criteria_set", name, {})
         if existing and _normalize_municipality(existing.get("municipality")) == _normalize_municipality(city):
@@ -91,9 +97,9 @@ def create_city_criteria(db: Any, case_id: str, municipality: str, editor: str =
 
 
 def _criteria_name(permit_type: str, municipality: Any = None) -> str:
-    """Storage name for a criteria set. City-scoped when a municipality is
-    given, so each city keeps its own active set and version history."""
-    city = _normalize_municipality(municipality)
+    """Return a city-scoped storage name only for supported permit types."""
+    permit_type = application_id_for(permit_type)
+    city = _normalize_municipality(municipality) if permit_type in CRITERIA_BY_MUNICIPALITY else ""
     return f"{permit_type}:{city}" if city else permit_type
 
 
@@ -117,7 +123,7 @@ def effective_criteria(db: Any, case_id: str, permit_type: str, municipality: An
     permit_type = application_id_for(permit_type)
     name = _criteria_name(permit_type, municipality)
     art = artifact_json(db, case_id, "criteria_set", name, {})
-    requested_city = _normalize_municipality(municipality)
+    requested_city = _normalize_municipality(municipality) if permit_type in CRITERIA_BY_MUNICIPALITY else ""
     if art and (not requested_city or _normalize_municipality(art.get("municipality")) == requested_city):
         bundled = load_criteria(permit_type, municipality)
         if (

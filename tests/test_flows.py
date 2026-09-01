@@ -97,12 +97,40 @@ class ApplicantJourney(unittest.TestCase):
             1,
         )
 
+    def test_environmental_criteria_stay_global(self) -> None:
+        """Environmental applications use one national set for every municipality."""
+        environmental_case = db.create_case("Global environmental criteria", language="fi")
+        svc.ensure_seed_state(db, environmental_case)
+        svc.save_artifact(
+            db,
+            environmental_case,
+            "criteria_set",
+            "environmental_industrial:vantaa",
+            {"municipality": "Vantaa", "criteria_set_id": "city_only", "version": "city-only"},
+        )
+
+        vantaa = svc.effective_criteria(db, environmental_case, PERMIT, "Vantaa")
+        kerava = svc.effective_criteria(db, environmental_case, PERMIT, "Kerava")
+
+        self.assertEqual(vantaa["criteria_set_id"], "national_environmental_industrial_demo_v1")
+        self.assertEqual(vantaa["criteria_set_id"], kerava["criteria_set_id"])
+        self.assertEqual(vantaa["municipality"], "")
+        svc.create_city_criteria(db, environmental_case, "Espoo")
+        self.assertEqual(
+            svc.artifact_json(db, environmental_case, "criteria_set", "environmental_industrial:vantaa", {}),
+            {"municipality": "Vantaa", "criteria_set_id": "city_only", "version": "city-only"},
+        )
+        self.assertEqual(
+            svc.artifact_json(db, environmental_case, "criteria_set", "environmental_industrial:espoo", {}),
+            {},
+        )
+
     def test_wizard_displays_active_municipality_criteria(self) -> None:
         response = client.get(f"{base}/wizard/4")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Tarkistuksessa käytetty kriteeristö", response.text)
-        self.assertIn("Vantaa · 2026-08-demo-2", response.text)
+        self.assertIn("Kansallinen peruskriteeristö · 2026-08-demo-2", response.text)
 
     def test_idle_check_action_stays_in_ai_panel(self) -> None:
         fresh_case = db.create_case("Idle check action", language="fi")
@@ -488,14 +516,14 @@ class ApplicantJourney(unittest.TestCase):
         # Path A: Kevytasiointi entry (materials + shared basics in LV -> Kevytasiointipalvelu)
         workbench_entry = client.get("/applicant/packages/new")
         self.assertEqual(workbench_entry.status_code, 200)
-        self.assertIn("Kevytasiointi", workbench_entry.text)
+        self.assertIn("Kevyt integraatio", workbench_entry.text)
         self.assertIn("Hankkeen tausta-aineisto", workbench_entry.text)
 
         # Path B: form-first wizard entry
         wizard_entry = client.get("/projects/new")
         self.assertEqual(wizard_entry.status_code, 200)
         self.assertIn("Hankkeen lähtötiedot", wizard_entry.text)
-        self.assertNotIn("Siirry Kevytasiointipalveluun", wizard_entry.text)
+        self.assertNotIn("Siirry Kevyt integraatioon", wizard_entry.text)
 
     def test_step1_saves_common_data_and_redirects(self) -> None:
         response = client.post(

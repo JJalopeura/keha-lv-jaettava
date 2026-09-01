@@ -14,10 +14,10 @@
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2212%22 fill=%22%23123a64%22/><text y=%22.65em%22 x=%2250%22 text-anchor=%22middle%22 font-size=%2260%22 font-weight=%22800%22 fill=%22white%22>L</text></svg>"
     />
-    <link rel="stylesheet" href="/static/style.css?v=20260814-v5" />
+    <link rel="stylesheet" href="/static/style.css?v=20260901-package-actions" />
   </head>
   <body
-    class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}"
+    class="service-light{% if request.query_params.get('present') == '1' %} presenter-mode{% endif %}{% if standalone_page|default(false) %} standalone-page{% endif %}"
   >
     {% set current_path = request.url.path %} {% set login_page = current_path == '/login' %} {% set session = request.scope.get('session', {}) %} {% set authority_workspace =
     '/authority/' in current_path %} {% set demo_workspace =
@@ -50,21 +50,22 @@
        the header shows the municipality so moving between "apps" is visible. #}
     {% set service_kind = 'other' if authority_workspace or demo_workspace else 'lv' %}
     {% set service_municipality = criteria_municipality if criteria_municipality is defined and criteria_municipality else (common.data.municipality if common is defined and common.data is defined and common.data.get('municipality') else '') %}
+    {% set is_national_environmental = application is defined and application.permit_type == 'environmental_industrial' %}
     {% if case_workbench %}
     {% set workspace_brand = current_service_name %}
-    {% set workspace_brand_sub = (service_municipality ~ 'n asiointipalvelu') if service_municipality else 'Kunnan asiointipalvelu' %}
+    {% set workspace_brand_sub = 'Kansallinen asiointipalvelu' if is_national_environmental else ((service_municipality ~ 'n asiointipalvelu') if service_municipality else 'Kunnan asiointipalvelu') %}
     {% set service_kind = 'kunta' %}
     {% elif package_workbench %}
     {# Kevytasiointi follows the wizard naming: "{Lupatyypin nimi}n kevytasiointi"
        over "{Kunta}n asiointipalvelu". kevyt_permit_label comes from
        package_context(); fall back to the generic name when absent. #}
     {% set kevyt_names = {
-    'building_residential': 'Rakennusluvan kevytasiointi',
-    'environmental_industrial': 'Ympäristöluvan kevytasiointi',
-    'event_public': 'Tapahtumaluvan kevytasiointi'
+    'building_residential': 'Rakennusluvan kevyt integraatio',
+    'environmental_industrial': 'Ympäristöluvan kevyt integraatio',
+    'event_public': 'Tapahtumaluvan kevyt integraatio'
     } %}
-    {% set workspace_brand = kevyt_names.get(application.permit_type if application is defined else '', (kevyt_permit_label ~ 'n kevytasiointi') if kevyt_permit_label is defined and kevyt_permit_label else 'Kevytasiointi') %}
-    {% set workspace_brand_sub = (service_municipality ~ 'n asiointipalvelu') if service_municipality else 'Luvat ja valvonta' %}
+    {% set workspace_brand = kevyt_names.get(application.permit_type if application is defined else '', (kevyt_permit_label ~ 'n kevyt integraatio') if kevyt_permit_label is defined and kevyt_permit_label else 'Kevyt integraatio') %}
+    {% set workspace_brand_sub = 'Kansallinen asiointipalvelu' if is_national_environmental else ((service_municipality ~ 'n asiointipalvelu') if service_municipality else 'Luvat ja valvonta') %}
     {% set service_kind = 'kevyt' %}
     {% endif %}
     {% set workspace_home = ('/lv/projects/' ~ case_id)
@@ -86,9 +87,11 @@
             <p class="sidebar-heading" id="applicant-links-heading">Asiointi</p>
             <div class="sidebar-subnav">
               <a class="sidebar-link{% if current_path == '/' %} active{% endif %}" href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Omat asiat</a>
+              {% if not package_workbench %}
               <a class="sidebar-link{% if current_path == '/projects/new' %} active{% endif %}" href="/projects/new" {% if current_path == '/projects/new' %}aria-current="page"{% endif %}>Uusi hanke</a>
-              <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Kevytasiointi</a>
-              {% if case_context %}
+              <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Kevyt integraatio</a>
+              {% endif %}
+              {% if case_context or package_workbench %}
               {% set sidebar_permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
               {% set sidebar_statuses = {'draft': 'Luonnos', 'not_started': 'Ei aloitettu', 'submitted': 'Lähetetty', 'application_draft': 'Luonnos'} %}
               {% set sidebar_permits = project.get('permits', []) %}
@@ -98,7 +101,7 @@
               <span class="sidebar-subheading">Hakemukset</span>
               <div class="sidebar-applications">
                 {% for permit_type in sidebar_permits %}
-                <a class="sidebar-application-link{% if application is defined and application.application_id == permit_type %} active{% endif %}" href="/cases/{{ case_id }}/lupademo/application/{{ permit_type }}">
+                <a class="sidebar-application-link{% if application is defined and application.application_id == permit_type %} active{% endif %}" href="{{ '/applicant/packages/' ~ package_id if package_workbench else '/cases/' ~ case_id ~ '/lupademo/application/' ~ permit_type }}">
                   <span>{{ sidebar_permit_labels.get(permit_type, permit_type) }}</span>
                   <small>{{ sidebar_statuses.get(project.get('statuses', {}).get(permit_type), project.get('statuses', {}).get(permit_type, '')) }}</small>
                 </a>

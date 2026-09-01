@@ -50,6 +50,11 @@ from docx import Document as DocxDocument
 from fastapi import HTTPException
 from jinja2 import Template
 
+try:
+    import pixie
+except ImportError:
+    pixie = None
+
 from app.infra.llm_factory import create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
@@ -62,6 +67,10 @@ from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPL
 
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
 PACKAGE_ANALYSIS_TIMEOUT_SECONDS = 300.0
+
+
+def _pixie_wrap(data: Any, *, purpose: Literal["input", "output", "state"], name: str, description: str) -> Any:
+    return pixie.wrap(data, purpose=purpose, name=name, description=description) if pixie is not None else data
 
 
 def is_package_analysis_stale(package_analysis: dict[str, Any], active_criteria: dict[str, Any]) -> bool:
@@ -83,22 +92,81 @@ def is_package_analysis_stale(package_analysis: dict[str, Any], active_criteria:
 def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str, municipality: Any = None) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     schema = load_form_schema(permit_type)
-    field = next((f for f in schema.get("fields", []) if f.get("ai_suggest")), {"id": "project_description", "label": "Hankkeen kuvaus"})
-    payload = {
-        "request_id": f"criteria_test_{uuid.uuid4().hex[:8]}",
-        "tenant_id": "vantaa_demo",
-        "permit_type": permit_type,
-        "form_schema": schema,
-        "field_id": field["id"],
-        "form_data": {
-            "municipality": str(municipality or ""),
-            "project_description": "Testipyyntö kriteeristön toimivuuden arviointiin.",
-            "activity_description": "Teollinen testihanke, jossa tarkistetaan kriteeriversion vaikutus.",
-            "event_description": "Julkinen testitapahtuma kaupunkitilassa.",
+    form_data = {str(field.get("id")): "Testitieto" for field in schema.get("fields", []) if field.get("id")}
+    form_data["municipality"] = str(municipality or "")
+    form_data.update(
+        {
+            "activity_description": "Teollinen testihanke, jossa käytetään kemikaaleja ja seurataan päästöjä.",
+            "raw_materials_chemicals": "Kemikaalien käyttö ja varastointi kuvataan hakemuksessa.",
+            "water_and_wastewater": "Jätevedet käsitellään ja niiden tarkkailu raportoidaan.",
+            "sensitive_receptors": "Lähialueen suojelukohteet ja etäisyydet on arvioitu.",
+        }
+    )
+    role_sets = {
+        "environmental_industrial": {
+            "environmental_application", "public_summary", "yva_statement", "bat_assessment",
+            "chemical_inventory", "monitoring_plan", "risk_preparedness_plan", "air_quality_model",
+            "noise_model", "baseline_report", "stormwater_plan", "site_map",
         },
-        "attachments": [],
+        "building_residential": {"site_plan", "main_drawings", "facade_drawings"},
+        "event_public": {"landowner_permission", "rescue_plan"},
     }
-    result = suggestion_service_field(payload, db=db, settings=settings, case_id=case_id)
+    attachments = [
+        {
+            "id": f"criteria-test-{role}",
+            "filename": f"criteria-test-{role}.pdf",
+            "primary_type": role,
+            "type_tags": [role],
+            "delivery_scope": "official_submission",
+            "text_excerpt": "Kriteeristön kultaisen testipaketin aineisto.",
+        }
+        for role in role_sets.get(permit_type, set())
+    ]
+    criteria = effective_criteria(db, case_id, permit_type, municipality)
+    issues = deterministic_issues(permit_type, form_data, attachments, municipality=municipality, criteria=criteria)
+    criteria_results: list[dict[str, Any]] = []
+    for rule in criteria.get("rules", []):
+        if not isinstance(rule, dict):
+            continue
+        condition = rule.get("condition") or {}
+        condition_field_id = str(condition.get("field_id") or "")
+        condition_value = str(form_data.get(condition_field_id, "")).lower()
+        condition_terms = [str(term).lower() for term in condition.get("contains_any", [])]
+        if condition_field_id and condition_terms and not any(term in condition_value for term in condition_terms):
+            status = "green"
+            rationale = "Kriteerin ehdollinen soveltamisedellytys ei täyty tässä testitapauksessa."
+        else:
+            field_id = str(rule.get("field_id") or "")
+            attachment_types = [part.strip() for part in str(rule.get("attachment_type") or "").split(",") if part.strip()]
+            missing_field = bool(field_id) and not str(form_data.get(field_id) or "").strip()
+            missing_attachment = bool(attachment_types) and not any(
+                attachment_requirement_covered(item, attachments) for item in attachment_types
+            )
+            missing = missing_field or missing_attachment
+            severity = str(rule.get("severity") or "major").strip().lower()
+            status = "yellow" if missing and severity in {"minor", "recommendation"} else ("red" if missing else "green")
+            rationale = str(rule.get("instruction") or "Kriteerin testitulos.") if missing else "Testipaketin tiedot ja liiteroolit täyttävät kriteerin."
+        criteria_results.append(
+            {
+                "criteria_id": str(rule.get("id") or ""),
+                "status": status,
+                "rationale": rationale,
+                "evidence_refs": [{"source_id": str(criteria.get("criteria_set_id") or ""), "title": "Aktiivinen kriteeristö", "locator": "criteria"}],
+                "confidence": 1.0,
+            }
+        )
+    counts, score, readiness = _derive_check_verdict(issues, criteria_results)
+    result = {
+        "request_id": f"criteria_test_{uuid.uuid4().hex[:8]}",
+        "criteria_version": criteria_version(permit_type, db, case_id, municipality),
+        "suggestions": [],
+        "criteria_results": criteria_results,
+        "issues": _plain(issues),
+        "counts": counts,
+        "score": score,
+        "readiness": readiness,
+        "test_case": "Kultainen ympäristöluvan testipaketti" if permit_type == "environmental_industrial" else "Valmis testipaketti",
+    }
     municipality_value = str(municipality or "").strip()
     save_artifact(
         db,
@@ -282,6 +350,7 @@ def _run_check_agents(
             vector_ids=vector_ids,
             fallback={"issues": []},
             max_output_tokens=max_output_tokens,
+            reasoning_effort="low",
             timeout_s=timeout_s,
             task_id=task_id or None,
         )
@@ -331,10 +400,12 @@ def package_analysis_from_current_state(
     schema = load_form_schema(permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     if review_only:
-        official_types = {item.get("primary_type") for item in attachments if item.get("delivery_scope") == "official_submission"}
         wizard = {
             "missing_required_fields": [],
-            "missing_attachments": [item for item in schema.get("required_attachments", []) if item not in official_types],
+            "missing_attachments": [
+                item for item in schema.get("required_attachments", [])
+                if not attachment_requirement_covered(item, attachments)
+            ],
         }
     else:
         wizard = wizard_step_status(db, case_id, permit_type)
@@ -387,6 +458,7 @@ def package_analysis_from_current_state(
                 "id": item.get("id"),
                 "filename": item.get("filename"),
                 "primary_type": item.get("primary_type"),
+                "type_tags": item.get("type_tags") or [],
                 "delivery_scope": item.get("delivery_scope"),
                 "summary": item.get("summary"),
                 "text_excerpt": str(item.get("text_excerpt") or "")[:5000],
@@ -403,6 +475,7 @@ def package_analysis_from_current_state(
             "attachment_context": json.dumps(retrieval, ensure_ascii=False),
         }
         agent_issues = _run_check_agents(db, settings, case_id, base_values, max_output_tokens=6000)
+        agent_issues = _filter_covered_attachment_issues(agent_issues, attachments)
         issues = merge_issues(issues, agent_issues)
     joined_text = "\n".join(str(att.get("text_excerpt") or att.get("summary") or "") for att in attachments).lower()
     specific_contradictions = [issue for issue in issues if issue.type == "inconsistent"]
@@ -579,10 +652,12 @@ def _build_intake_analysis_result(
     schema = load_form_schema(permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     if review_only:
-        official_types = {item.get("primary_type") for item in attachments if item.get("delivery_scope") == "official_submission"}
         wizard = {
             "missing_required_fields": [],
-            "missing_attachments": [item for item in schema.get("required_attachments", []) if item not in official_types],
+            "missing_attachments": [
+                item for item in schema.get("required_attachments", [])
+                if not attachment_requirement_covered(item, attachments)
+            ],
         }
     else:
         wizard = wizard_step_status(db, case_id, permit_type)
@@ -1273,9 +1348,8 @@ def deterministic_issues(
         if schema_field.get("required") and str(form_data.get(schema_field["id"], "")).strip() == "":
             severity = "blocking" if schema_field["id"] in {"building_height_m", "stormwater_management", "permit_basis", "competent_authority", "landowner_permission"} else "major"
             issues.append(Issue(id=f"missing_{schema_field['id']}", type="missing", severity=severity, field_id=schema_field["id"], title=f"{schema_field['label']} puuttuu", detail="Pakollinen kenttä on tyhjä.", suggested_fix=f"Täytä kenttä {schema_field['label']}.", evidence_refs=[criteria_source], confidence=0.95))
-    official_types = {a.get("primary_type") for a in attachments if a.get("delivery_scope") == "official_submission"}
     for required in schema.get("required_attachments", []):
-        if required not in official_types:
+        if not attachment_requirement_covered(required, attachments):
             sev = "blocking" if permit_type == "building_residential" or required == "landowner_permission" else "major"
             issues.append(Issue(id=f"missing_attachment_{required}", type="missing", severity=sev, attachment_id=required, title=f"Liite {required} puuttuu lähetyspaketista", detail="Vaadittua liitettä ei ole merkitty viranomaiselle toimitettavaksi.", suggested_fix="Lisää liite tai muuta sen käyttötarkoitus viranomaiselle toimitettavaksi.", evidence_refs=[criteria_source], confidence=0.9))
     if permit_type == "building_residential":
@@ -1289,8 +1363,9 @@ def deterministic_issues(
                     issues.append(Issue(id=f"invalid_{num_field}", type="incomplete", severity="blocking", field_id=num_field, title="Numeerinen arvo on virheellinen", detail=f"Kentän {num_field} arvo ei ole numero.", suggested_fix="Anna arvo numerona.", evidence_refs=[criteria_source], confidence=0.95))
     if permit_type == "environmental_industrial":
         mentions_chemicals = "kemikaal" in str(form_data.get("raw_materials_chemicals", "")).lower()
-        chemical_ai_only = any(a.get("primary_type") in ("chemical_inventory", "chemical_inventory_or_sds") and a.get("delivery_scope") == "ai_context_only" for a in attachments)
-        chemical_official = any(a.get("primary_type") in ("chemical_inventory", "chemical_inventory_or_sds") and a.get("delivery_scope") == "official_submission" for a in attachments)
+        chemical_roles = "chemical_inventory,chemical_inventory_or_sds"
+        chemical_ai_only = attachment_requirement_covered(chemical_roles, attachments, {"ai_context_only"})
+        chemical_official = attachment_requirement_covered(chemical_roles, attachments)
         if mentions_chemicals and chemical_ai_only:
             if not chemical_official:
                 issues.append(Issue(id="chemical_inventory_scope", type="inconsistent", severity="major", attachment_id="chemical_inventory", title="Kemikaaliluettelo on vain AI-tausta-aineistona", detail="Hakemus viittaa kemikaaliluetteloon, mutta liite ei kuulu viranomaiselle lähtevään pakettiin.", suggested_fix="Merkitse kemikaaliluettelo viranomaiselle toimitettavaksi tai poista viittaus.", evidence_refs=[criteria_source], confidence=0.88))
@@ -1317,7 +1392,10 @@ def deterministic_issues(
         # "chemical_inventory,chemical_inventory_or_sds") when the ground truth accepts
         # several primary types (SDS-tiedotteet kattavat kemikaaliluettelon P2X-käytännössä).
         rule_attachment_types = [part.strip() for part in attachment_type.split(",") if part.strip()]
-        missing_attachment = bool(rule_attachment_types) and not any(t in official_types for t in rule_attachment_types)
+        missing_attachment = bool(rule_attachment_types) and not any(
+            attachment_requirement_covered(attachment_type, attachments)
+            for attachment_type in rule_attachment_types
+        )
         if not (missing_field or missing_attachment):
             continue
         field_id = field_id if field_id not in existing_missing_fields else ""
@@ -1325,7 +1403,8 @@ def deterministic_issues(
         if not field_id and not attachment_type:
             continue
         subject_key = (field_id, attachment_type)
-        subject = field_id or attachment_type
+        subject = attachment_type if missing_attachment and not missing_field else field_id or attachment_type
+        subject_label = _review_subject_label(subject, criteria)
         _rule_sev = str(rule.get("severity") or "major")
         if _rule_sev == "recommendation":  # 02: recommendation is not an Issue severity; map to minor
             _rule_sev = "minor"
@@ -1336,8 +1415,8 @@ def deterministic_issues(
             criteria_id=str(rule.get("id") or ""),
             field_id=field_id or None,
             attachment_id=attachment_type or None,
-            title=f"Kunnan kriteeri: {subject} puuttuu",
-            detail=str(rule.get("instruction") or "Aktiivinen kuntakohtainen vaatimus ei täyty."),
+            title=f"Aktiivinen kriteeri: {subject_label} puuttuu",
+            detail=str(rule.get("instruction") or "Aktiivinen kriteeri ei täyty."),
             # The rule's own instruction is the actionable fix (package-specific guidance,
             # e.g. "Ren-Gas-hankkeessa Liite 7 Kemikaaliluettelo.") — not boilerplate.
             suggested_fix=str(rule.get("instruction") or "Täydennä tieto tai lisää vaatimus täyttävä viranomaisliite."),
@@ -1644,7 +1723,8 @@ def _derive_check_verdict(issues: list[Issue], criteria_results: list[dict[str, 
     minor_penalty = min(0.04 * counts["minor"], 0.20)
     issue_score = max(0.0, 1 - 0.25 * counts["blocking"] - 0.10 * counts["major"] - minor_penalty)
     score = round(50 * crit_score + 50 * issue_score)
-    readiness = "ready" if (score >= 80 and counts["blocking"] == 0) else ("almost_ready" if score >= 40 else "not_ready")
+    ready = counts["blocking"] == 0 and counts["major"] == 0 and counts["red"] == 0
+    readiness = "ready" if ready else ("almost_ready" if counts["blocking"] == 0 else "not_ready")
     return counts, score, readiness
 
 
@@ -1653,6 +1733,362 @@ def _degraded_agents(db: Any, case_id: str, agents: tuple[str, ...]) -> list[str
     if db is None:
         return []
     return [a for a in agents if artifact_json(db, case_id, "agent_output", a, {}).get("fallback_used")]
+
+
+def _filter_covered_attachment_issues(issues: list[Issue], attachments: list[dict[str, Any]]) -> list[Issue]:
+    attachment_ids = {str(item.get("id") or "") for item in attachments}
+    return [
+        issue
+        for issue in issues
+        if not (
+            issue.type == "missing"
+            and issue.attachment_id
+            and str(issue.attachment_id) not in attachment_ids
+            and attachment_requirement_covered(str(issue.attachment_id), attachments)
+        )
+    ]
+
+
+def _normalize_criteria_results(
+    results: list[dict[str, Any]],
+    criteria: dict[str, Any],
+    form_data: dict[str, Any],
+    attachments: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    rules = {
+        str(rule.get("id") or ""): rule
+        for rule in criteria.get("rules", [])
+        if isinstance(rule, dict) and rule.get("id")
+    }
+    normalized: list[dict[str, Any]] = []
+    notes: list[str] = []
+    for raw in results:
+        if not isinstance(raw, dict):
+            continue
+        result = dict(raw)
+        criteria_id = str(result.get("criteria_id") or "")
+        rule = rules.get(criteria_id, {})
+        rule_severity = str(rule.get("severity") or "major").strip().lower()
+        field_id = str(rule.get("field_id") or "")
+        attachment_types = [part.strip() for part in str(rule.get("attachment_type") or "").split(",") if part.strip()]
+        field_present = not field_id or bool(str(form_data.get(field_id) or "").strip())
+        attachment_present = not attachment_types or any(
+            attachment_requirement_covered(attachment_type, attachments)
+            for attachment_type in attachment_types
+        )
+        status = str(result.get("status") or "yellow").strip().lower()
+        if status == "red" and field_present and attachment_present and attachment_types:
+            result["status"] = "green"
+            result["rationale"] = "Viranomaisaineistossa on tähän kriteeriin liittyvä toimitettava aineisto."
+            notes.append(f"EVIDENCE: official attachment coverage changed criterion {criteria_id} from red to green")
+        elif status == "red" and rule_severity in {"minor", "recommendation"}:
+            result["status"] = "yellow"
+            notes.append(f"POLICY: advisory criterion {criteria_id} changed from red to yellow")
+        normalized.append(result)
+    return normalized, notes
+
+
+def _review_evidence_catalog(
+    attachments: list[dict[str, Any]],
+    criteria: dict[str, Any],
+    criteria_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    catalog: dict[str, dict[str, Any]] = {}
+
+    def add(source_id: Any, title: Any, locator: Any = "", quote: Any = "", text: Any = "", attachment_id: Any = "") -> None:
+        source = str(source_id or "").strip()
+        if not source or source in catalog:
+            return
+        catalog[source] = {
+            "source_id": source,
+            "title": str(title or source),
+            "locator": str(locator or "evidence"),
+            "quote": str(quote or "").strip()[:300],
+            "text": str(text or ""),
+            "attachment_id": str(attachment_id or ""),
+        }
+
+    for attachment in attachments:
+        if attachment.get("delivery_scope") not in {"official_submission", "ai_context_only"}:
+            continue
+        text = str(attachment.get("text_excerpt") or attachment.get("summary") or "")
+        quote = next((line.strip() for line in text.splitlines() if line.strip()), text[:300])
+        add(attachment.get("id"), attachment.get("filename") or "Hakemusasiakirja", "document", quote, text, attachment.get("id"))
+        add(attachment.get("filename"), attachment.get("filename") or "Hakemusasiakirja", "document", quote, text, attachment.get("id"))
+    add(criteria.get("criteria_set_id"), "Aktiivinen lupakriteeristö", "criteria", "")
+    for rule in criteria.get("rules", []):
+        if isinstance(rule, dict):
+            add(rule.get("id"), rule.get("instruction") or rule.get("id"), "criteria", "")
+    for result in criteria_results:
+        if isinstance(result, dict):
+            criteria_id = str(result.get("criteria_id") or "")
+            if criteria_id:
+                add(criteria_id, result.get("rationale") or criteria_id, "criteria", "")
+    return list(catalog.values())
+
+
+REVIEW_ATTACHMENT_LABELS = {
+    "yva_statement": "YVA-selvitys / lausunto",
+    "bat_assessment": "BAT-arviointi",
+    "risk_preparedness_plan": "Ennaltavarautumissuunnitelma",
+    "tukes_statement": "Tukesin lausunto",
+    "dnsh_statement": "DNSH-selvitys",
+    "stormwater_plan": "Hulevesisuunnitelma",
+    "public_summary": "Julkinen yhteenveto",
+    "site_map": "Sijaintikartta",
+    "air_monitoring_plan": "Ilmapäästöjen tarkkailuohjelma",
+    "monitoring_plan": "Tarkkailu- ja raportointisuunnitelma",
+    "baseline_report": "Perustilaselvitys",
+    "air_quality_model": "Ilmapäästöselvitys",
+    "noise_model": "Meluselvitys",
+    "chemical_inventory": "Kemikaaliluettelo",
+}
+
+
+def _review_subject_label(subject: str, criteria: dict[str, Any]) -> str:
+    role = str(subject or "").split(",", 1)[0].strip()
+    if role in REVIEW_ATTACHMENT_LABELS:
+        return REVIEW_ATTACHMENT_LABELS[role]
+    rule = next(
+        (
+            item for item in criteria.get("rules", [])
+            if isinstance(item, dict) and str(item.get("id") or "") == role
+        ),
+        {},
+    )
+    attachment_type = str(rule.get("attachment_type") or "").split(",", 1)[0].strip()
+    if attachment_type:
+        return _review_subject_label(attachment_type, criteria)
+    field_id = str(rule.get("field_id") or "").strip()
+    if field_id:
+        role = field_id
+    schema = load_form_schema(str(criteria.get("permit_type") or "environmental_industrial"))
+    return next(
+        (str(field.get("label") or role) for field in schema.get("fields", []) if str(field.get("id") or "") == role),
+        role.replace("_", " ").capitalize() if role else "Valittu kohta",
+    )
+
+
+def _clean_review_title(title: str, criteria: dict[str, Any]) -> str:
+    clean = str(title or "").strip()
+    criteria_title = bool(re.match(r"^(?:Kunnan\s+)?kriteeri\s*:", clean, flags=re.IGNORECASE))
+    clean = re.sub(r"^(?:Kunnan\s+)?kriteeri\s*:\s*", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"^kriteeri\s+", "", clean, flags=re.IGNORECASE)
+    schema = load_form_schema(str(criteria.get("permit_type") or "environmental_industrial"))
+    field_labels = {
+        str(field.get("id") or ""): str(field.get("label") or "")
+        for field in schema.get("fields", [])
+        if field.get("id")
+    }
+    replacements = dict(REVIEW_ATTACHMENT_LABELS)
+    for rule in criteria.get("rules", []):
+        if not isinstance(rule, dict):
+            continue
+        rule_id = str(rule.get("id") or "").strip()
+        attachment_types = [
+            part.strip()
+            for part in str(rule.get("attachment_type") or "").split(",")
+            if part.strip()
+        ]
+        subject = str(rule.get("attachment_type") or rule.get("field_id") or "").strip()
+        if rule_id and subject:
+            replacements[rule_id] = _review_subject_label(subject, criteria)
+        field_label = field_labels.get(str(rule.get("field_id") or "").strip())
+        if field_label and attachment_types:
+            attachment_label = _review_subject_label(attachment_types[0], criteria)
+            if criteria_title:
+                replacements[field_label] = attachment_label
+            for suffix in ("_plan", "_statement", "_assessment", "_report"):
+                replacements[f"{field_label}{suffix}"] = attachment_label
+    for token, label in sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True):
+        if token:
+            clean = re.sub(rf"(?<![\w]){re.escape(token)}(?![\w])", label, clean)
+    for field_id, field_label in field_labels.items():
+        if field_id:
+            clean = re.sub(
+                rf"(?<![\w]){re.escape(field_id)}(?![\w])",
+                field_label or field_id,
+                clean,
+            )
+    clean = re.sub(r"(?<=\w)_(?:plan|statement|assessment|report)\b", "", clean, flags=re.IGNORECASE)
+    return clean[:160]
+
+
+def _clean_review_evidence_refs(raw_refs: Any, catalog: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    clean: list[dict[str, Any]] = []
+    for raw in _plain(raw_refs or []):
+        if not isinstance(raw, dict):
+            continue
+        source_id = str(raw.get("source_id") or "").strip()
+        source = next(
+            (
+                item for item in catalog
+                if item["source_id"] == source_id or item["title"] == source_id
+            ),
+            None,
+        )
+        if source is None:
+            continue
+        if any(item.get("source_id") == source["source_id"] for item in clean):
+            continue
+        quote = str(raw.get("quote") or "").strip()
+        source_text = str(source.get("text") or "")
+        if quote and source_text and quote.casefold() not in source_text.casefold():
+            quote = str(source.get("quote") or "")
+        item = {
+            "source_id": source["source_id"],
+            "title": source["title"],
+            "locator": str(raw.get("locator") or source.get("locator") or "evidence"),
+            "confidence": _coerce_confidence(raw.get("confidence"), 0.7),
+        }
+        if quote:
+            item["quote"] = quote[:300]
+        clean.append(item)
+    return clean[:3]
+
+
+def _clean_review_items(
+    raw_items: Any,
+    catalog: list[dict[str, Any]],
+    attachments: list[dict[str, Any]],
+    criteria: dict[str, Any],
+    issues: list[Issue],
+    form_data: dict[str, Any],
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    if not isinstance(raw_items, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+        attachment_id = str(raw.get("attachment_id") or raw.get("document_role") or "").strip()
+        if attachment_id and attachment_requirement_covered(attachment_id, attachments):
+            continue
+        refs = _clean_review_evidence_refs(raw.get("evidence_refs"), catalog)
+        if not refs:
+            continue
+        title = str(raw.get("title") or raw.get("name") or "").strip()
+        detail = str(raw.get("detail") or raw.get("description") or "").strip()
+        action = str(raw.get("action") or raw.get("suggested_fix") or "").strip()
+        if not title or not detail:
+            continue
+        evidence_ids = {
+            str(ref.get("source_id") or "").strip()
+            for ref in _plain(raw.get("evidence_refs") or [])
+            if isinstance(ref, dict)
+        }
+        related_issue = next(
+            (issue for issue in issues if issue.criteria_id and str(issue.criteria_id) in evidence_ids),
+            None,
+        )
+        if (
+            related_issue
+            and related_issue.attachment_id
+            and related_issue.field_id
+            and str(form_data.get(related_issue.field_id) or "").strip()
+            and not attachment_requirement_covered(str(related_issue.attachment_id), attachments)
+        ):
+            title = f"{_review_subject_label(str(related_issue.attachment_id), criteria)} puuttuu"
+        cleaned.append(
+            {
+                "title": title[:160],
+                "detail": detail[:500],
+                "action": action[:500],
+                "priority": str(raw.get("priority") or "normal").strip().lower(),
+                "evidence_refs": refs,
+            }
+        )
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
+def _fallback_applicant_review(
+    issues: list[Issue],
+    criteria_results: list[dict[str, Any]],
+    criteria: dict[str, Any],
+    attachments: list[dict[str, Any]],
+    catalog: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    strengths: list[dict[str, Any]] = []
+    for result in criteria_results:
+        if result.get("status") != "green":
+            continue
+        refs = _clean_review_evidence_refs(result.get("evidence_refs"), catalog)
+        if not refs:
+            continue
+        strengths.append(
+            {
+                "title": _review_subject_label(str(result.get("criteria_id") or ""), criteria) + " on kunnossa",
+                "detail": str(result.get("rationale") or "Aineistosta löytyi kriteerin täyttävä näyttö.")[:500],
+                "action": "",
+                "priority": "normal",
+                "evidence_refs": refs,
+            }
+        )
+        if len(strengths) >= 3:
+            break
+
+    priorities = {"blocking": 0, "major": 1, "minor": 2, "recommendation": 3}
+    candidates = sorted(
+        (issue for issue in issues if not issue.resolved),
+        key=lambda issue: priorities.get(issue.severity, 4),
+    )
+    improvements: list[dict[str, Any]] = []
+    for issue in candidates:
+        if issue.attachment_id and attachment_requirement_covered(str(issue.attachment_id), attachments):
+            continue
+        refs = _clean_review_evidence_refs(issue.evidence_refs, catalog)
+        if not refs:
+            continue
+        improvements.append(
+            {
+                "title": _clean_review_title(issue.title, criteria),
+                "detail": issue.detail[:500],
+                "action": str(issue.suggested_fix or "Tarkista ja täsmennä tieto.")[:500],
+                "priority": "high" if issue.severity in {"blocking", "major"} else "normal",
+                "evidence_refs": refs,
+            }
+        )
+        if len(improvements) >= 3:
+            break
+    return strengths, improvements
+
+
+def _build_applicant_review(
+    precheck: dict[str, Any],
+    response_summary: str,
+    issues: list[Issue],
+    criteria_results: list[dict[str, Any]],
+    criteria: dict[str, Any],
+    attachments: list[dict[str, Any]],
+    form_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    form_data = form_data or {}
+    catalog = _review_evidence_catalog(attachments, criteria, criteria_results)
+    fallback_strengths, fallback_improvements = _fallback_applicant_review(
+        issues, criteria_results, criteria, attachments, catalog
+    )
+    strengths = _clean_review_items(precheck.get("strengths"), catalog, attachments, criteria, issues, form_data)
+    improvements = _clean_review_items(precheck.get("improvements"), catalog, attachments, criteria, issues, form_data)
+    strengths = [dict(item, title=_clean_review_title(item.get("title", ""), criteria)) for item in strengths]
+    improvements = [dict(item, title=_clean_review_title(item.get("title", ""), criteria)) for item in improvements]
+    if not strengths:
+        strengths = fallback_strengths
+    if not improvements:
+        improvements = fallback_improvements
+    sections = [
+        {"title": "Vahvuudet", "items": [item["title"] for item in strengths]},
+        {"title": "Parannusehdotukset", "items": [item["title"] for item in improvements]},
+    ]
+    return {
+        "summary": response_summary,
+        "strengths": strengths[:3],
+        "improvements": improvements[:3],
+        "sections": sections,
+        "source_count": len(catalog),
+    }
 
 
 def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any = None, *, job_id: str = "") -> ApplicationCheckResponse:
@@ -1668,7 +2104,24 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             eta_seconds=35,
         )
         job_id = job["id"]
-    attachments = list_attachments(db, case_id, app["permit_type"])
+    attachments = _pixie_wrap(
+        list_attachments(db, case_id, app["permit_type"]),
+        purpose="state",
+        name="application_check_attachments",
+        description="Normalized application attachments used by the check",
+    )
+    compact_attachments = [
+        {
+            "id": item.get("id"),
+            "filename": item.get("filename"),
+            "primary_type": item.get("primary_type"),
+            "type_tags": item.get("type_tags") or [],
+            "delivery_scope": item.get("delivery_scope"),
+            "summary": item.get("summary"),
+            "text_excerpt": str(item.get("text_excerpt") or "")[:4000],
+        }
+        for item in attachments
+    ]
     schema = load_form_schema(app["permit_type"])
     common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})
     municipality = app.get("form_data", {}).get("municipality") or common.get("data", {}).get("municipality", "")
@@ -1690,7 +2143,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         base_values = {
             "form_schema": json.dumps(schema, ensure_ascii=False),
             "form_data": json.dumps(app.get("form_data", {}), ensure_ascii=False),
-            "attachments": json.dumps(attachments, ensure_ascii=False),
+            "attachments": json.dumps(compact_attachments, ensure_ascii=False),
             "deterministic_issues": json.dumps(_plain(deterministic), ensure_ascii=False),
             "criteria_and_context": json.dumps({"criteria": criteria, "retrieval": context}, ensure_ascii=False),
             "common_data": json.dumps(common.get("data", {}), ensure_ascii=False),
@@ -1705,10 +2158,11 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             case_id,
             base_values,
             vector_ids=vector_ids,
-            max_output_tokens=5000,
+            max_output_tokens=3000,
             timeout_s=PACKAGE_ANALYSIS_TIMEOUT_SECONDS,
             task_id=job_id,
         )
+        agent_issues = _filter_covered_attachment_issues(agent_issues, attachments)
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "consistency_validator", "Ristiriitatarkistus valmis.")
@@ -1722,6 +2176,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             vector_ids=vector_ids,
             fallback={"criteria_results": []},
             max_output_tokens=6000,
+            reasoning_effort="low",
             task_id=job_id or None,
         )
         if job_id:
@@ -1730,6 +2185,18 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             criteria_results = _plain(criteria_response.criteria_results)
         elif isinstance(criteria_response, dict):
             criteria_results = criteria_response.get("criteria_results", [])
+    criteria_results, criteria_notes = _normalize_criteria_results(
+        criteria_results,
+        active_criteria,
+        app.get("form_data", {}),
+        attachments,
+    )
+    criteria_results = _pixie_wrap(
+        criteria_results,
+        purpose="state",
+        name="application_check_criteria_results",
+        description="Criteria statuses after evidence normalization",
+    )
     issues = merge_issues(deterministic, agent_issues)
     # Build per-rule instruction + severity lookup for synthesized findings.
     rule_instructions = {
@@ -1741,10 +2208,19 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
     }
     issues, reconciliation_notes = reconcile_verdict(issues, criteria_results, rule_instructions=rule_instructions, rule_severities=rule_severities)
+    reconciliation_notes = [*criteria_notes, *reconciliation_notes]
     counts, score, readiness = _derive_check_verdict(issues, criteria_results)
     blocked = [i for i in issues if i.severity == "blocking" and not i.resolved]
-    majors = [i for i in issues if i.severity == "major" and not i.resolved]
     minors = [i for i in issues if i.severity == "minor" and not i.resolved]
+    summary = (
+        "Hakemus on valmis lähetettäväksi."
+        if readiness == "ready"
+        else (
+            "Hakemuksessa on lähettämisen estäviä puutteita."
+            if counts["blocking"] or counts["red"]
+            else "Hakemus tarvitsee vielä täsmennyksiä ennen lähettämistä."
+        )
+    )
     checked_at = time.time()
     current_criteria_version = criteria_version(app["permit_type"], db, case_id, municipality)
     active_criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
@@ -1758,7 +2234,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         request_id=f"check_{uuid.uuid4().hex[:8]}",
         criteria_version=current_criteria_version,
         score=score,
-        summary="Hakemus on lähetysvalmis." if counts["blocking"] == 0 else "Hakemuksessa on lähettämisen estäviä puutteita.",
+        summary=summary,
         issues=issues,
         criteria_results=criteria_results,
         counts=counts,
@@ -1776,10 +2252,11 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             "criteria_municipality": str(active_criteria.get("municipality") or municipality),
             "criteria_version": current_criteria_version,
             "questions": questions,
+            "provider": str(getattr(settings, "llm_provider", "deterministic") if settings is not None else "deterministic"),
         }
     )
-    save_artifact(db, case_id, "check_report", app["permit_type"], report_payload)
     if settings is not None:
+        review_catalog = _review_evidence_catalog(attachments, active_criteria, criteria_results)
         precheck = run_json_agent(
             db,
             settings,
@@ -1789,6 +2266,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
                 "issues": json.dumps(_plain([i for i in issues if not i.resolved]), ensure_ascii=False),
                 "criteria_results": json.dumps(criteria_results, ensure_ascii=False),
                 "score_inputs": json.dumps({**counts, "score": score}, ensure_ascii=False),
+                "evidence_catalog": json.dumps(review_catalog, ensure_ascii=False),
             },
             ApplicantPrecheckReport,
             fallback={
@@ -1800,6 +2278,8 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
                     {"title": "Ristiriidat", "items": [i.title for i in issues if i.type == "inconsistent"]},
                     {"title": "Suositukset", "items": [i.title for i in minors]},
                 ],
+                "strengths": [],
+                "improvements": [],
                 "blocking_issue_count": counts["blocking"],
                 "major_issue_count": counts["major"],
             },
@@ -1817,19 +2297,35 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         degraded["fallback_used_agents"] = _degraded_agents(
             db, case_id, ("completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report")
         )
-        report_payload["summary"] = precheck_dict.get("summary") or response.summary
-        report_payload["sections"] = precheck_dict.get("sections") or []
+        review = _build_applicant_review(
+            precheck_dict,
+            response.summary,
+            issues,
+            criteria_results,
+            active_criteria,
+            attachments,
+            app.get("form_data", {}),
+        )
+        report_payload["review"] = review
+        report_payload["ai_summary"] = precheck_dict.get("summary") or ""
+        report_payload["summary"] = response.summary
+        report_payload["sections"] = review["sections"]
         if degraded["fallback_used_agents"]:
-            report_payload["summary"] = (
-                (report_payload["summary"] + " " if report_payload["summary"] else "")
-                + "AI ei voinut tarkistaa: "
+            report_payload["degraded_summary"] = (
+                "AI ei voinut tarkistaa: "
                 + ", ".join(degraded["fallback_used_agents"])
                 + "."
             )
-        response.summary = report_payload["summary"]
         save_artifact(db, case_id, "check_report", app["permit_type"], report_payload)
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "applicant_precheck_report", "Esitarkistusraportti valmis.")
+    report_payload = _pixie_wrap(
+        report_payload,
+        purpose="output",
+        name="application_check_report",
+        description="Final applicant-facing application check report",
+    )
+    save_artifact(db, case_id, "check_report", app["permit_type"], report_payload)
     event(db, case_id, "ai.check.completed", "Application check completed", {"application_id": app["permit_type"], "issues": len(issues), "blocking": counts["blocking"], "major": counts["major"], "score": response.score})
     save_artifact(db, case_id, "precheck_gate", app["permit_type"], precheck_gate_status(db, case_id, app["permit_type"]))
     complete_ai_job(db, case_id, app["permit_type"], job_id, summary=f"Tarkistus valmis: {len(issues)} havaintoa, pisteet {response.score}.", result_artifact=f"check_report:{app['permit_type']}")
@@ -1877,13 +2373,15 @@ def precheck_gate_status(db: Any, case_id: str, permit_type: str, *, max_age_sec
     issues = report.get("issues") or []
     blocking_count = sum(1 for issue in issues if issue.get("severity") == "blocking" and not issue.get("resolved"))
     major_count = sum(1 for issue in issues if issue.get("severity") == "major" and not issue.get("resolved"))
+    red_count = sum(1 for criterion in report.get("criteria_results") or [] if criterion.get("status") == "red")
     is_fresh = bool(report) and not stale_reasons
     return {
         "application_id": permit_type,
-        "can_submit": is_fresh and blocking_count == 0,
+        "can_submit": is_fresh and blocking_count == 0 and major_count == 0 and red_count == 0,
         "is_fresh": is_fresh,
         "blocking_count": blocking_count,
         "major_count": major_count,
+        "red_count": red_count,
         "stale_reasons": stale_reasons,
         "checked_at": checked_at,
         "form_updated_at": form_updated_at,
@@ -1905,7 +2403,7 @@ def ensure_fresh_precheck_or_raise(db: Any, case_id: str, permit_type: str, sett
     if not gate["can_submit"]:
         if gate["blocking_count"] > 0:
             raise RuntimeError("blocking_issues")
-        raise RuntimeError("precheck_not_fresh")
+        raise RuntimeError("precheck_not_ready")
     return gate
 
 
@@ -1923,8 +2421,10 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     missing_common_data = [key for key in DEFAULT_COMMON_DATA if not str(common_data.get(key, "")).strip()]
     required_fields = [f for f in schema.get("fields", []) if f.get("required")]
     missing_required = [f.get("id") for f in required_fields if not str(form_data.get(f.get("id"), "")).strip()]
-    official_types = {a.get("primary_type") for a in attachments if a.get("delivery_scope") == "official_submission"}
-    missing_attachments = [item for item in schema.get("required_attachments", []) if item not in official_types]
+    missing_attachments = [
+        item for item in schema.get("required_attachments", [])
+        if not attachment_requirement_covered(item, attachments)
+    ]
     pending_suggestions = [s for s in suggestions if s.get("status") == "pending"]
     pending_extractions = [item for item in extraction_items if item.get("status") == "pending"]
     pending_suggestion_count = len(pending_suggestions) + len(pending_extractions)
@@ -1938,7 +2438,7 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
         {"step": 1, "label": "Yhteiset tiedot", "status": "done" if not missing_common_data else "attention"},
         {"step": 2, "label": "Aineisto", "status": "done" if not missing_attachments else "attention"},
         {"step": 3, "label": "Hakemuksen tiedot", "status": "attention" if pending_suggestion_count or missing_required else "done"},
-        {"step": 4, "label": "Tarkistus", "status": "done" if gate["is_fresh"] and blocking_count == 0 else "attention"},
+        {"step": 4, "label": "Tarkistus", "status": "done" if gate["is_fresh"] and gate["can_submit"] else "attention"},
         {"step": 5, "label": "Lähetys", "status": "done" if gate["can_submit"] else "blocked"},
         {"step": 6, "label": "Vahvistus", "status": "done" if app.get("status") == "submitted" else "pending"},
     ]
@@ -1959,16 +2459,20 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
             "detail": f"{len(missing_required)} kenttää puuttuu · {pending_suggestion_count} AI-ehdotusta",
         },
         4: {
-            "state": "attention" if not gate["is_fresh"] else ("blocked" if blocking_count else "ready"),
+            "state": "attention" if not gate["is_fresh"] else ("blocked" if not gate["can_submit"] else "ready"),
             "label": (
                 "Tarkistus päivitettävä"
                 if not gate["is_fresh"]
-                else ("Lähetys estetty" if blocking_count else "Tarkistus valmis")
+                else ("Lähetys estetty" if not gate["can_submit"] else "Tarkistus valmis")
             ),
             "detail": (
                 "Aja tarkistus uudelleen ennen lähettämistä."
                 if not gate["is_fresh"]
-                else (f"{blocking_count} estävää puutetta" if blocking_count else "Lähetys on mahdollinen")
+                else (
+                    f"{gate['blocking_count']} estävää · {gate['major_count']} merkittävää · {gate['red_count']} punaista kriteeriä"
+                    if not gate["can_submit"]
+                    else "Lähetys on mahdollinen"
+                )
             ),
         },
         5: {
@@ -3347,7 +3851,9 @@ def kevytasiointi_prose(db: Any, case_id: str, permit_type: str, settings: Any =
     payload = {
         "request_id": getattr(response, "request_id", None) or fallback.request_id,
         "criteria_version": getattr(response, "criteria_version", None) or active_version,
-        "prose_md": getattr(response, "prose_md", None) or fallback.prose_md,
+        "prose_md": (getattr(response, "prose_md", None) or fallback.prose_md).replace(
+            "**Toiminnan luvanvaraisuus**", "**Toiminnan yleiskuvaus**"
+        ),
         "fields": normalized_fields,
         "provider": provider,
         "fallback_used": fallback_used,
@@ -3837,7 +4343,8 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             "retrieved_context": json.dumps({"mode": "api_payload", "attachments": req.attachments}, ensure_ascii=False),
         }
         vector_ids = azure_vector_store_ids(db, settings, api_case)
-        agent_issues = _run_check_agents(db, settings, api_case, base_values, vector_ids=vector_ids, max_output_tokens=5000)
+        agent_issues = _run_check_agents(db, settings, api_case, base_values, vector_ids=vector_ids, max_output_tokens=3000)
+        agent_issues = _filter_covered_attachment_issues(agent_issues, req.attachments)
         criteria_response = run_json_agent(
             db,
             settings,
@@ -3858,6 +4365,12 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
                 criteria_results = _plain(cr)
                 save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": criteria_results})
         issues = merge_issues(issues, agent_issues)
+    criteria_results, criteria_notes = _normalize_criteria_results(
+        criteria_results,
+        active_criteria or {},
+        req.form_data,
+        req.attachments,
+    )
     # Build per-rule instruction + severity lookup for synthesized findings.
     rule_instructions = {
         str(r.get("id")): str(r.get("instruction") or "").strip()
@@ -3868,6 +4381,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
     }
     issues, reconciliation_notes = reconcile_verdict(issues, criteria_results, rule_instructions=rule_instructions, rule_severities=rule_severities)
+    reconciliation_notes = [*criteria_notes, *reconciliation_notes]
     counts, score, readiness = _derive_check_verdict(issues, criteria_results)
     degraded = {
         "fallback_used_agents": _degraded_agents(
@@ -3879,14 +4393,38 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         request_id=req.request_id,
         criteria_version=criteria_version(req.permit_type, db, api_case, municipality) if db is not None and settings is not None else criteria_version(req.permit_type, municipality=municipality),
         score=score,
-        summary="Hakemus on lähetysvalmis." if counts["blocking"] == 0 else "Hakemuksessa on lähettämisen estäviä puutteita.",
+        summary=(
+            "Hakemus on valmis lähetettäväksi."
+            if readiness == "ready"
+            else (
+                "Hakemuksessa on lähettämisen estäviä puutteita."
+                if counts["blocking"] or counts["red"]
+                else "Hakemus tarvitsee vielä täsmennyksiä ennen lähettämistä."
+            )
+        ),
         issues=issues,
         criteria_results=criteria_results,
         counts=counts,
         degraded=degraded,
         readiness=readiness,
     )
-    return asdict(response)
+    result = asdict(response)
+    result["provider"] = str(getattr(settings, "llm_provider", "deterministic") if settings is not None else "deterministic")
+    result["review"] = _build_applicant_review(
+        {},
+        response.summary,
+        issues,
+        criteria_results,
+        active_criteria or {},
+        req.attachments,
+        req.form_data,
+    )
+    return _pixie_wrap(
+        result,
+        purpose="output",
+        name="api_application_check_result",
+        description="Final precheck response sent to an API client",
+    )
 
 
 def structure_extract(payload: dict[str, Any], db: Any = None, settings: Any = None, case_id: str = "") -> dict[str, Any]:

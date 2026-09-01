@@ -14,7 +14,7 @@
       <span aria-hidden="true">→</span>
     </a>
     <a href="/applicant/packages/new" class="home-start-link">
-      <span><strong>Kevytasiointi</strong><small>Lisää hankkeen tiedot ja tausta-aineisto LV:ssä, täytä lomake Kevytasiointipalvelussa ja lähetä.</small></span>
+      <span><strong>Uusi hanke - Kevyt integraatio</strong><small>Lisää hankkeen tiedot ja tausta-aineisto LV:ssä, täytä lomake ja lähetä.</small></span>
       <span aria-hidden="true">→</span>
     </a>
   </div>
@@ -29,7 +29,7 @@
       {% for case in cases %}
       <article class="case-list-row">
         <div class="case-list-row__identity">
-          <p class="eyebrow">Hanke{% if case.created_from == 'kevytasiointi' %} · Kevytasiointi{% endif %}</p>
+          <p class="eyebrow">Hanke{% if case.created_from == 'kevytasiointi' %} · Kevyt integraatio{% endif %}</p>
           <h3><a href="{{ case.project_url }}">{{ case.name }}</a></h3>
           <p class="muted">{{ case.location }} · {{ case.application_count }} hakemus{% if case.application_count != 1 %}ta{% endif %}</p>
         </div>

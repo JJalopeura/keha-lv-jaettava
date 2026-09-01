@@ -1183,7 +1183,7 @@ class Pages(unittest.TestCase):
         package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
         workbench = client.get(f"/applicant/packages/{package_id}")
         self.assertEqual(workbench.status_code, 200)
-        self.assertIn("Kevytasiointi", workbench.text)
+        self.assertIn("Kevyt integraatio", workbench.text)
         self.assertNotIn("Vaihe 2 / 6", workbench.text)
 
         wizard = client.get(f"{base}/wizard/2")
@@ -1218,7 +1218,7 @@ class Pages(unittest.TestCase):
         package_id = svc.current_material_package(db, case, PERMIT)["package_id"]
         response = client.get(f"/applicant/packages/{package_id}")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Kevytasiointi", response.text)
+        self.assertIn("Kevyt integraatio", response.text)
         self.assertIn("Tausta-aineisto", response.text)
         self.assertNotIn("environmental_application", response.text)
         self.assertNotIn("zoning_extract", response.text)

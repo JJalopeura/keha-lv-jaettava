@@ -26,7 +26,7 @@ from app.infra.llm_factory import LLMUnavailableError, create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
 from .core import ApplicantPrecheckReport, AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, ProseSuggestionField, ProseSuggestionResponse, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
-from .jobs import complete_ai_job, mark_agent_complete, start_ai_job
+from .jobs import complete_ai_job, find_ai_job, mark_agent_complete, start_ai_job
 
 
 ENVIRONMENTAL_MATERIAL_STORIES_PATH = Path(__file__).resolve().parent.parent / "specs" / "scenarios" / "environmental_material_stories.json"
@@ -84,17 +84,34 @@ ATTACHMENT_REQUIREMENT_TERMS = {
 }
 
 
-def attachment_requirement_covered(required: str, attachments: list[dict[str, Any]]) -> bool:
-    aliases = ATTACHMENT_REQUIREMENT_ALIASES.get(required, {required})
-    terms = ATTACHMENT_REQUIREMENT_TERMS.get(required, ())
-    for attachment in attachments:
-        if attachment.get("delivery_scope") != "official_submission":
-            continue
-        if str(attachment.get("primary_type") or "") in aliases:
-            return True
-        haystack = unicodedata.normalize("NFC", f"{attachment.get('filename', '')}\n{attachment.get('summary', '')}\n{attachment.get('text_excerpt', '')}".lower())
-        if any(term in haystack for term in terms):
-            return True
+def attachment_requirement_covered(
+    required: str,
+    attachments: list[dict[str, Any]],
+    allowed_scopes: set[str] | None = None,
+) -> bool:
+    scopes = allowed_scopes or {"official_submission"}
+    required_roles = [part.strip() for part in str(required or "").split(",") if part.strip()]
+    for role in required_roles:
+        aliases = {
+            str(alias).strip().lower().replace(" ", "_").replace("-", "_")
+            for alias in ATTACHMENT_REQUIREMENT_ALIASES.get(role, {role})
+        }
+        terms = ATTACHMENT_REQUIREMENT_TERMS.get(role, ())
+        for attachment in attachments:
+            if attachment.get("delivery_scope") not in scopes:
+                continue
+            raw_tags = attachment.get("type_tags") or []
+            tags = [raw_tags] if isinstance(raw_tags, str) else raw_tags
+            roles = {
+                str(value).strip().lower().replace(" ", "_").replace("-", "_")
+                for value in [attachment.get("primary_type"), *tags]
+                if str(value or "").strip()
+            }
+            if roles & aliases:
+                return True
+            haystack = unicodedata.normalize("NFC", f"{attachment.get('filename', '')}\n{attachment.get('summary', '')}\n{attachment.get('text_excerpt', '')}".lower())
+            if any(term in haystack for term in terms):
+                return True
     return False
 
 
@@ -324,6 +341,7 @@ def retrieval_context(db: Any, case_id: str, permit_type: str, *, max_chars: int
                 "title": att.get("filename"),
                 "delivery_scope": att.get("delivery_scope"),
                 "primary_type": att.get("primary_type"),
+                "type_tags": att.get("type_tags") or [],
                 "text": chunk,
             }
         )
@@ -582,6 +600,19 @@ def run_json_agent(
             or str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
         )
         if fallback is None or not allow_fallback:
+            if task_id:
+                try:
+                    job = find_ai_job(db, task_id)
+                    complete_ai_job(
+                        db,
+                        job["case_id"],
+                        job["application_id"],
+                        task_id,
+                        summary=f"AI-agentti {agent} epäonnistui. Käynnistä tarkistus uudelleen.",
+                        failed=True,
+                    )
+                except Exception:
+                    pass
             raise LLMUnavailableError("Azure AI ei ole käytettävissä. Mock-AI on sallittu vain esittäjätilassa.") from failure
         model = fallback if isinstance(fallback, response_model) else response_model(**fallback)
         save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "deterministic_fallback", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(failure)[:500], "error": str(failure)[:500]})
@@ -638,6 +669,40 @@ def _normalize_evidence_refs(value: Any, *, limit: int = 4) -> list[dict[str, An
 
 
 def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) -> dict[str, Any]:
+    if response_model is IssueListResponse:
+        raw_issues = payload.get("issues", []) if isinstance(payload, dict) else []
+        clean_issues: list[Issue] = []
+        if isinstance(raw_issues, list):
+            for item in raw_issues[:8]:
+                if not isinstance(item, dict):
+                    continue
+                issue_type = str(item.get("type") or "risk").strip().lower()
+                severity = str(item.get("severity") or "minor").strip().lower()
+                title = str(item.get("title") or "").strip()
+                detail = str(item.get("detail") or "").strip()
+                evidence_refs = _normalize_evidence_refs(item.get("evidence_refs"), limit=3)
+                if issue_type not in {"missing", "incomplete", "inconsistent", "risk"}:
+                    issue_type = "risk"
+                if severity not in {"blocking", "major", "minor"}:
+                    severity = "minor"
+                if not title or not detail or not evidence_refs:
+                    continue
+                clean_issues.append(
+                    Issue(
+                        id=str(item.get("id") or ""),
+                        type=issue_type,
+                        severity=severity,
+                        title=title[:180],
+                        detail=detail[:500],
+                        confidence=_coerce_confidence(item.get("confidence"), 0.5),
+                        criteria_id=item.get("criteria_id") if isinstance(item.get("criteria_id"), str) else None,
+                        field_id=item.get("field_id") if isinstance(item.get("field_id"), str) else None,
+                        attachment_id=item.get("attachment_id") if isinstance(item.get("attachment_id"), str) else None,
+                        suggested_fix=str(item.get("suggested_fix") or "").strip()[:500] or None,
+                        evidence_refs=evidence_refs,
+                    )
+                )
+        return {"issues": clean_issues}
     if response_model is StructureExtractionResponse:
         extracted_fields = payload.get("extracted_fields", []) if isinstance(payload, dict) else []
         if not isinstance(extracted_fields, list):
@@ -691,7 +756,15 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
                 if not isinstance(result, dict):
                     continue
                 clean_result = dict(result)
+                if not isinstance(clean_result.get("criteria_id"), str):
+                    continue
+                if clean_result.get("status") not in {"green", "yellow", "red"}:
+                    continue
                 clean_result["evidence_refs"] = _normalize_evidence_refs(clean_result.get("evidence_refs", []), limit=6)
+                clean_result["related_fields"] = [str(value) for value in clean_result.get("related_fields", []) if isinstance(value, str)]
+                clean_result["issues"] = [str(value) for value in clean_result.get("issues", []) if isinstance(value, str)]
+                clean_result["rationale"] = str(clean_result.get("rationale") or "")[:500]
+                clean_result["confidence"] = _coerce_confidence(clean_result.get("confidence"), 0.5)
                 clean_results.append(clean_result)
         return {"criteria_results": clean_results}
     if response_model is ApplicantPrecheckReport:
@@ -705,6 +778,9 @@ def normalize_agent_payload(response_model: type[Any], payload: dict[str, Any]) 
             normalized["score"] = int(normalized.get("score") or 0)
         except (TypeError, ValueError):
             normalized["score"] = 0
+        for key in ("sections", "strengths", "improvements"):
+            if not isinstance(normalized.get(key), list):
+                normalized[key] = []
         return normalized
     if response_model is ProseSuggestionResponse:
         normalized = dict(payload) if isinstance(payload, dict) else {}

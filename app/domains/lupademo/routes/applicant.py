@@ -461,6 +461,17 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         except KeyError:
             raise HTTPException(status_code=404, detail="Package not found")
 
+    @router.get("/applicant/packages/{package_id}/suggestions", response_class=HTMLResponse)
+    def kevytasiointi_suggestions(request: Request, package_id: str):
+        try:
+            return templates.TemplateResponse(
+                request,
+                "applicant/kevyt_suggestions.html",
+                {**package_context(package_id), "standalone_page": True},
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Package not found")
+
     @router.post("/applicant/packages/{package_id}/analyze")
     def applicant_package_analyze(package_id: str, background_tasks: BackgroundTasks):
         try:

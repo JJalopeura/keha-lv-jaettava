@@ -143,7 +143,8 @@ def validate_municipality_criteria(client: dict[str, Any], payload: dict[str, An
         return
     criteria = svc.load_criteria(application_id, municipality)
     criteria_set_id = str(criteria.get("criteria_set_id") or "")
-    if _normalize_municipality(criteria.get("municipality")) != _normalize_municipality(municipality):
+    criteria_municipality = _normalize_municipality(criteria.get("municipality"))
+    if criteria_municipality and criteria_municipality != _normalize_municipality(municipality):
         raise HTTPException(status_code=403, detail=f"No allowlisted criteria exists for municipality {municipality}")
     if criteria_set_id and criteria_set_id not in client["criteria_sets"]:
         raise HTTPException(status_code=403, detail=f"Tenant {client['tenant_id']} cannot use criteria for municipality {municipality}")
