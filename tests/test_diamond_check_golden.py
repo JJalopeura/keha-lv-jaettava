@@ -104,9 +104,11 @@ class DiamondCheckGoldenTest(unittest.TestCase):
                     f"red criterion {cid} must have an unresolved blocking issue with its criteria_id",
                 )
             elif c.get("status") == "yellow":
+                # Minor-only policy: yellow criterion = osittain täytetty → vähäinen (minor)
+                # review point, never blocking/major (reconcile_verdict C1/P2 target).
                 self.assertTrue(
-                    any(i.get("severity") in {"blocking", "major"} for i in linked),
-                    f"yellow criterion {cid} must have an unresolved blocking/major issue",
+                    any(i.get("severity") == "minor" for i in linked),
+                    f"yellow criterion {cid} must have an unresolved minor issue",
                 )
             else:  # green
                 for i in linked:
@@ -121,7 +123,8 @@ class DiamondCheckGoldenTest(unittest.TestCase):
         counts = self.report.get("counts", {})
         criteria = self.report.get("criteria_results", [])
         crit_score = 1.0 if not criteria else (counts.get("green", 0) + 0.5 * counts.get("yellow", 0)) / len(criteria)
-        issue_score = max(0.0, 1 - 0.25 * counts.get("blocking", 0) - 0.10 * counts.get("major", 0) - 0.04 * counts.get("minor", 0))
+        # capped minor penalty — mirror of _derive_check_verdict (minor-only policy)
+        issue_score = max(0.0, 1 - 0.25 * counts.get("blocking", 0) - 0.10 * counts.get("major", 0) - min(0.04 * counts.get("minor", 0), 0.20))
         expected = round(50 * crit_score + 50 * issue_score)
         self.assertEqual(self.report.get("score"), expected,
                          "score must equal the code-owned 50/50 derivation from counts")
@@ -174,7 +177,8 @@ class DiamondCheckGoldenTest(unittest.TestCase):
         self.assertIsInstance(result.get("readiness"), str)
         self.assertIn(result.get("readiness"), {"ready", "almost_ready", "not_ready"})
         crit_score = (counts.get("green", 0) + 0.5 * counts.get("yellow", 0)) / len(criteria) if criteria else 1.0
-        issue_score = max(0.0, 1 - 0.25 * counts.get("blocking", 0) - 0.10 * counts.get("major", 0) - 0.04 * counts.get("minor", 0))
+        # capped minor penalty — mirror of _derive_check_verdict (minor-only policy)
+        issue_score = max(0.0, 1 - 0.25 * counts.get("blocking", 0) - 0.10 * counts.get("major", 0) - min(0.04 * counts.get("minor", 0), 0.20))
         expected = round(50 * crit_score + 50 * issue_score)
         self.assertEqual(result.get("score"), expected, "precheck score must be code-derived")
         unresolved = [i for i in result.get("issues", []) if not i.get("resolved")]

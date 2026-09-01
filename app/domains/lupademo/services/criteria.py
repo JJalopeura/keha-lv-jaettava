@@ -119,6 +119,18 @@ def effective_criteria(db: Any, case_id: str, permit_type: str, municipality: An
     art = artifact_json(db, case_id, "criteria_set", name, {})
     requested_city = _normalize_municipality(municipality)
     if art and (not requested_city or _normalize_municipality(art.get("municipality")) == requested_city):
+        bundled = load_criteria(permit_type, municipality)
+        if (
+            str(art.get("criteria_set_id") or "") == str(bundled.get("criteria_set_id") or "")
+            and str(art.get("version") or "") != str(bundled.get("version") or "")
+            and not str(art.get("updated_by") or "").strip()
+            and "-edited-" not in str(art.get("version") or "")
+        ):
+            # Bundled built-in criteria advanced without admin edits — refresh the
+            # persisted copy so existing cases pick up the new rules automatically.
+            criteria = copy.deepcopy(bundled)
+            save_artifact(db, case_id, "criteria_set", name, criteria)
+            return criteria
         return art
     criteria = load_criteria(permit_type, municipality)
     criteria_city = _normalize_municipality(criteria.get("municipality"))

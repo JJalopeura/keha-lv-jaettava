@@ -3,149 +3,140 @@
   "tenant_id": "avi_demo",
   "municipality": "",
   "permit_type": "environmental_industrial",
-  "version": "2026-08-demo-1",
+  "version": "2026-08-demo-2",
   "status": "active",
   "sources": [
     "Uusiutuvan energian tuotantolaitosten lupamenettelyt ja muut hallinnolliset menettelyt.pdf",
-    "P2X/Ren-Gas/SharpCell case corpus (esimerkkihakemukset)",
     "ymparisto.fi ympäristölupa yleisohjeet (demo source)",
-    "EU:n talouskasvetsasetus DNSH-vaatimukset"
+    "EU:n talouskasvetsasetus DNSH-vaatimukset",
+    "Esimerkkihakemusaineistot (P2X / Ren-Gas / SharpCell, demo)"
   ],
   "rules": [
     {
       "id": "permit_basis",
       "field_id": "permit_basis",
-      "severity": "blocking",
-      "instruction": "Hakemuksessa on kuvattava toiminnan luvanvaraisuus ja säädösperusta (esim. ympäristönsuojelulaki 27 §)."
-    },
-    {
-      "id": "competent_authority_avi_or_municipality",
-      "field_id": "competent_authority",
-      "severity": "major",
-      "instruction": "Hakemuksessa tulee perustella kuuluuko toimivalta AVI:lle vai kunnalle toiminnan laadun ja vaikutusten perusteella (ympäristönsuojelulaki 34 §)."
-    },
-    {
-      "id": "green_transition_priority",
-      "field_id": "activity_description",
       "severity": "recommendation",
-      "instruction": "Jos hanke liittyy vihreän siirtymän etusijamenettelyyn, mainitse hakemuksessa ja liitä etusijapyyntö erillisenä liitteenä. P2X ja Ren-Gas -hankkeissa etusijamenettely on merkitty hakemuksessa erilliseen kohtaan."
+      "instruction": "Kuvaa hakemuksessa toiminnan luvanvaraisuus ja säädösperusta (esim. ympäristönsuojelulain 27 §)."
     },
     {
-      "id": "yva_statement_required",
+      "id": "competent_authority",
+      "field_id": "competent_authority",
+      "severity": "recommendation",
+      "instruction": "Perustele toiminnan laadun ja vaikutusten perusteella, onko toimivaltainen viranomainen aluehallintovirasto vai kunnan ympäristönsuojeluviranomainen."
+    },
+    {
+      "id": "yva_process",
       "attachment_type": "yva_statement",
       "severity": "minor",
-      "instruction": "Ympäristövaikutusten arviointiselostus (perusteltu päätelmä) on oltava liitteenä. P2X/Ren-Gas/SharpCell -hankkeissa YVA-selostus ja perusteltu päätelmä on käsiteltävä erillisinä liitteinä (Liite 14a/b/c)."
+      "instruction": "Jos YVA-menettely on käyty, liitä ympäristövaikutusten arviointiselostus ja perusteltu päätelmä. Mainitse myös, onko päätelmän ajantasaisuudesta erillinen viranomaislausunto."
     },
     {
-      "id": "yva_judgement_freshness",
-      "attachment_type": "judgement_freshness_assessment",
-      "severity": "minor",
-      "instruction": "Jos YVA-menettely on jo käyty, perustellun päätelmän ajantasaisuudesta tulee olla viranomaisen lausunto (UUDELY-lausunto). Ren-Gas-hankkeessa UUDELY_lausunto on Liite 4c."
-    },
-    {
-      "id": "bat_assessment_required",
+      "id": "bat_assessment",
       "attachment_type": "bat_assessment",
       "severity": "minor",
-      "instruction": "BAT-arviointi on liitettävä hakemukseen. P2X ja Ren-Gas -hankkeissa BAT-arviointi on käsitelty erillisessä liitteessä (Liite 16 / Liite 13)."
+      "instruction": "Liitä BAT-arviointi, jossa toimintaa verrataan parhaaseen käytettävissä olevaan tekniikkaan ja perustellaan valitut ratkaisut."
     },
     {
-      "id": "chemical_inventory_via_sds",
+      "id": "chemical_inventory",
       "field_id": "raw_materials_chemicals",
-      "attachment_type": "chemical_inventory_or_sds",
-      "condition": {"field_id": "raw_materials_chemicals", "contains_any": ["kemikaal", "vaarallinen", "varastointi", "liuotin"]},
-      "severity": "major",
-      "instruction": "Kemikaalien käytön tai varastoinnin yhteydessä kemikaaliluettelo TURVA-tietelehtiin tai safety data sheets (SDS) hyväksytään liitteeksi. P2X-hankkeessa 8 safety data sheet -liitettä hyväksyttiin."
+      "attachment_type": "chemical_inventory,chemical_inventory_or_sds",
+      "condition": {
+        "field_id": "raw_materials_chemicals",
+        "contains_any": [
+          "kemikaal",
+          "vaarallinen",
+          "varastointi",
+          "liuotin",
+          "sds"
+        ]
+      },
+      "severity": "minor",
+      "instruction": "Kemikaalien käytöstä tai varastoinnista toimitetaan viranomaisliitteenä kemikaaliluettelo tai käyttöturvallisuustiedotteet (SDS)."
     },
     {
-      "id": "chemical_inventory_required",
-      "attachment_type": "chemical_inventory",
-      "condition": {"field_id": "raw_materials_chemicals", "contains_any": ["kemikaaliluettelo"]},
-      "severity": "major",
-      "instruction": "Jos hakemuksessa mainitaan kemikaaliluettelo, se tulee toimittaa viranomaiselle liitteenä. Ren-Gas-hankkeessa Liite 7 Kemikaaliluettelo."
-    },
-    {
-      "id": "monitoring_plan_air",
+      "id": "monitoring_plan",
+      "field_id": "water_and_wastewater",
       "attachment_type": "air_monitoring_plan",
       "severity": "minor",
-      "instruction": "Ilmapäästöjen tarkkailuohjelma tulee laatia. P2X-hankkeessa Liite 17 Tarkkailusuunnitelma kattaa sekä ilman että veden tarkkailun."
+      "instruction": "Kuvaa tarkkailu- ja raportointijärjestelyt: ilmapäästöjen ja jätevesien tarkkailuohjelma sekä seurantapisteet ja raportointivälit."
     },
     {
-      "id": "monitoring_plan_water",
-      "field_id": "water_and_wastewater",
-      "severity": "minor",
-      "instruction": "Jätevesien tarkkailuohjelma tulee laatia. SharpCell-hankkeessa jätevesien tarkkailupiste ja liittymispiste on dokumentoitu erillisessä liitteessä."
-    },
-    {
-      "id": "risk_preparedness_required",
+      "id": "risk_preparedness",
       "attachment_type": "risk_preparedness_plan",
       "severity": "minor",
-      "instruction": "Ympäristöriskeihin varautumissuunnitelma (ennaltavarautumissuunnitelma) on liitettävä. P2X Liite 15, Ren-Gas Liite 12."
+      "instruction": "Liitä ennaltavarautumissuunnitelma, joka kattaa ympäristöriskien hallinnan, merkittävät riskit ja toimintaohjeet häiriötilanteissa."
     },
     {
-      "id": "risk_preparedness_tukes",
+      "id": "tukes_review",
       "attachment_type": "tukes_statement",
-      "severity": "minor",
-      "instruction": "Jos toiminta on vaarallisten aineiden luokituksessa merkittävä, Tukesin lausunto varautumissuunnitelmasta on liitettävä. P2X-hankkeessa Liite 5 Lausunto Tukes."
+      "severity": "recommendation",
+      "instruction": "Jos toiminta kuuluu vaarallisten kemikaalien käsittelyn piiriin, liitä Tukesin lausunto varautumisjärjestelyistä."
     },
     {
-      "id": "dns_compliance",
+      "id": "dnsh_compliance",
       "attachment_type": "dnsh_statement",
       "severity": "minor",
-      "instruction": "EU:n talouskasvetsasetuksen mukainen DNSH-selvitys (Do No Significant Harm) on liitettävä, jos hanke saa EU-rahoitusta tai liittyy vihreän siirtymän etusijaan. P2X-hankkeessa Liite 1 DNSH-selvitys."
+      "instruction": "Liitä DNSH-selvitys (Do No Significant Harm), jos hanke saa EU-rahoitusta tai liittyy vihreän siirtymän etusijamenettelyyn."
     },
     {
       "id": "stormwater_management",
       "attachment_type": "stormwater_plan",
       "severity": "minor",
-      "instruction": "Hulevesien hallintasuunnitelma on liitettävä. P2X Liite 12 Hulevesijärjestelmä, Ren-Gas Liite 10 Arvio hulevesien vaikutuksista."
+      "instruction": "Liitä hulevesien hallintasuunnitelma, joka kuvaa hule- ja perustusten kuivatusvesien imeytyksen, viivytyksen tai johtamisen."
     },
     {
       "id": "flue_gas_modeling",
       "attachment_type": "air_quality_model",
       "severity": "minor",
-      "instruction": "Savukaasu- ja ilmanlaatumallinnus on liitettävä, jos toiminta tuottaa ilmapäästöjä. Ren-Gas Liite 8 Savukaasumallinnus, P2X Liite 13 Ilmanlaatumallinnus."
+      "instruction": "Liitä savukaasu- ja ilmanlaatumallinnus, jos toiminta tuottaa merkittäviä ilmapäästöjä, sekä kuvaus päästölähteistä."
     },
     {
       "id": "noise_modeling",
       "attachment_type": "noise_model",
       "severity": "minor",
-      "instruction": "Melumallinnus on liitettävä, jos toiminta aiheuttaa merkittävää melua. Ren-Gas Melumallinnus päivitetty 2025, P2X Liite 8 Yleisölle tarkoitettu tiivistelmä (sisältää meluarvion)."
+      "instruction": "Liitä melumallinnus, jos toiminta voi aiheuttaa merkittävää melua ympäristöön, ja kuvaa meluntorjuntatoimet."
     },
     {
-      "id": "public_summary_recommended",
+      "id": "public_summary",
       "attachment_type": "public_summary",
-      "severity": "minor",
-      "instruction": "Julkinen tiivistelmä (yleisölle tarkoitettu yhteenveto) suositellaan kuulutusta ja asianosaisten ymmärrettävyyttä varten. P2X Liite 8, Sharpcell hakemuksessa osana yleiskuvausta."
+      "severity": "recommendation",
+      "instruction": "Liitä julkinen yhteenveto kuulutusta ja asianosaisten tiedonsaantia varten."
     },
     {
-      "id": "site_map_and_zoning_required",
+      "id": "site_map",
       "attachment_type": "site_map",
       "severity": "minor",
-      "instruction": "Sijaintikartta, asemakaava/yleiskaava ja karttaliitteet tulee liittää vaikutusalueen hahmottamiseksi. P2X Liite 3, Ren-Gas ja Sharpcell karttaliitteet."
+      "instruction": "Liitä sijaintikartta sekä asema- tai yleiskaavaote vaikutusalueen ja toiminnan sijoittumisen hahmottamiseksi."
     },
     {
       "id": "baseline_report",
       "attachment_type": "baseline_report",
       "severity": "minor",
-      "instruction": "Perustilaselvitys (maa- ja kallioperä, pohjavesi) on liitettävä. P2X Liite 7, Ren-Gas Perustilaselvitys päivitetty."
+      "instruction": "Liitä perustilaselvitys maa- ja kallioperästä sekä pohjavesistä toiminnan vaikutusten arvioinnin pohjaksi."
     },
     {
-      "id": "waste_handling_required",
+      "id": "waste_handling",
       "field_id": "waste",
       "severity": "minor",
-      "instruction": "Jätteiden muodostuminen, luokittelu, varastointi ja toimitus hyväksyttyyn käsittelyyn tulee kuvata. SharpCell-hankkeessa jätejakeet ja kuormitusennuste on dokumentoitu erillisissä liitteissä."
+      "instruction": "Kuvaa jätteiden muodostuminen, luokittelu, varastointi ja toimitus hyväksyttyyn käsittelyyn sekä syntyvät jätejakeet."
     },
     {
-      "id": "natura_assessment_needed",
+      "id": "natura_assessment",
       "field_id": "sensitive_receptors",
-      "severity": "minor",
-      "instruction": "Tunnista sijaitseeko hanke Natura-alueen vaikutuspiirissä ja tarvitaanko Natura-arviointi. Sharpcell-hankkeessa luonnonsuojelulain 65 § arviointi on esitetty liitteessä nro 6."
+      "severity": "recommendation",
+      "instruction": "Selvitä, sijaitseeko hanke Natura-aluetta tai muita suojelukohteita lähellä ja tarvitaanko luonnonsuojelulain mukaista arviointia."
     },
     {
-      "id": "renewable_energy_permit_bundle_identified",
+      "id": "green_transition_priority",
       "field_id": "activity_description",
       "severity": "recommendation",
-      "instruction": "Uusiutuvan energian hankkeessa tulee tunnistaa lupakokonaisuus, kuten rakentaminen, kemikaalit, päästöt ja mahdolliset putkistot. P2X/Ren-Gas -hankkeissa Power-to-X-lupakokonaisuus on tunnistettu."
+      "instruction": "Jos hanke hakee vihreän siirtymän etusijamenettelyä, mainitse se hakemuksessa ja liitä etusijapyyntö."
+    },
+    {
+      "id": "permit_bundle",
+      "field_id": "activity_description",
+      "severity": "recommendation",
+      "instruction": "Tunnista hankkeen koko lupakokonaisuus (rakentaminen, kemikaalit, päästöt, putkistot) ja mainitse mahdolliset rinnakkaisluvat."
     }
   ]
 }

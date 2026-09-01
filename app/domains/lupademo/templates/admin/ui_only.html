@@ -49,7 +49,7 @@
     <div class="result-list" id="ui-only-copy-source">
       {% for field in result.extracted_fields %}
       <div class="result-item">
-        <label><input type="checkbox" name="accepted_fields" value="{{ field.field_id }}"> Hyväksy</label>
+        <label><input type="checkbox" name="accepted_fields" value="{{ field.field_id }}" required> Hyväksy</label>
         <span class="status good">AI:n löytämä tieto</span>
         <p>{{ field.value }}</p>
         <small>{% if field.confidence >= 0.8 %}Vahva lähdetuki{% elif field.confidence >= 0.5 %}Tarkistettava lähdetuki{% else %}Epävarma lähdetuki{% endif %}</small>

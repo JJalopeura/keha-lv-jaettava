@@ -96,7 +96,8 @@
                 {% if field.type == "textarea" %}
                 <textarea name="{{ field.id }}" rows="4">{{ application.form_data.get(field.id, "") }}</textarea>
                 {% else %}
-                <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}">
+                {% set _autocomplete_map = {'applicant_name': 'name', 'contact_person': 'name', 'email': 'email', 'business_id': 'off', 'property_id': 'off', 'address': 'street-address'} %}
+                <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}"{% if field.id in _autocomplete_map %} autocomplete="{{ _autocomplete_map[field.id] }}"{% endif %}>
                 {% endif %}
               </label>
               {% endfor %}

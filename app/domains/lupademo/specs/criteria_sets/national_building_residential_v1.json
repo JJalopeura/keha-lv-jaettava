@@ -13,14 +13,14 @@
     {
       "id": "height_required_national",
       "field_id": "building_height_m",
-      "severity": "blocking",
-      "instruction": "Rakennuksen korkeus on ilmoitettava hakemuksessa."
+      "severity": "minor",
+      "instruction": "Varmista, että rakennuksen korkeus on ilmoitettu hakemuksessa ja se vastaa pääpiirustuksia."
     },
     {
       "id": "official_drawings_national",
       "attachment_type": "main_drawings",
-      "severity": "blocking",
-      "instruction": "Pääpiirustukset tarvitaan viranomaiselle lähtevänä liitteenä."
+      "severity": "minor",
+      "instruction": "Tarkista, että pääpiirustukset on merkitty viranomaiselle toimitettavaksi liitteeksi."
     }
   ]
 }

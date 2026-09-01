@@ -563,11 +563,19 @@ def run_json_agent(
                     f"retry without retrieval also failed: {retry_exc}"
                 )
         if "HTTP 429" in str(failure):
-            time.sleep(2)
-            try:
-                return _invoke(vector_ids, "retry_after_rate_limit")
-            except Exception as retry_exc:
-                failure = RuntimeError(f"Rate-limited request failed on retry: {retry_exc}")
+            # Rate limit: back off and retry a few times before giving up. The
+            # underlying Azure client already retries with Retry-After honoring,
+            # so this is a secondary safety net for sustained throttling.
+            last_retry_exc: Optional[Exception] = None
+            for backoff in (2, 4, 8):
+                time.sleep(backoff)
+                try:
+                    return _invoke(vector_ids, "retry_after_rate_limit")
+                except Exception as retry_exc:  # noqa: PERF203
+                    last_retry_exc = retry_exc
+            failure = RuntimeError(
+                f"Rate-limited request failed after retries: {last_retry_exc or failure}"
+            )
         allow_fallback = (
             provider == "mock"
             or _is_presenter_case(db, case_id)

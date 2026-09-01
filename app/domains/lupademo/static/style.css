@@ -782,10 +782,48 @@ section {
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: 0 18px 50px rgba(16, 24, 40, 0.2);
+  /* Top-layer entry/exit animation; light dismiss
+     (closedby="any") comes from the markup.
+     Closed-state values are the exit targets. */
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease,
+    overlay 200ms ease,
+    display 200ms ease;
+  transition-behavior: allow-discrete;
+}
+
+.suggestion-dialog[open] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@starting-style {
+  .suggestion-dialog[open] {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
 }
 
 .suggestion-dialog::backdrop {
+  background: rgba(16, 24, 40, 0);
+  transition:
+    background 200ms ease,
+    overlay 200ms ease,
+    display 200ms ease;
+  transition-behavior: allow-discrete;
+}
+
+.suggestion-dialog[open]::backdrop {
   background: rgba(16, 24, 40, 0.42);
+}
+
+@starting-style {
+  .suggestion-dialog[open]::backdrop {
+    background: rgba(16, 24, 40, 0);
+  }
 }
 
 .suggestion-dialog__header,
@@ -2113,6 +2151,32 @@ body.service-light {
   border-left: 3px solid #176b60;
   border-radius: 6px;
   box-shadow: 0 6px 16px rgba(23, 107, 96, 0.08);
+  /* Container query context: the AI sidebar
+     reflows to its own column width. */
+  container-type: inline-size;
+}
+
+/* When the AI sidebar spans a wide column
+   (mobile/tablet full-width layout),
+   the three job actions share one row
+   instead of stacking. */
+@container (min-width: 480px) {
+  .wizard-ai-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .wizard-ai-action {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 8px;
+    border-right: 1px solid #d5e9e2;
+  }
+  .wizard-ai-action:last-child {
+    border-right: 0;
+  }
+  .wizard-ai-action__button {
+    width: 100%;
+  }
 }
 
 .wizard-ai-sidebar__heading {
@@ -6126,20 +6190,73 @@ button:disabled {
     0 0 0 1px rgba(15, 23, 42, 0.04),
     0 4px 8px rgba(15, 23, 42, 0.04),
     0 16px 40px rgba(15, 23, 42, 0.12);
+  /* Native visibility: hidden when closed
+     (UA dialog/popover rules), shown in the
+     top layer via showPopover(). Closed-state
+     values are the exit transition targets. */
   opacity: 0;
   transform: translateY(12px) scale(0.98);
-  pointer-events: none;
-  visibility: hidden;
-  transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    overlay 180ms ease,
+    display 180ms ease;
+  transition-behavior: allow-discrete;
   will-change: transform, opacity;
   overflow: hidden;
+  container-type: inline-size;
 }
 
-.copilot-panel--open {
+/* Closed state: hidden in popover-supporting
+   and legacy browsers alike (the popover
+   attribute is present in the DOM either way). */
+.copilot-panel[popover] {
+  display: none;
+}
+
+/* Native top-layer open state via showPopover().
+   Kept separate from the class rule so legacy
+   browsers without :popover-open support still
+   match the fallback class rule below. */
+.copilot-panel:popover-open {
+  display: flex;
   opacity: 1;
   transform: translateY(0) scale(1);
-  pointer-events: auto;
-  visibility: visible;
+}
+
+/* Class-based open state: JS fallback in legacy
+   browsers; retained as the transition state. */
+.copilot-panel.copilot-panel--open {
+  display: flex;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@starting-style {
+  .copilot-panel:popover-open {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  .copilot-panel.copilot-panel--open {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+/* Container query: the chat panel reflows to its
+   own width, not the viewport — on narrow panels
+   (small screens) the inner padding tightens. */
+@container (max-width: 379px) {
+  .copilot-header {
+    padding: 12px 12px;
+  }
+  .copilot-messages {
+    padding: 12px;
+    gap: 12px;
+  }
+  .copilot-empty {
+    padding: 24px 12px;
+  }
 }
 
 .copilot-header {
@@ -7181,4 +7298,81 @@ body.service-light {
     align-items: end;
     flex-direction: row;
   }
+}
+
+/* ── Cross-document view transitions (MPA navigation) ── */
+@view-transition {
+  navigation: auto;
+}
+
+/* Reduced motion: view transition snapshots still swap
+   (keeps navigation functional) but without animation.
+   ::view-transition-* pseudo-elements live outside the
+   document tree, so the global reduced-motion rule
+   above does not reach them. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+  .suggestion-dialog::backdrop {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ── Native form validation feedback (:user-valid / :user-invalid) ──
+   Only styles fields AFTER user interaction (blur/submit), per
+   required-field-feedback guidance. Legacy browsers get the same
+   states via .user-invalid-fallback toggled from light_base.html. */
+@supports selector(:user-invalid) {
+  input:user-invalid,
+  textarea:user-invalid,
+  select:user-invalid {
+    border-color: var(--danger);
+    border-style: dashed;
+    background-color: #fdf1f0;
+    box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
+  }
+
+  input:user-invalid:focus,
+  textarea:user-invalid:focus,
+  select:user-invalid:focus {
+    box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.24);
+  }
+
+  input:required:user-valid,
+  textarea:required:user-valid,
+  select:required:user-valid {
+    border-color: var(--primary);
+  }
+
+  /* Checkboxes hide the base border; give required checkboxes a
+     distinct non-color cue via outline when user-invalid. */
+  input[type="checkbox"]:user-invalid {
+    outline: 2px solid var(--danger);
+    outline-offset: 2px;
+  }
+}
+
+/* Legacy fallback for browsers without :user-invalid/:user-valid. */
+input.user-invalid-fallback,
+textarea.user-invalid-fallback,
+select.user-invalid-fallback {
+  border-color: var(--danger);
+  border-style: dashed;
+  background-color: #fdf1f0;
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
+}
+
+input.user-invalid-fallback:focus,
+textarea.user-invalid-fallback:focus,
+select.user-invalid-fallback:focus {
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.24);
+}
+
+input[type="checkbox"].user-invalid-fallback {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
 }

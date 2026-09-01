@@ -248,6 +248,9 @@ def context_app(
         "criteria_municipality": str(active_criteria.get("municipality") or municipality or "Kansallinen oletus"),
         "criteria_version": str(active_criteria.get("version") or "demo"),
         "criteria_rule_count": len(active_criteria.get("rules") or []),
+        "criteria_rules": {
+            str(r.get("id")): r for r in (active_criteria.get("rules") or []) if isinstance(r, dict)
+        },
         "criteria_sources": [str(s) for s in (active_criteria.get("sources") or [])][:3],
         "criteria_set_id": str(active_criteria.get("criteria_set_id") or ""),
         "attachments": attachments,

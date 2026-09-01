@@ -102,7 +102,7 @@ class ApplicantJourney(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Tarkistuksessa käytetty kriteeristö", response.text)
-        self.assertIn("Vantaa · 2026-08-demo-1", response.text)
+        self.assertIn("Vantaa · 2026-08-demo-2", response.text)
 
     def test_idle_check_action_stays_in_ai_panel(self) -> None:
         fresh_case = db.create_case("Idle check action", language="fi")
@@ -147,8 +147,8 @@ class ApplicantJourney(unittest.TestCase):
         self.assertIn("criteria_custom_noise_context", {issue.id for issue in issues})
 
     def test_conditional_environmental_criteria_waits_for_trigger(self) -> None:
-        # Kriteeristön uudistuksen (2026-08) jälkeen ehdollisuus on kemikaalisäännöissä:
-        # chemical_inventory_via_sds laukeaa vain, jos raaka-ainekenttä mainitsee kemikaalit.
+        # Kriteeristön uudistuksen (2026-08) jälkeen ehdollisuus on kemikaalisäännössä:
+        # chemical_inventory laukeaa vain, jos raaka-ainekenttä mainitsee kemikaalit.
         quiet_form = {"environmental_impacts": "Vaikutukset arvioitu.", "raw_materials_chemicals": "Vesi ja biomassa."}
         triggered_form = {
             "environmental_impacts": "Toiminnasta syntyy merkittävää melua.",
@@ -158,8 +158,8 @@ class ApplicantJourney(unittest.TestCase):
         quiet_ids = {issue.id for issue in svc.deterministic_issues("environmental_industrial", quiet_form, [])}
         triggered_ids = {issue.id for issue in svc.deterministic_issues("environmental_industrial", triggered_form, [])}
 
-        self.assertNotIn("criteria_chemical_inventory_via_sds", quiet_ids)
-        self.assertIn("criteria_chemical_inventory_via_sds", triggered_ids)
+        self.assertNotIn("criteria_chemical_inventory", quiet_ids)
+        self.assertIn("criteria_chemical_inventory", triggered_ids)
 
     def test_criteria_edit_advances_version_and_deduplicates_shared_subject(self) -> None:
         criteria = svc.effective_criteria(db, case, "environmental_industrial")

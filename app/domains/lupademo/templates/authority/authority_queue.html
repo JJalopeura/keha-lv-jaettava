@@ -25,7 +25,7 @@
 
 <form method="get" action="/authority/queue" class="queue-toolbar">
   <label><span>Lupatyyppi</span><select name="permit_type"><option value="">Kaikki lupatyypit</option><option value="building_residential" {% if filters.permit_type == 'building_residential' %}selected{% endif %}>Rakennusluvat</option><option value="environmental_industrial" {% if filters.permit_type == 'environmental_industrial' %}selected{% endif %}>Ympäristöluvat</option><option value="event_public" {% if filters.permit_type == 'event_public' %}selected{% endif %}>Tapahtumat</option></select></label>
-  <label><span>Kunta</span><input name="municipality" value="{{ filters.municipality }}" placeholder="Kaikki kunnat"></label>
+  <label><span>Kunta</span><input type="search" name="municipality" value="{{ filters.municipality }}" placeholder="Kaikki kunnat" autocomplete="off"></label>
   <button class="secondary">Suodata</button>
   {% if filters.permit_type or filters.municipality %}<a href="/authority/queue">Poista rajaukset</a>{% endif %}
 </form>

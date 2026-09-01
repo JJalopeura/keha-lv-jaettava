@@ -16,7 +16,7 @@
       <label class="wide-field">Hakija<input name="applicant_name" value="{{ profile.get('applicant_name', '') }}" autocomplete="organization"></label>
       <label>Y-tunnus<input name="business_id" value="{{ profile.get('business_id', '') }}" autocomplete="off"></label>
       <label>Yhteyshenkilö<input name="contact_person" value="{{ profile.get('contact_person', '') }}" autocomplete="name"></label>
-      <label>Puhelin<input name="phone" value="{{ profile.get('phone', '') }}" autocomplete="tel"></label>
+      <label>Puhelin<input type="tel" name="phone" value="{{ profile.get('phone', '') }}" autocomplete="tel"></label>
       <label class="wide-field">Sähköposti<input type="email" name="email" value="{{ profile.get('email', '') }}" autocomplete="email"></label>
       <label>Kunta<input name="municipality" value="{{ profile.get('municipality', '') }}" autocomplete="address-level2" required></label>
       <label class="wide-field">Osoite<input name="address" value="{{ profile.get('address', '') }}" autocomplete="street-address"></label>

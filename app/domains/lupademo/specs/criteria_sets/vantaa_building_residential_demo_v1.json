@@ -3,7 +3,7 @@
   "tenant_id": "vantaa_demo",
   "municipality": "Vantaa",
   "permit_type": "building_residential",
-  "version": "2026-06-demo-1",
+  "version": "2026-08-demo-2",
   "status": "active",
   "sources": [
     "Vantaan-kaupungin-rakennusjarjestys.pdf",
@@ -14,20 +14,20 @@
     {
       "id": "stormwater_required",
       "field_id": "stormwater_management",
-      "severity": "blocking",
-      "instruction": "Rakennus- ja peruskorjaushankkeessa on oltava selvitys hulevesi- ja perustusten kuivatusvesijärjestelmästä; kuvauksessa tulee käsitellä imeytys, viivytys tai johtaminen."
+      "severity": "minor",
+      "instruction": "Varmista, että hakemuksessa on selvitys hulevesi- ja perustusten kuivatusvesijärjestelmästä ja että se käsittelee imeytyksen, viivytyksen tai johtamisen."
     },
     {
       "id": "distance_boundary_check",
       "field_id": "distance_to_boundary_m",
-      "severity": "major",
-      "instruction": "Tarkista, että etäisyys rakennuspaikan rajasta on yhdenmukainen lomakkeen ja asemapiirroksen välillä; Vantaan rakennusjärjestyksen demo-oletus on 4 m asemakaava-alueella, ellei muu peruste."
+      "severity": "recommendation",
+      "instruction": "Tarkista, että etäisyys rakennuspaikan rajasta on yhdenmukainen lomakkeen ja asemapiirroksen välillä (asemakaava-alueen demo-oletus 4 m, ellei muuta perustetta)."
     },
     {
       "id": "height_required",
       "field_id": "building_height_m",
-      "severity": "blocking",
-      "instruction": "Rakennuksen korkeus on pakollinen tarkistettava tieto."
+      "severity": "minor",
+      "instruction": "Varmista, että rakennuksen korkeus on ilmoitettu ja se vastaa pääpiirustuksia."
     },
     {
       "id": "noise_context",
@@ -38,8 +38,8 @@
     {
       "id": "official_drawings",
       "attachment_type": "main_drawings",
-      "severity": "blocking",
-      "instruction": "Pääpiirustukset tarvitaan viranomaiselle lähtevänä liitteenä."
+      "severity": "minor",
+      "instruction": "Tarkista, että pääpiirustukset on merkitty viranomaiselle toimitettavaksi liitteeksi."
     }
   ]
 }

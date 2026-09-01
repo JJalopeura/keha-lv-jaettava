@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 import json
+import os
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -8,6 +10,32 @@ from .config import Settings
 from .db import DB
 
 from .azure_client import _build_responses_payload
+
+# Global inter-call throttle so parallel AI jobs do not slam a rate-limited
+# Azure deployment. Configure with KEHA_LV_LLM_MIN_INTERVAL_S (seconds).
+_llm_throttle_lock = threading.Lock()
+_llm_last_call_at = 0.0
+
+
+def _min_call_interval() -> float:
+    try:
+        return max(0.0, float(os.getenv("KEHA_LV_LLM_MIN_INTERVAL_S", "0")))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _throttle() -> None:
+    """Enforce a minimum spacing between LLM calls across the whole process."""
+    interval = _min_call_interval()
+    if interval <= 0:
+        return
+    global _llm_last_call_at
+    with _llm_throttle_lock:
+        now = time.time()
+        wait = (_llm_last_call_at + interval) - now
+        if wait > 0:
+            time.sleep(wait)
+        _llm_last_call_at = time.time()
 
 
 def vector_store_ids(
@@ -79,6 +107,7 @@ def call_llm_json(
         except Exception:
             log_id = None
     try:
+        _throttle()
         for attempt in range(2):
             retrying = attempt == 1
             request_tokens = max(max_output_tokens or 0, 6000) * 2 if retrying else max_output_tokens

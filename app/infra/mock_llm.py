@@ -90,11 +90,13 @@ class MockLLMClient:
                     "fix": "Täsmennä tarkkailun toteutus, menetelmät ja aikataulu.",
                 },
             )
+            # Minor-only policy: prepared demo applications come from officially approved
+            # material, so the completeness mock only ever suggests (vähäinen), never major.
             return {
                 "issues": [
                     {
                         "type": "incomplete",
-                        "severity": "major",
+                        "severity": "minor",
                         "title": tpl["title"],
                         "detail": tpl["detail"],
                         "suggested_fix": tpl["fix"],
@@ -114,6 +116,10 @@ class MockLLMClient:
             crit_ids = list(dict.fromkeys(re.findall(r'"id"\s*:\s*"([a-z0-9_]{4,})"', criteria_slice)))
             results: list[dict[str, Any]] = []
             for idx, cid in enumerate(crit_ids):
+                # Faithful to the real-package ground truth (testiaineisto/*.md): prepared
+                # applications are mostly green with occasional yellow advisory entries
+                # (Ren-Gas site_map, P2X chemical inventory SDS practice). reconcile_verdict
+                # maps yellow to a minor (vähäinen) finding — advisory, never blocking.
                 if idx % 4 == 3:
                     status, rationale, conf = "yellow", "Vaatimus on osittain täytetty; käsittelijän tarkistettava.", 0.7
                 else:
@@ -129,7 +135,7 @@ class MockLLMClient:
                         "confidence": conf,
                     }
                 )
-            return {"criteria_results": results if results else [{"criteria_id": "mock_criteria", "status": "yellow", "rationale": "Mock-arvio: tieto on osittain riittävä.", "related_fields": [], "issues": [], "evidence_refs": [self._lupademo_evidence("mock_criteria")], "confidence": 0.62}]}
+            return {"criteria_results": results if results else [{"criteria_id": "mock_criteria", "status": "green", "rationale": "Mock-arvio: toimitetut tiedot riittävät.", "related_fields": [], "issues": [], "evidence_refs": [self._lupademo_evidence("mock_criteria")], "confidence": 0.8}]}
 
         if "hakijaa auttava lupahakemuksen esitarkistusavustaja" in low:
             # 03 D4: score/readiness/counts are code-owned; mock returns summary + sections only.

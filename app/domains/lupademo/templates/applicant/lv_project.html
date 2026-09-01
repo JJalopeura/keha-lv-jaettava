@@ -33,7 +33,7 @@
     {% for key in hanke_fields %}
     {% set value = common.data.get(key, '') %}
     <label class="{% if key in ['applicant_name', 'email', 'address', 'project_name'] %}hanke-field-wide{% endif %}">{{ labels.get(key, key) }}
-      <input name="{{ key }}" value="{{ value }}">
+      <input {% if key == 'email' %}type="email"{% elif key == 'phone' %}type="tel"{% endif %} name="{{ key }}" value="{{ value }}">
     </label>
     {% endfor %}
     <div class="hanke-form-actions"><button class="button secondary">Tallenna hankkeen tiedot</button></div>

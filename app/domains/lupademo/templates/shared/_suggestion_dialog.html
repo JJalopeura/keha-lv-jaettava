@@ -1,4 +1,4 @@
-<dialog class="suggestion-dialog" data-suggestion-dialog aria-labelledby="suggestion-dialog-title">
+<dialog class="suggestion-dialog" data-suggestion-dialog closedby="any" aria-labelledby="suggestion-dialog-title">
   <div class="suggestion-dialog__header">
     <div>
       <p class="section-kicker" data-dialog-kicker>AI-ehdotus</p>
@@ -212,6 +212,9 @@
   });
 
   closeButton.addEventListener("click", close);
-  dialog.addEventListener("click", function (event) { if (event.target === dialog) close(); });
+  // Fallback for browsers without closedby support (e.g. Safari): backdrop-click dismiss
+  if (!('closedBy' in HTMLDialogElement.prototype)) {
+    dialog.addEventListener("click", function (event) { if (event.target === dialog) close(); });
+  }
 })();
 </script>

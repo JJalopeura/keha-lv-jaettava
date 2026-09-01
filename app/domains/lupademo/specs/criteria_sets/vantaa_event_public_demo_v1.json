@@ -3,7 +3,7 @@
   "tenant_id": "vantaa_demo",
   "municipality": "Vantaa",
   "permit_type": "event_public",
-  "version": "2026-06-demo-1",
+  "version": "2026-08-demo-2",
   "status": "active",
   "sources": [
     "Vantaan tapahtumaohjeet demo",
@@ -14,21 +14,21 @@
       "id": "landowner_permission",
       "field_id": "landowner_permission",
       "attachment_type": "landowner_permission",
-      "severity": "blocking",
-      "instruction": "Julkisen alueen tapahtuma tarvitsee maanomistajan tai alueen haltijan luvan."
+      "severity": "minor",
+      "instruction": "Varmista, että julkisen alueen tapahtumalle on liitetty maanomistajan tai alueen haltijan lupa."
     },
     {
       "id": "rescue_plan",
       "field_id": "rescue_plan",
       "attachment_type": "rescue_plan",
-      "severity": "major",
-      "instruction": "Tapahtuman turvallisuusjärjestelyt ja pelastussuunnitelma tulee kuvata."
+      "severity": "minor",
+      "instruction": "Varmista, että tapahtuman turvallisuusjärjestelyt ja pelastussuunnitelma on kuvattu."
     },
     {
       "id": "traffic_arrangements",
       "field_id": "traffic_arrangements",
-      "severity": "major",
-      "instruction": "Liikennejärjestelyt tulee kuvata, jos tapahtuma vaikuttaa katualueeseen tai kulkureitteihin."
+      "severity": "recommendation",
+      "instruction": "Kuvaa liikennejärjestelyt, jos tapahtuma vaikuttaa katualueeseen tai kulkureitteihin."
     }
   ]
 }

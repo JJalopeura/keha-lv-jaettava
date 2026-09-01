@@ -108,7 +108,8 @@
           {% if field.type == "textarea" %}
           <textarea name="{{ field.id }}">{{ application.form_data.get(field.id, "") }}</textarea>
           {% else %}
-          <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}">
+          {% set _autocomplete_map = {'applicant_name': 'name', 'contact_person': 'name', 'email': 'email', 'business_id': 'off', 'property_id': 'off', 'address': 'street-address'} %}
+          <input type="{{ field.type }}" name="{{ field.id }}" value="{{ application.form_data.get(field.id, "") }}"{% if field.id in _autocomplete_map %} autocomplete="{{ _autocomplete_map[field.id] }}"{% endif %}>
           {% endif %}
           {% set inline_suggestions = inline_field_suggestions|selectattr('field_id', 'equalto', field.id)|selectattr('status', 'equalto', 'pending')|selectattr('suggested_value')|list %}
           {% set inline_suggestion = inline_suggestions[0] if inline_suggestions else none %}
@@ -458,7 +459,8 @@
   <div>
     <p class="section-kicker">Valmius</p>
     <h2>{% if check_report.get('readiness') == 'ready' %}Hakemus on lähes valmis{% elif check_report.get('readiness') == 'almost_ready' %}Hakemus tarvitsee vielä täydennyksiä{% else %}Aloita estävistä puutteista{% endif %}</h2>
-    <p>{{ check_report.issues|length }} havaintoa · {{ precheck_gate.blocking_count }} estävää puutetta.</p>
+    {% set _unresolved_issues = check_report.get('issues', [])|selectattr('resolved', 'ne', true)|list %}
+    <p>{{ _unresolved_issues|length }} avointa havaintoa · {{ precheck_gate.blocking_count }} estävää puutetta.</p>
   </div>
   <div class="readiness-actions">
     {% if check_report.issues %}
@@ -503,10 +505,15 @@
     <h2>Tulokset</h2>
     {% if check_report %}
     <p>Laatupisteet {{ check_report.score }} · {{ check_report.get('summary', '') }}</p>
+    {% set _criteria_green = check_report.get('criteria_results', [])|selectattr('status', 'equalto', 'green')|list %}
+    {% set _criteria_non_green = check_report.get('criteria_results', [])|selectattr('status', 'ne', 'green')|list %}
+    {% if check_report.get('criteria_results') %}
+    <p class="muted">Aineistosta vahvistettu {{ _criteria_green|length }} kriteeriä · seurattavaa {{ _criteria_non_green|length }} kohdetta. Vähäiset huomiot eivät estä lähettämistä.</p>
+    {% endif %}
     {% set severity_labels = {"blocking": "Estävä", "major": "Merkittävä", "minor": "Vähäinen", "recommendation": "Suositus"} %}
-    {% set check_attachment_labels = {"site_map": "Asemapiirros / sijaintikartta", "zoning_extract": "Kaavaote", "public_summary": "Julkinen yhteenveto", "site_plan": "Asemapiirros / sijaintikartta", "main_drawings": "Pääpiirustukset", "facade_drawings": "Julkisivupiirustukset", "stormwater_plan": "Hulevesisuunnitelma", "environmental_application": "Ympäristölupahakemus", "bat_assessment": "BAT-arviointi", "monitoring_plan": "Tarkkailu ja raportointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "confidential_attachment": "Luottamuksellinen liite"} %}
+    {% set check_attachment_labels = {"site_map": "Asemapiirros / sijaintikartta", "zoning_extract": "Kaavaote", "public_summary": "Julkinen yhteenveto", "site_plan": "Asemapiirros / sijaintikartta", "main_drawings": "Pääpiirustukset", "facade_drawings": "Julkisivupiirustukset", "stormwater_plan": "Hulevesisuunnitelma", "environmental_application": "Ympäristölupahakemus", "bat_assessment": "BAT-arviointi", "monitoring_plan": "Tarkkailu ja raportointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "chemical_inventory_or_sds": "Kemikaaliluettelo / käyttöturvallisuustiedotteet (SDS)", "judgement_freshness_assessment": "Lausunto perustellun päätelmän ajantasaisuudesta", "dnsh_statement": "DNSH-selvitys", "tukes_statement": "Tukesin lausunto", "air_monitoring_plan": "Ilmapäästöjen tarkkailuohjelma", "energy_report": "Energiaselvitys / energiatodistus", "landowner_permission": "Maanomistajan lupa", "rescue_plan": "Pelastussuunnitelma", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "confidential_attachment": "Luottamuksellinen liite"} %}
     {% set check_field_labels = {"location_environment": "Sijainti ja ympäristö", "confidential_attachment": "Luottamuksellinen liite"} %}
-    {% for issue in check_report.issues %}
+    {% for issue in check_report.issues if not issue.get('resolved') %}
     <div class="issue {{ issue.severity }}" id="{% if issue.severity == 'blocking' %}check-blocking{% endif %}">
       {% set issue_fields = schema.fields|selectattr('id', 'equalto', issue.field_id)|list if issue.field_id else [] %}
       {% set issue_title = issue.title %}
@@ -532,14 +539,18 @@
     {% set non_green = criteria_results|selectattr('status', 'ne', 'green')|list %}
     {% set greens = criteria_results|selectattr('status', 'equalto', 'green')|list %}
     {% for cr in non_green %}
-    <div class="issue {{ 'blocking' if cr.status == 'red' else 'major' }}">
-      <strong>{{ 'Ei täyty' if cr.status == 'red' else 'Osittain täytetty' }} · {{ cr.criteria_id }}</strong>
+    {% set linked = check_report.issues|selectattr('criteria_id', 'equalto', cr.criteria_id)|selectattr('resolved', 'ne', true)|list %}
+    {% set rule = criteria_rules.get(cr.criteria_id, {}) %}
+    {% set rule_sev = (rule.get('severity') or 'major')|string %}
+    {% set display_sev = linked[0].severity if linked else (('minor' if rule_sev in ('minor', 'recommendation') else 'blocking') if cr.status == 'red' else 'minor') %}
+    {% set cr_title = (rule.get('instruction') or cr.criteria_id)|truncate(120, True, '…') %}
+    <div class="issue {{ display_sev }}">
+      <strong>{{ severity_labels.get(display_sev, 'Tarkistettava') }} · {{ cr_title }}</strong>
       <p>{{ cr.rationale }}</p>
-      {% set linked = check_report.issues|selectattr('criteria_id', 'equalto', cr.criteria_id)|list %}
       {% if linked %}<small>Korjaus: {{ linked[0].suggested_fix if linked[0].suggested_fix else linked[0].title }}</small>{% endif %}
     </div>
     {% endfor %}
-    {% if greens %}<p class="muted">{{ greens|length }} kriteeriä täyttyy.</p>{% endif %}
+    {% if greens %}<p class="muted">{{ greens|length }} kriteeriä täyttyy toimitettujen tietojen perusteella.</p>{% endif %}
     {% endif %}
     {% else %}
     <p class="muted">Tarkistusta ei ole vielä ajettu.</p>

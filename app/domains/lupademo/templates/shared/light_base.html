@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="view-transition" content="same-origin" />
     <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"
@@ -209,5 +210,37 @@
     {% if not hide_floating_chat | default(false) %}
     {% include 'shared/_floating_chat.html' %}
     {% endif %}
+  <script>
+    /* Native validation state: keep aria-invalid in sync with :user-invalid
+       timing (blur/submit), and polyfill the visual class for legacy browsers. */
+    (function () {
+      var supported = false;
+      try { supported = CSS.supports("selector(:user-invalid)"); } catch (e) { supported = false; }
+      function sync(el) {
+        if (!el || !el.checkValidity || el.disabled || el.readOnly) return;
+        if (el.checkValidity()) { el.removeAttribute("aria-invalid"); }
+        else { el.setAttribute("aria-invalid", "true"); }
+      }
+      document.addEventListener("blur", function (e) { sync(e.target); }, true);
+      document.addEventListener("input", function (e) {
+        if (e.target && e.target.hasAttribute && e.target.hasAttribute("aria-invalid")) { sync(e.target); }
+      }, true);
+      if (!supported) {
+        function mark(el) {
+          if (!el || !el.checkValidity || el.disabled || el.readOnly) return;
+          var ok = el.checkValidity();
+          el.classList.toggle("user-invalid-fallback", !ok);
+          if (ok) { el.removeAttribute("aria-invalid"); }
+          else { el.setAttribute("aria-invalid", "true"); }
+        }
+        document.addEventListener("focusout", function (e) { mark(e.target); }, true);
+        document.addEventListener("submit", function (e) {
+          var form = e.target;
+          if (!form || !form.querySelectorAll) return;
+          form.querySelectorAll("input:not([type=checkbox]):not([type=radio]), textarea, select").forEach(mark);
+        }, true);
+      }
+    })();
+  </script>
   </body>
 </html>

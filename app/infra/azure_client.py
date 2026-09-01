@@ -2,11 +2,29 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import random
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import httpx
+
+
+# HTTP statuses worth retrying on live Azure: rate limit (429) and transient
+# server errors. Client-side retries with backoff keep demo runs passing when
+# a deployment is momentarily over its RPM/TPM limit.
+_RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
+_DEFAULT_RETRIES = 6
+
+
+def _retry_sleep(attempt: int, retry_after: Optional[str]) -> float:
+    """Backoff delay for a retry attempt, honoring the server's Retry-After."""
+    if retry_after:
+        try:
+            return max(float(retry_after), 1.0)
+        except (TypeError, ValueError):
+            pass
+    return min(30.0, (2 ** attempt) * 1.0) + random.uniform(0, 0.25)
 
 
 def _guess_mime_type(filename: str) -> str:
@@ -75,27 +93,45 @@ class AzureOpenAIClient:
         files: Optional[Dict[str, Any]] = None,
         form_data: Optional[Dict[str, str]] = None,
         query_params: Optional[Dict[str, Any]] = None,
+        retries: int = _DEFAULT_RETRIES,
     ) -> Dict[str, Any]:
         url = self._url(path)
         params = dict(query_params or {})
         if self._uses_api_version:
             params["api-version"] = self.api_version
 
-        with httpx.Client(timeout=self.timeout_s) as client:
-            if files is not None:
-                resp = client.request(
-                    method,
-                    url,
-                    params=params,
-                    headers=self._headers(),
-                    files=files,
-                    data=form_data,
-                )
-            else:
-                headers = {"Content-Type": "application/json", **self._headers()}
-                resp = client.request(method, url, params=params, headers=headers, json=json_body)
+        last_error: Optional[Exception] = None
+        for attempt in range(retries + 1):
+            try:
+                with httpx.Client(timeout=self.timeout_s) as client:
+                    if files is not None:
+                        resp = client.request(
+                            method,
+                            url,
+                            params=params,
+                            headers=self._headers(),
+                            files=files,
+                            data=form_data,
+                        )
+                    else:
+                        headers = {"Content-Type": "application/json", **self._headers()}
+                        resp = client.request(method, url, params=params, headers=headers, json=json_body)
+            except httpx.TransportError as exc:
+                last_error = exc
+                if attempt < retries:
+                    time.sleep(_retry_sleep(attempt, None))
+                    continue
+                raise RuntimeError(f"{method} {path} -> transport error: {exc}") from exc
 
-        if resp.status_code >= 400:
+            if resp.status_code < 400:
+                if not resp.text.strip():
+                    return {}
+                return resp.json()
+
+            if resp.status_code in _RETRYABLE_STATUS and attempt < retries:
+                time.sleep(_retry_sleep(attempt, resp.headers.get("retry-after")))
+                continue
+
             try:
                 data = resp.json()
                 err = data.get("error", {})
@@ -104,9 +140,7 @@ class AzureOpenAIClient:
                 msg = resp.text
             raise RuntimeError(f"{method} {path} -> HTTP {resp.status_code}: {msg}")
 
-        if not resp.text.strip():
-            return {}
-        return resp.json()
+        raise RuntimeError(f"{method} {path} -> retries exhausted: {last_error}")
 
     # -------- Vector stores --------
     def create_vector_store(self, name: Optional[str] = None) -> str:
@@ -222,30 +256,41 @@ class AzureOpenAIClient:
         if self._uses_api_version:
             params["api-version"] = self.api_version
 
-        with httpx.Client(timeout=self.timeout_s) as client:
-            headers = {"Content-Type": "application/json", **self._headers()}
-            with client.stream("POST", url, params=params, headers=headers, json=payload) as resp:
-                if resp.status_code >= 400:
-                    try:
-                        data = resp.json()
-                        err = data.get("error", {})
-                        msg = err.get("message") or data
-                    except Exception:
-                        msg = resp.text
-                    raise RuntimeError(f"POST responses (stream) -> HTTP {resp.status_code}: {msg}")
-                for line in resp.iter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        event = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        continue
-                    delta = _extract_stream_delta(event)
-                    if delta:
-                        yield delta
+        for attempt in range(_DEFAULT_RETRIES + 1):
+            try:
+                with httpx.Client(timeout=self.timeout_s) as client:
+                    headers = {"Content-Type": "application/json", **self._headers()}
+                    with client.stream("POST", url, params=params, headers=headers, json=payload) as resp:
+                        if resp.status_code >= 400:
+                            if resp.status_code in _RETRYABLE_STATUS and attempt < _DEFAULT_RETRIES:
+                                time.sleep(_retry_sleep(attempt, resp.headers.get("retry-after")))
+                                break
+                            try:
+                                data = resp.json()
+                                err = data.get("error", {})
+                                msg = err.get("message") or data
+                            except Exception:
+                                msg = resp.text
+                            raise RuntimeError(f"POST responses (stream) -> HTTP {resp.status_code}: {msg}")
+                        for line in resp.iter_lines():
+                            if not line or not line.startswith("data: "):
+                                continue
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                return
+                            try:
+                                event = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+                            delta = _extract_stream_delta(event)
+                            if delta:
+                                yield delta
+                        return
+            except httpx.TransportError:
+                if attempt < _DEFAULT_RETRIES:
+                    time.sleep(_retry_sleep(attempt, None))
+                    continue
+                raise
 
 
 def _extract_stream_delta(event: dict) -> str | None:

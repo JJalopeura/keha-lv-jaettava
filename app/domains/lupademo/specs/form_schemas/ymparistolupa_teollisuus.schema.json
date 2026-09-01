@@ -200,8 +200,7 @@
     }
   ],
   "required_attachments": [
-    "environmental_application",
-    "site_map"
+    "environmental_application"
   ],
   "conditional_attachments": [
     "baseline_report",

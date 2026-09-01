@@ -9,10 +9,10 @@
     <div class="form-section-heading"><div><h2 id="company-details">Yrityksen tiedot</h2></div></div>
     <div class="field-grid">
       <label class="wide-field">Yrityksen nimi<input name="applicant_name" value="{{ customer.profile.get('applicant_name', customer.display_name) }}" required></label>
-      <label>Y-tunnus<input name="business_id" value="{{ customer.profile.get('business_id', '') }}"></label>
+      <label>Y-tunnus<input name="business_id" value="{{ customer.profile.get('business_id', '') }}" autocomplete="off"></label>
       <label>Yhteyshenkilö<input name="contact_person" value="{{ customer.profile.get('contact_person', '') }}"></label>
-      <label>Puhelin<input name="phone" value="{{ customer.profile.get('phone', '') }}"></label>
-      <label class="wide-field">Sähköposti<input type="email" name="email" value="{{ customer.profile.get('email', '') }}"></label>
+      <label>Puhelin<input type="tel" name="phone" value="{{ customer.profile.get('phone', '') }}" autocomplete="tel"></label>
+      <label class="wide-field">Sähköposti<input type="email" name="email" value="{{ customer.profile.get('email', '') }}" autocomplete="email"></label>
       <label>Kunta<input name="municipality" value="{{ customer.profile.get('municipality', '') }}" autocomplete="address-level2"></label>
       <label class="wide-field">Osoite<input name="address" value="{{ customer.profile.get('address', '') }}" autocomplete="street-address"></label>
     </div>

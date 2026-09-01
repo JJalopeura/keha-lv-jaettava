@@ -22,13 +22,12 @@
     </svg>
   </button>
 
-  <div
+  <dialog
     class="copilot-panel"
     id="copilot-panel"
     data-copilot-panel
-    role="dialog"
+    popover="manual"
     aria-label="{{ chat_name }}n keskustelu"
-    aria-hidden="true"
   >
     <header class="copilot-header">
       <div class="copilot-header-info">
@@ -112,7 +111,7 @@
         </div>
       </form>
     </footer>
-  </div>
+  </dialog>
 </div>
 
 <script>
@@ -151,7 +150,7 @@
   /* ── Open / close ── */
   function open() {
     isOpen = true;
-    panel.setAttribute("aria-hidden", "false");
+    if (typeof panel.showPopover === "function") { try { panel.showPopover(); } catch (_) {} }
     launcher.setAttribute("aria-expanded", "true");
     launcher.classList.add("copilot-launcher--hidden");
     panel.classList.add("copilot-panel--open");
@@ -161,7 +160,7 @@
 
   function close() {
     isOpen = false;
-    panel.setAttribute("aria-hidden", "true");
+    if (typeof panel.hidePopover === "function" && panel.matches(":popover-open")) { try { panel.hidePopover(); } catch (_) {} }
     launcher.setAttribute("aria-expanded", "false");
     launcher.classList.remove("copilot-launcher--hidden");
     panel.classList.remove("copilot-panel--open");

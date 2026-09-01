@@ -28,7 +28,7 @@
     </label>
     <details class="technical-details">
       <summary>Pyynnön JSON-tiedot</summary>
-      <label>Pyyntö<textarea name="request_json" rows="18">{{ result.get('request') | tojson(indent=2) if result.get('request') else request_json }}</textarea></label>
+      <label>Pyyntö <span aria-hidden="true">*</span><textarea name="request_json" rows="18" class="json-editor" spellcheck="false" required>{{ result.get('request') | tojson(indent=2) if result.get('request') else request_json }}</textarea></label>
     </details>
     <button>Lähetä pyyntö</button>
   </form>

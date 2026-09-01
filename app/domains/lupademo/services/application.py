@@ -294,6 +294,12 @@ def _run_check_agents(
         origin = agent_name.split("_")[0]
         for idx, issue in enumerate(issues, start=1):
             issue.id = f"{origin}-{idx}"
+        # Minor-only policy (demo promise): AI validator findings are advisory
+        # insights ("AI-havainnot ovat ehdotuksia"), never hard blockers. Hard
+        # blocking/major semantics belong to deterministic rules, not the LLM.
+        for issue in issues:
+            if issue.severity in ("blocking", "major"):
+                issue.severity = "minor"
         agent_issues.extend(issues)
     return agent_issues
 
@@ -1283,10 +1289,13 @@ def deterministic_issues(
                     issues.append(Issue(id=f"invalid_{num_field}", type="incomplete", severity="blocking", field_id=num_field, title="Numeerinen arvo on virheellinen", detail=f"Kentän {num_field} arvo ei ole numero.", suggested_fix="Anna arvo numerona.", evidence_refs=[criteria_source], confidence=0.95))
     if permit_type == "environmental_industrial":
         mentions_chemicals = "kemikaal" in str(form_data.get("raw_materials_chemicals", "")).lower()
-        chemical_ai_only = any(a.get("primary_type") == "chemical_inventory" and a.get("delivery_scope") == "ai_context_only" for a in attachments)
-        chemical_official = any(a.get("primary_type") == "chemical_inventory" and a.get("delivery_scope") == "official_submission" for a in attachments)
-        if mentions_chemicals and chemical_ai_only and not chemical_official:
-            issues.append(Issue(id="chemical_inventory_scope", type="inconsistent", severity="major", attachment_id="chemical_inventory", title="Kemikaaliluettelo on vain AI-tausta-aineistona", detail="Hakemus viittaa kemikaaliluetteloon, mutta liite ei kuulu viranomaiselle lähtevään pakettiin.", suggested_fix="Merkitse kemikaaliluettelo viranomaiselle toimitettavaksi tai poista viittaus.", evidence_refs=[criteria_source], confidence=0.88))
+        chemical_ai_only = any(a.get("primary_type") in ("chemical_inventory", "chemical_inventory_or_sds") and a.get("delivery_scope") == "ai_context_only" for a in attachments)
+        chemical_official = any(a.get("primary_type") in ("chemical_inventory", "chemical_inventory_or_sds") and a.get("delivery_scope") == "official_submission" for a in attachments)
+        if mentions_chemicals and chemical_ai_only:
+            if not chemical_official:
+                issues.append(Issue(id="chemical_inventory_scope", type="inconsistent", severity="major", attachment_id="chemical_inventory", title="Kemikaaliluettelo on vain AI-tausta-aineistona", detail="Hakemus viittaa kemikaaliluetteloon, mutta liite ei kuulu viranomaiselle lähtevään pakettiin.", suggested_fix="Merkitse kemikaaliluettelo viranomaiselle toimitettavaksi tai poista viittaus.", evidence_refs=[criteria_source], confidence=0.88))
+            else:
+                issues.append(Issue(id="chemical_inventory_scope", type="inconsistent", severity="minor", attachment_id="chemical_inventory", title="Kemikaaliluettelosta vain osa lähtee viranomaiselle", detail="Hakemus viittaa kemikaaliluetteloon, ja osa dokumentaatiosta (esim. SDS-liitteet) on viranomaispakettiin sisällytetty, mutta erillinen luettelo jää ai-tausta-aineistoksi.", suggested_fix="Tarkista että viranomaispakettiin sisältyy riittävä kemikaalidokumentaatio (SDS-liitteet täyttävät tämän demossa).", evidence_refs=[criteria_source], confidence=0.82))
     schema_field_ids = {str(field.get("id")) for field in schema.get("fields", [])}
     existing_missing_fields = {str(issue.field_id) for issue in issues if issue.field_id and issue.type == "missing"}
     existing_missing_attachments = {str(issue.attachment_id) for issue in issues if issue.attachment_id and issue.type == "missing"}
@@ -1304,7 +1313,11 @@ def deterministic_issues(
         field_id = str(rule.get("field_id") or "")
         attachment_type = str(rule.get("attachment_type") or "")
         missing_field = field_id and field_id in schema_field_ids and not str(form_data.get(field_id, "")).strip()
-        missing_attachment = attachment_type and attachment_type not in official_types
+        # Attachment requirements may list comma-separated alternatives (e.g.
+        # "chemical_inventory,chemical_inventory_or_sds") when the ground truth accepts
+        # several primary types (SDS-tiedotteet kattavat kemikaaliluettelon P2X-käytännössä).
+        rule_attachment_types = [part.strip() for part in attachment_type.split(",") if part.strip()]
+        missing_attachment = bool(rule_attachment_types) and not any(t in official_types for t in rule_attachment_types)
         if not (missing_field or missing_attachment):
             continue
         field_id = field_id if field_id not in existing_missing_fields else ""
@@ -1320,11 +1333,14 @@ def deterministic_issues(
             id=f"criteria_{rule.get('id') or subject}",
             type="missing",
             severity=_rule_sev,
+            criteria_id=str(rule.get("id") or ""),
             field_id=field_id or None,
             attachment_id=attachment_type or None,
             title=f"Kunnan kriteeri: {subject} puuttuu",
             detail=str(rule.get("instruction") or "Aktiivinen kuntakohtainen vaatimus ei täyty."),
-            suggested_fix="Täydennä tieto tai lisää vaatimus täyttävä viranomaisliite.",
+            # The rule's own instruction is the actionable fix (package-specific guidance,
+            # e.g. "Ren-Gas-hankkeessa Liite 7 Kemikaaliluettelo.") — not boilerplate.
+            suggested_fix=str(rule.get("instruction") or "Täydennä tieto tai lisää vaatimus täyttävä viranomaisliite."),
             evidence_refs=[criteria_source],
             confidence=0.9,
         )
@@ -1467,6 +1483,7 @@ def _as_issue(issue: Issue | dict[str, Any]) -> Issue:
         title=str(issue.get("title", "")),
         detail=str(issue.get("detail", "")),
         confidence=_coerce_confidence(issue.get("confidence"), 0.5),
+        criteria_id=issue.get("criteria_id"),
         field_id=issue.get("field_id"),
         attachment_id=issue.get("attachment_id"),
         suggested_fix=issue.get("suggested_fix"),
@@ -1527,10 +1544,17 @@ def merge_issues(*groups: list[Issue]) -> list[Issue]:
 def reconcile_verdict(
     issues: list[Issue],
     criteria_results: list[dict[str, Any]],
+    rule_instructions: dict[str, str] | None = None,
+    rule_severities: dict[str, str] | None = None,
 ) -> tuple[list[Issue], list[str]]:
     """03/04: reconcile issues with the criteria verdict so a red/yellow criterion always
-    yields (or aligns with) a blocking/major issue carrying its criteria_id, and a green
-    criterion wins over linked blocking/major issues (marked resolved, kept for traceability).
+    yields (or aligns with) an issue carrying its criteria_id, and a green criterion wins
+    over linked blocking/major issues (marked resolved, kept for traceability).
+
+    Minor-only policy (demo promise): a criterion is only ever escalated to its own
+    defined severity. A red verdict on an advisory rule (minor/recommendation) stays an
+    advisory (minor) finding — the assessor cannot turn a vähäinen requirement into a
+    lähetystä estävä one. Only rules defined as blocking keep hard blocking semantics.
 
     Pure and deterministic: same inputs -> same notes. Returns (issues, reconciliation notes).
     """
@@ -1549,7 +1573,23 @@ def reconcile_verdict(
             confidence=_coerce_confidence(c.get("confidence"), 0.75),
         )
         if status in ("red", "yellow"):
-            target = "blocking" if status == "red" else "major"
+            rule_sev = str((rule_severities or {}).get(cid, "")).strip().lower()
+            # A red verdict on an advisory rule is a strong advisory point, never
+            # a hard blocker. Advisory rules can never produce blocking/major.
+            if status == "red" and rule_sev in {"minor", "recommendation"}:
+                target = "minor"
+            else:
+                # Red keeps its hard blocking semantics; yellow is advisory.
+                target = "blocking" if status == "red" else "minor"
+            # Use per-rule instruction for synthesized findings when available.
+            rule_fix = ""
+            if rule_instructions:
+                rule_fix = str(rule_instructions.get(cid, "")).strip()
+            suggested_fix = (
+                rule_fix
+                if rule_fix and (status == "yellow" or target == "minor")
+                else ("Täydennä hakemusta niin, että kriteerin vaatimus täyttyy." if status == "red" else "Tarkista ja täydennä kriteerin vaatimus.")
+            )
             if not linked:
                 issues.append(
                     Issue(
@@ -1558,7 +1598,7 @@ def reconcile_verdict(
                         severity=target,
                         title=f"Kriteeri {cid} ei täyty" if status == "red" else f"Kriteeri {cid} on osittain täytetty",
                         detail=str(c.get("rationale") or ("Kriteeri ei täyty toimitettujen tietojen perusteella." if status == "red" else "Kriteerin vaatimus on osittain täytetty; käsittelijän tarkistettava.")),
-                        suggested_fix="Täydennä hakemusta niin, että kriteerin vaatimus täyttyy." if status == "red" else "Tarkista ja täydennä kriteerin vaatimus.",
+                        suggested_fix=suggested_fix,
                         criteria_id=cid,
                         evidence_refs=[crit_ref],
                         confidence=0.95 if status == "red" else 0.9,
@@ -1598,7 +1638,11 @@ def _derive_check_verdict(issues: list[Issue], criteria_results: list[dict[str, 
         crit_score = (counts["green"] + 0.5 * counts["yellow"]) / len(criteria_results)
     else:
         crit_score = 1.0  # 04-C2: no criteria ran -> neutral, not a green verdict
-    issue_score = max(0.0, 1 - 0.25 * counts["blocking"] - 0.10 * counts["major"] - 0.04 * counts["minor"])
+    # Minor-only policy: vähäinen puute ei estä käsittelyä — advisory findings only
+    # subtract until the cap, so a clean prepared application full of minor hints
+    # still reads as ready. Blocking/major keep their full uncapped penalties.
+    minor_penalty = min(0.04 * counts["minor"], 0.20)
+    issue_score = max(0.0, 1 - 0.25 * counts["blocking"] - 0.10 * counts["major"] - minor_penalty)
     score = round(50 * crit_score + 50 * issue_score)
     readiness = "ready" if (score >= 80 and counts["blocking"] == 0) else ("almost_ready" if score >= 40 else "not_ready")
     return counts, score, readiness
@@ -1687,7 +1731,16 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         elif isinstance(criteria_response, dict):
             criteria_results = criteria_response.get("criteria_results", [])
     issues = merge_issues(deterministic, agent_issues)
-    issues, reconciliation_notes = reconcile_verdict(issues, criteria_results)
+    # Build per-rule instruction + severity lookup for synthesized findings.
+    rule_instructions = {
+        str(r.get("id")): str(r.get("instruction") or "").strip()
+        for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
+    }
+    rule_severities = {
+        str(r.get("id")): str(r.get("severity") or "major").strip().lower()
+        for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
+    }
+    issues, reconciliation_notes = reconcile_verdict(issues, criteria_results, rule_instructions=rule_instructions, rule_severities=rule_severities)
     counts, score, readiness = _derive_check_verdict(issues, criteria_results)
     blocked = [i for i in issues if i.severity == "blocking" and not i.resolved]
     majors = [i for i in issues if i.severity == "major" and not i.resolved]
@@ -3805,7 +3858,16 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
                 criteria_results = _plain(cr)
                 save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": criteria_results})
         issues = merge_issues(issues, agent_issues)
-    issues, reconciliation_notes = reconcile_verdict(issues, criteria_results)
+    # Build per-rule instruction + severity lookup for synthesized findings.
+    rule_instructions = {
+        str(r.get("id")): str(r.get("instruction") or "").strip()
+        for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
+    }
+    rule_severities = {
+        str(r.get("id")): str(r.get("severity") or "major").strip().lower()
+        for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
+    }
+    issues, reconciliation_notes = reconcile_verdict(issues, criteria_results, rule_instructions=rule_instructions, rule_severities=rule_severities)
     counts, score, readiness = _derive_check_verdict(issues, criteria_results)
     degraded = {
         "fallback_used_agents": _degraded_agents(

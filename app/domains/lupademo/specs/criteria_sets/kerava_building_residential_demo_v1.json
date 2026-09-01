@@ -13,26 +13,26 @@
     {
       "id": "required_energy_report",
       "attachment_type": "energy_report",
-      "severity": "major",
-      "instruction": "Uudisrakennuksen hakemukseen on liitettävä energiaselvitys tai energiatodistus viranomaiselle toimitettavana aineistona."
+      "severity": "minor",
+      "instruction": "Varmista, että uudisrakennuksen hakemukseen on liitetty energiaselvitys tai energiatodistus viranomaiselle toimitettavana aineistona."
     },
     {
       "id": "stormwater_required_kerava",
       "field_id": "stormwater_management",
-      "severity": "blocking",
-      "instruction": "Hulevesien hallinta on kuvattava tonttikohtaisesti ja sen yhteys asemapiirrokseen on pystyttävä tarkistamaan."
+      "severity": "minor",
+      "instruction": "Varmista, että hulevesien hallinta on kuvattu tonttikohtaisesti ja että sen yhteys asemapiirrokseen on tarkistettavissa."
     },
     {
       "id": "site_context",
       "field_id": "project_description",
       "severity": "minor",
-      "instruction": "Hankkeen kuvauksessa tulee yksilöida rakennuspaikka ja hankkeen suhde ympäröivään yhdyskuntarakenteeseen."
+      "instruction": "Varmista, että hankkeen kuvauksessa on yksilöity rakennuspaikka ja hankkeen suhde ympäröivään yhdyskuntarakenteeseen."
     },
     {
       "id": "official_drawings_kerava",
       "attachment_type": "main_drawings",
-      "severity": "blocking",
-      "instruction": "Pääpiirustukset tarvitaan viranomaiselle lähtevänä liitteenä."
+      "severity": "minor",
+      "instruction": "Tarkista, että pääpiirustukset on merkitty viranomaiselle toimitettavaksi liitteeksi."
     }
   ]
 }
