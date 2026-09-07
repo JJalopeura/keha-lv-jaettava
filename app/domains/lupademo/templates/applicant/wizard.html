@@ -497,7 +497,7 @@
       <div class="gate-status__mark" aria-hidden="true">{{ "✓" if precheck_gate.can_submit else "!" }}</div>
       <div>
       <strong>{% if not precheck_gate.is_fresh %}Tarkistus vaatii päivityksen{% elif precheck_gate.can_submit %}Lähetys sallittu{% else %}Täydennä ennen lähettämistä{% endif %}</strong>
-      <p>Estävät {{ precheck_gate.blocking_count }} · merkittävät {{ precheck_gate.major_count }} · punaiset kriteerit {{ precheck_gate.red_count }}.</p>
+      <p>Estävät puutteet {{ precheck_gate.blocking_count }} · merkittävät {{ precheck_gate.major_count }} · punaiset kriteerit {{ precheck_gate.red_count }}.</p>
       {% if precheck_gate.stale_reasons %}
       {% set stale_reason_labels = {
         "missing_report": "Tarkistusta ei ole vielä ajettu",

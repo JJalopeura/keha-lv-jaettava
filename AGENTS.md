@@ -35,10 +35,10 @@ app/
   domains/lupademo/
     routes/                  HTTP handlers (thin — delegate to services):
       __init__.py               thin create_lupademo_router that mounts 5 sub-routers
-      applicant.py              42 handlers — wizard, intake, application studio, common
-                                data, packaging, chat/voice (~382 lines)
+      applicant.py              68 handlers — wizard, intake, application studio, common
+                                data, packaging, chat/voice (~1171 lines)
       authority.py              9 handlers — queue, detail, observations, summary/memo
-      api_v1.py                  7 handlers — external suggestion-service endpoints
+      api_v1.py                  17 handlers — external suggestion-service endpoints
       admin.py                   12 handlers — criteria admin, API demo/playground
       demo_lab.py               24 handlers — benchmark, metrics, audit, UI-only demo
     services/                Business logic package:
@@ -72,7 +72,7 @@ app/
     scenarios.py             Demo scenario definitions + case creation (4 built-in scenarios, fallback in code)
     security.py              API key / tenant auth for suggestion-service endpoints
     static/style.css          Single CSS file
-    templates/*.html          30 Jinja2 templates (wizard, authority, admin, API demo, etc.)
+    templates/*.html          31 Jinja2 templates (wizard, authority, admin, API demo, etc.)
     specs/                     JSON specs: form schemas, permit criteria, scenarios, roles, eval definitions
 docs/archive/v5-specs/        Archived v5 reference specs (not loaded at runtime)
 data/                         Created at first run: SQLite DB + uploads/ (gitignored)
@@ -283,7 +283,7 @@ When adding a new template, extend `shared/light_base.html`.
 
 - `app/domains/lupademo/services/application.py` — ~3000 lines; use `read_symbol` or `read_enclosing` to target specific functions
 - `app/domains/lupademo/services/intake.py` — ~1700 lines; same approach
-- `app/domains/lupademo/routes/applicant.py` — ~382 lines; use `read_enclosing` for individual route handlers
+- `app/domains/lupademo/routes/applicant.py` — ~1171 lines; use `read_enclosing` for individual route handlers
 - `app/core/llm_utils.py` — imported by services, use `read_symbol` for `call_llm_json`
 
 ## Common patterns when editing

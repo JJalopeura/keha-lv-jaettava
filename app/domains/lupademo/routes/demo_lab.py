@@ -3,7 +3,7 @@ import time
 import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .. import scenarios, security, services as svc
@@ -14,6 +14,12 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
     templates = ctx.templates
     db = ctx.db
     settings = ctx.settings
+
+    def require_case_owner(request: Request, case_id: str) -> None:
+        customer_id = str(request.scope.get("session", {}).get("customer_id") or "")
+        owner = str((db().get_case(case_id) or {}).get("customer_id") or "")
+        if not owner or customer_id != owner:
+            raise HTTPException(status_code=403, detail="admin_case_forbidden")
 
     def context(case_id: str, permit_type: Optional[str] = None) -> dict[str, Any]:
         return ctx.context(case_id, permit_type)
@@ -222,7 +228,7 @@ def create_demo_lab_router(ctx: RouteContext) -> APIRouter:
             {"request": request, **context(case_id), "audit_events": all_events, "ai_calls": all_ai_calls},
         )
 
-    @router.post("/cases/{case_id}/lupademo/admin/benchmark-lab/run")
+    @router.post("/cases/{case_id}/lupademo/admin/benchmark-lab/run", dependencies=[Depends(require_case_owner)])
     def benchmark_lab_run(case_id: str):
         svc.benchmark_lab_snapshot(db(), case_id)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/benchmark-lab", status_code=303)

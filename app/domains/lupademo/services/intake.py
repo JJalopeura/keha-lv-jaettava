@@ -1452,10 +1452,11 @@ def attachment_extraction_summary(db: Any, case_id: str) -> dict[str, Any]:
 
 
 def set_attachment_scope(db: Any, case_id: str, permit_type: str, attachment_id: str, delivery_scope: str) -> list[dict[str, Any]]:
+    scope = delivery_scope if delivery_scope in {"official_submission", "ai_context_only", "internal_authority_only"} else "ai_context_only"
     art = artifact_json(db, case_id, "permit_attachments", application_id_for(permit_type), {"attachments": []})
     for att in art.get("attachments", []):
         if att.get("id") == attachment_id:
-            att["delivery_scope"] = delivery_scope
+            att["delivery_scope"] = scope
             att["updated_at"] = time.time()
     save_artifact(db, case_id, "permit_attachments", application_id_for(permit_type), art)
     event(db, case_id, "attachment.scope.changed", "Attachment scope changed", {"attachment_id": attachment_id, "delivery_scope": delivery_scope})

@@ -1724,7 +1724,11 @@ def _derive_check_verdict(issues: list[Issue], criteria_results: list[dict[str, 
     issue_score = max(0.0, 1 - 0.25 * counts["blocking"] - 0.10 * counts["major"] - minor_penalty)
     score = round(50 * crit_score + 50 * issue_score)
     ready = counts["blocking"] == 0 and counts["major"] == 0 and counts["red"] == 0
-    readiness = "ready" if ready else ("almost_ready" if counts["blocking"] == 0 else "not_ready")
+    # Diamond contract (tests/test_diamond_check_golden.py:144): readiness is
+    # score-driven — a fresh check below 40 points is not_ready, at/above 40 is
+    # almost_ready even when advisory (minor) gaps or a blocking finding remain;
+    # only a fully clean verdict (no blocking/major/red) reads as ready.
+    readiness = "ready" if ready else ("almost_ready" if score >= 40 else "not_ready")
     return counts, score, readiness
 
 
@@ -1835,7 +1839,7 @@ REVIEW_ATTACHMENT_LABELS = {
     "dnsh_statement": "DNSH-selvitys",
     "stormwater_plan": "Hulevesisuunnitelma",
     "public_summary": "Julkinen yhteenveto",
-    "site_map": "Sijaintikartta",
+    "site_map": "Asemapiirros / sijaintikartta",
     "air_monitoring_plan": "Ilmapäästöjen tarkkailuohjelma",
     "monitoring_plan": "Tarkkailu- ja raportointisuunnitelma",
     "baseline_report": "Perustilaselvitys",
@@ -1845,7 +1849,9 @@ REVIEW_ATTACHMENT_LABELS = {
 }
 
 
-def _review_subject_label(subject: str, criteria: dict[str, Any]) -> str:
+def _review_subject_label(subject: str, criteria: dict[str, Any], _seen: frozenset | None = None) -> str:
+    if _seen is None:
+        _seen = frozenset()
     role = str(subject or "").split(",", 1)[0].strip()
     if role in REVIEW_ATTACHMENT_LABELS:
         return REVIEW_ATTACHMENT_LABELS[role]
@@ -1857,8 +1863,8 @@ def _review_subject_label(subject: str, criteria: dict[str, Any]) -> str:
         {},
     )
     attachment_type = str(rule.get("attachment_type") or "").split(",", 1)[0].strip()
-    if attachment_type:
-        return _review_subject_label(attachment_type, criteria)
+    if attachment_type and attachment_type not in _seen:
+        return _review_subject_label(attachment_type, criteria, frozenset(_seen) | {role})
     field_id = str(rule.get("field_id") or "").strip()
     if field_id:
         role = field_id
@@ -3516,6 +3522,7 @@ def ingest_source_materials(db: Any, settings: Any, case_id: str, source_dir: st
     file_rows = []
     inventory_index = _case_inventory_index()
     documents = []
+    file_errors: list[dict[str, Any]] = []
     for item in discovered:
         path = Path(item["path"])
         filename = path.name
@@ -3566,11 +3573,10 @@ def ingest_source_materials(db: Any, settings: Any, case_id: str, source_dir: st
                     "extraction_status": analysis["extraction_status"],
                 }
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            file_errors.append({"filename": filename, "error": str(exc)})
     vector_store_id = ""
     _ingest_backend: Any = None
-    file_errors: list[dict[str, Any]] = []
     blocked_file_count = 0
     upload_allowed, upload_block_reason = external_real_case_upload_allowed(base, settings)
     if file_rows:
@@ -3680,31 +3686,34 @@ def submit_application(db: Any, case_id: str, permit_type: str, settings: Any = 
     project.setdefault("statuses", {})[permit_type] = "submitted"
     save_artifact(db, case_id, "lv_project", "main", project)
     queue = artifact_json(db, case_id, "authority_queue", "main", {"items": []})
-    if not any(i.get("application_id") == permit_type for i in queue.get("items", [])):
-        check_report = artifact_json(db, case_id, "check_report", permit_type, {})
-        issues = check_report.get("issues") or []
-        major_count = sum(1 for issue in issues if issue.get("severity") == "major" and not issue.get("resolved"))
-        issue_count = sum(1 for issue in issues if not issue.get("resolved"))
-        form_data = app.get("form_data") or {}
-        common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()}).get("data", {})
-        queue.setdefault("items", []).append(
-            {
-                "application_id": permit_type,
-                "application_title": load_form_schema(permit_type).get("title", permit_type),
-                "receipt_id": receipt["receipt_id"],
-                "applicant_name": form_data.get("applicant_name") or common.get("applicant_name", ""),
-                "municipality": form_data.get("municipality") or common.get("municipality", ""),
-                "status": "käsittelyssä",
-                "submitted_at": receipt["received_at"],
-                "quality_score": check_report.get("score", 75),
-                "open_issue_count": issue_count,
-                "info_request_risk": "korkea" if major_count >= 2 else ("kohonnut" if major_count == 1 else "matala"),
-                "permit_type": permit_type,
-                "processing_stage": "vastaanotettu",
-                "sla_due_at": time.strftime("%Y-%m-%d", time.localtime(time.time() + 30 * 24 * 60 * 60)),
-                "urgency": "kiireellinen" if major_count >= 2 or check_report.get("score", 100) < 60 else "normaali",
-            }
-        )
+    items = queue.setdefault("items", [])
+    item = next((i for i in items if i.get("application_id") == permit_type), None)
+    if item is None:
+        item = {"application_id": permit_type}
+        items.append(item)
+    check_report = artifact_json(db, case_id, "check_report", permit_type, {})
+    issues = check_report.get("issues") or []
+    major_count = sum(1 for issue in issues if issue.get("severity") == "major" and not issue.get("resolved"))
+    issue_count = sum(1 for issue in issues if not issue.get("resolved"))
+    form_data = app.get("form_data") or {}
+    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()}).get("data", {})
+    item.update(
+        {
+            "application_title": load_form_schema(permit_type).get("title", permit_type),
+            "receipt_id": receipt["receipt_id"],
+            "applicant_name": form_data.get("applicant_name") or common.get("applicant_name", ""),
+            "municipality": form_data.get("municipality") or common.get("municipality", ""),
+            "status": "käsittelyssä",
+            "submitted_at": receipt["received_at"],
+            "quality_score": check_report.get("score", 75),
+            "open_issue_count": issue_count,
+            "info_request_risk": "korkea" if major_count >= 2 else ("kohonnut" if major_count == 1 else "matala"),
+            "permit_type": permit_type,
+            "processing_stage": "vastaanotettu",
+            "sla_due_at": time.strftime("%Y-%m-%d", time.localtime(time.time() + 30 * 24 * 60 * 60)),
+            "urgency": "kiireellinen" if major_count >= 2 or check_report.get("score", 100) < 60 else "normaali",
+        }
+    )
     save_artifact(db, case_id, "authority_queue", "main", queue)
     event(db, case_id, "application.submitted", "Application submitted", {"application_id": permit_type, "receipt_id": receipt["receipt_id"]})
     return receipt

@@ -8,7 +8,7 @@
   <span><b>3</b> Lähetys viranomaiselle</span>
 </nav>
 
-<form method="post" enctype="multipart/form-data" action="/applicant/packages/new" class="upload-workspace" data-upload-form>
+<form method="post" enctype="multipart/form-data" action="/applicant/packages/new" class="setup-layout" data-upload-form>
   <section class="form-section" aria-labelledby="project-details">
     <div class="form-section-heading"><div><h2 id="project-details">Hankkeen yhteiset tiedot</h2></div></div>
     <div class="field-grid">
@@ -97,11 +97,7 @@
     const hasMaterial = chosen.length > 0 || (zip.files && zip.files.length > 0) || textarea.value.trim().length > 0;
     const ready = hasMaterial && municipality.value.trim() && projectName.value.trim();
     submit.disabled = !ready;
-    if (!municipality.value.trim() || !projectName.value.trim()) {
-      hint.textContent = "Täytä hankkeen nimi ja kunta sekä valitse aineisto.";
-    } else {
-      hint.textContent = hasMaterial ? `${chosen.length + (zip.files && zip.files.length ? 1 : 0)} tiedostoa valittu. Voit jatkaa.` : "Valitse vähintään yksi tiedosto tai lisää hankkeen kuvaus.";
-    }
+    hint.textContent = hasMaterial ? `${chosen.length + (zip.files && zip.files.length ? 1 : 0)} tiedostoa valittu. Voit jatkaa.` : "Valitse vähintään yksi tiedosto tai lisää hankkeen kuvaus.";
   }
   files.addEventListener("change", render);
   zip.addEventListener("change", render);

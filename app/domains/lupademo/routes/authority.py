@@ -31,11 +31,13 @@ def create_authority_router(ctx: RouteContext) -> APIRouter:
             q = svc.artifact_json(db(), c["id"], "authority_queue", "main", {"items": []})
             for item in q.get("items", []):
                 item["case_id"] = c["id"]
+                item["case_title"] = c.get("title", "")
                 all_items.append(item)
         if permit_type:
             all_items = [item for item in all_items if item.get("permit_type") == permit_type or item.get("application_id") == permit_type]
         if municipality:
             all_items = [item for item in all_items if str(item.get("municipality") or "").lower() == municipality.lower()]
+        all_items.sort(key=lambda item: str(item.get("submitted_at") or ""), reverse=True)
         return templates.TemplateResponse(request, "authority/authority_queue.html", {"queue": {"items": all_items}, "filters": {"permit_type": permit_type, "municipality": municipality}})
 
     @router.get("/cases/{case_id}/lupademo/authority/applications/{application_id}", response_class=HTMLResponse)
@@ -91,6 +93,7 @@ def create_authority_router(ctx: RouteContext) -> APIRouter:
     def update_authority_status(case_id: str, application_id: str, status: str = Form(...)):
         # F14: validate against the shared status vocabulary; unknown application -> 404.
         allowed = {"draft", "submitted", "in_review", "needs_more_info", "decided"}
+        stage_labels = {"draft": "Luonnos", "submitted": "vastaanotettu", "in_review": "käsittelyssä", "needs_more_info": "lisätietoja pyydetty", "decided": "päätetty"}
         if status not in allowed:
             raise HTTPException(status_code=422, detail="unknown_status")
         permit_type = svc.application_id_for(application_id)
@@ -101,9 +104,10 @@ def create_authority_router(ctx: RouteContext) -> APIRouter:
         for item in queue.get("items", []):
             if item.get("application_id") == permit_type:
                 item["status"] = status
+                item["processing_stage"] = stage_labels[status]
                 matched = True
         if not matched:
-            queue.setdefault("items", []).append({"application_id": permit_type, "status": status})
+            queue.setdefault("items", []).append({"application_id": permit_type, "status": status, "processing_stage": stage_labels[status]})
         svc.save_artifact(db(), case_id, "authority_queue", "main", queue)
         svc.event(db(), case_id, "authority.status.updated", "Authority status updated", {"application_id": application_id, "status": status})
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/authority/applications/{application_id}", status_code=303)

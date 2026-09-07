@@ -17,8 +17,8 @@
   </div>
   {% if next_case %}
   <div class="queue-recommendation">
-    <div><p class="section-kicker">Seuraavaksi käsittelyyn</p><h2>{{ next_case.application_title or permit_labels.get(next_case.permit_type, 'Lupahakemus') }}</h2><p>{{ next_case.applicant_name or 'Hakija ei tiedossa' }} · {{ next_case.municipality or 'Kunta ei tiedossa' }}</p></div>
-    <a class="button{% if present %} next-action{% endif %}" href="/cases/{{ next_case.case_id }}/lupademo/authority/applications/{{ next_case.application_id }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">Avaa käsittelyyn</a>
+    <div><p class="section-kicker">Seuraavaksi käsittelyyn</p><h2>{{ next_case.get('application_title') or permit_labels.get(next_case.get('permit_type'), 'Lupahakemus') }}</h2><p>{{ next_case.get('applicant_name') or 'Hakija ei tiedossa' }} · {{ next_case.get('municipality') or 'Kunta ei tiedossa' }}</p></div>
+    <a class="button{% if present %} next-action{% endif %}" href="/cases/{{ next_case.get('case_id') }}/lupademo/authority/applications/{{ next_case.get('application_id') }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">Avaa käsittelyyn</a>
   </div>
   {% endif %}
 </section>
@@ -37,13 +37,13 @@
     <tbody>
     {% for item in queue['items'] %}
     <tr>
-      <td><strong>{{ item.application_title or permit_labels.get(item.permit_type, 'Lupahakemus') }}</strong><small>{{ item.receipt_id }} · {{ permit_labels.get(item.permit_type, 'Lupahakemus') }}</small></td>
-      <td>{{ item.applicant_name or '-' }}<small>{{ item.municipality or '-' }}</small></td>
-      <td><span class="status {% if item.urgency == 'kiireellinen' %}bad{% elif item.status == 'Vastaanotettu' %}warn{% else %}good{% endif %}">{{ item.processing_stage or item.status }}</span></td>
-      <td><strong class="quality-number">{{ item.quality_score if item.quality_score is not none else '-' }}</strong><small>/ 100</small></td>
-      <td>{{ item.open_issue_count if item.open_issue_count is defined else '-' }}<small>Täydennysriski {{ item.info_request_risk or '-' }}</small></td>
-      <td>{{ item.sla_due_at|finnish_datetime if item.sla_due_at else 'Ei asetettu' }}<small>{{ item.urgency or 'normaali' }}</small></td>
-      <td><a class="row-action {% if present %}next-action{% endif %}" href="/cases/{{ item.case_id }}/lupademo/authority/applications/{{ item.application_id }}{% if request.url.query %}?{{ request.url.query }}{% endif %}" aria-label="Avaa hakemus {{ item.application_title or permit_labels.get(item.permit_type, 'Lupahakemus') }}">Avaa käsittelyyn</a></td>
+      <td><strong>{{ item.get('case_title') or item.get('application_title') or permit_labels.get(item.get('permit_type'), 'Lupahakemus') }}</strong><small>{{ item.get('receipt_id') }} · {{ permit_labels.get(item.get('permit_type'), 'Lupahakemus') }} · {{ item.get('case_id', '')[:8] }}</small></td>
+      <td>{{ item.get('applicant_name') or '-' }}<small>{{ item.get('municipality') or '-' }}</small></td>
+      <td><span class="status {% if item.get('urgency') == 'kiireellinen' %}bad{% elif item.get('status') == 'Vastaanotettu' %}warn{% else %}good{% endif %}">{{ item.get('processing_stage') or item.get('status') }}</span></td>
+      <td><strong class="quality-number">{{ item.get('quality_score') if item.get('quality_score') is not none else '-' }}</strong><small>/ 100</small></td>
+      <td>{{ item.get('open_issue_count', '-') }}<small>Täydennysriski {{ item.get('info_request_risk') or '-' }}</small></td>
+      <td>{{ item.get('sla_due_at')|finnish_datetime if item.get('sla_due_at') else 'Ei asetettu' }}<small>{{ item.get('urgency') or 'normaali' }}</small></td>
+      <td><a class="row-action {% if present %}next-action{% endif %}" href="/cases/{{ item.get('case_id') }}/lupademo/authority/applications/{{ item.get('application_id') }}{% if request.url.query %}?{{ request.url.query }}{% endif %}" aria-label="Avaa hakemus {{ item.get('application_title') or permit_labels.get(item.get('permit_type'), 'Lupahakemus') }}">Avaa käsittelyyn</a></td>
     </tr>
     {% else %}<tr><td colspan="7" class="empty-table"><strong>Ei hakemuksia valituilla rajauksilla</strong><span>Työjonossa ei ole näillä rajauksilla hakemuksia.</span><a href="/authority/queue">Poista rajaukset</a></td></tr>{% endfor %}
     </tbody>

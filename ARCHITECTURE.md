@@ -18,11 +18,11 @@ keha-lv-jaettava/
     domains/lupademo/
       routes/                        HTTP handlers (thin — delegate to services)
         __init__.py                    create_lupademo_router()
-        applicant.py                   42 handlers — wizard, intake, forms, chat
+        applicant.py                   68 handlers — wizard, intake, forms, chat
         authority.py                   9 handlers — queue, detail, observations
-        api_v1.py                      7 handlers — external suggestion-service API
-        admin.py                      22 handlers — criteria admin, playground, jobs
-        demo_lab.py                   14 handlers — benchmark, metrics, audit
+        api_v1.py                      17 handlers — external suggestion-service API
+        admin.py                      12 handlers — criteria admin, playground, jobs
+        demo_lab.py                   24 handlers — benchmark, metrics, audit
         common.py                     Shared route helpers + Jinja2 filters
                                         (finnish_datetime, FINDING_CATEGORY_LABELS,
                                         job_eta_seconds, RouteContext)
@@ -32,16 +32,17 @@ keha-lv-jaettava/
         core.py                       Case/app lifecycle, common-data sync (~250L)
         criteria.py                   Permit criteria CRUD, history, rules (~180L)
         jobs.py                       AI job lifecycle (~350L)
-        intake.py                     Attachments, ingestion, extraction, agents (~1500L)
+        intake.py                     Attachments, ingestion, extraction, agents (~1860L)
+        customer_workspace.py         Customer workspace: login fixtures, package-case mapping (~410L)
         application.py                Suggestions, checks, packaging, authority, chat,
-                                      metrics, external API (~2700L)
+                                      metrics, external API (~4470L)
         __init__.py                   Re-exports — `import services as svc` works
-      templates/                     22 Jinja2 HTML templates
+      templates/                     31 Jinja2 HTML templates
       static/                        CSS + fonts
       specs/                         Runtime specs (JSON — loaded by app)
         form_schemas/                  3 permit form schemas
-        criteria_sets/                 3 permit criteria sets
-        prompts/                      11 AI agent prompt templates (.md)
+        criteria_sets/                 5 permit criteria sets
+        prompts/                      12 AI agent prompt templates (.md)
         scenarios/                     Demo scenarios + material stories
       scenarios.py                   Demo scenario seeding (code fallback)
       security.py                    API key auth for suggestion-service

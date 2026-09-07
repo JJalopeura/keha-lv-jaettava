@@ -28,7 +28,7 @@
     one specific permit application (wizard + receipt). Everything else in the
     applicant flow is the Customer Workspace (manage projects/applications). #}
     {% set package_review = is_package_review is defined and is_package_review %}
-    {% set package_workbench = current_path.startswith('/applicant/packages/') %}
+    {% set package_workbench = current_path.startswith('/applicant/packages/') and not current_path.endswith('/new') %}
     {# Kevytasiointi workbench has its own header block with the hanke name —
        the generic "Avoin hanke" bar would duplicate it. #}
     {% set case_context = case_id is defined and not package_review and not package_workbench %}
@@ -87,10 +87,6 @@
             <p class="sidebar-heading" id="applicant-links-heading">Asiointi</p>
             <div class="sidebar-subnav">
               <a class="sidebar-link{% if current_path == '/' %} active{% endif %}" href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Omat asiat</a>
-              {% if not package_workbench %}
-              <a class="sidebar-link{% if current_path == '/projects/new' %} active{% endif %}" href="/projects/new" {% if current_path == '/projects/new' %}aria-current="page"{% endif %}>Uusi hanke</a>
-              <a class="sidebar-link{% if current_path.startswith('/applicant/packages') %} active{% endif %}" href="/applicant/packages/new" {% if current_path.startswith('/applicant/packages') %}aria-current="page"{% endif %}>Kevyt integraatio</a>
-              {% endif %}
               {% if case_context or package_workbench %}
               {% set sidebar_permit_labels = {'building_residential': 'Rakennuslupa', 'environmental_industrial': 'Ympäristölupa', 'event_public': 'Tapahtumalupa'} %}
               {% set sidebar_statuses = {'draft': 'Luonnos', 'not_started': 'Ei aloitettu', 'submitted': 'Lähetetty', 'application_draft': 'Luonnos'} %}
