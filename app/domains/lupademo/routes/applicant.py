@@ -226,6 +226,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         email: str = Form(""),
         address: str = Form(""),
         property_id: str = Form(""),
+        permit_basis: str = Form(""),
         files: list[UploadFile] = File(default=[]),
         zip_file: Optional[UploadFile] = File(default=None),
         text_body: str = Form(""),
@@ -283,6 +284,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             "municipality": municipality,
             "address": address,
             "property_id": property_id,
+            "permit_basis": permit_basis,
         }
         project_profile = dict(customer.get("profile") or {})
         project_profile.update(
@@ -582,6 +584,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         tenant_id: str = Form(""),
         applicant_role: str = Form("company"),
         start_at: str = Form("lv_project"),
+        permit_basis: Optional[str] = Form(None),
     ):
         customer = current_customer(request)
         if not customer:
@@ -596,6 +599,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             "municipality": municipality,
             "address": address,
             "property_id": property_id,
+            "permit_basis": permit_basis,
         }
         project_profile.update(
             {key: str(value).strip() for key, value in submitted_profile.items() if value is not None}

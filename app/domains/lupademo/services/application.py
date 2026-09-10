@@ -1342,7 +1342,24 @@ def deterministic_issues(
 ) -> list[Issue]:
     schema = load_form_schema(permit_type)
     criteria = criteria or load_criteria(permit_type, municipality)
-    criteria_source = EvidenceRef(source_id=criteria.get("criteria_set_id", "demo"), title=(criteria.get("sources") or ["Demokriteeristö"])[0], locator="criteria", confidence=0.75)
+    criteria_source = EvidenceRef(
+        source_id=criteria.get("criteria_set_id", "demo"),
+        title=(criteria.get("sources") or ["Demokriteeristö"])[0],
+        locator="criteria",
+        confidence=0.75,
+    )
+    # Per-rule evidence: the rule's own instruction is the quoted requirement, so the
+    # "Perusteet ja lähteet" disclosure shows the criterion text, not a bare locator.
+    rule_sources: dict[str, EvidenceRef] = {}
+    for rule in criteria.get("rules", []):
+        if isinstance(rule, dict) and rule.get("id"):
+            rule_sources[str(rule["id"])] = EvidenceRef(
+                source_id=str(rule["id"]),
+                title=str(rule.get("instruction") or rule["id"]),
+                locator="criteria",
+                quote=str(rule.get("instruction") or ""),
+                confidence=0.75,
+            )
     issues: list[Issue] = []
     for schema_field in schema.get("fields", []):
         if schema_field.get("required") and str(form_data.get(schema_field["id"], "")).strip() == "":
@@ -1417,10 +1434,14 @@ def deterministic_issues(
             attachment_id=attachment_type or None,
             title=f"Aktiivinen kriteeri: {subject_label} puuttuu",
             detail=str(rule.get("instruction") or "Aktiivinen kriteeri ei täyty."),
-            # The rule's own instruction is the actionable fix (package-specific guidance,
-            # e.g. "Ren-Gas-hankkeessa Liite 7 Kemikaaliluettelo.") — not boilerplate.
-            suggested_fix=str(rule.get("instruction") or "Täydennä tieto tai lisää vaatimus täyttävä viranomaisliite."),
-            evidence_refs=[criteria_source],
+            # The rule's instruction explains the requirement (detail); the fix must be a
+            # DISTINCT actionable next step — echoing the instruction verbatim renders the
+            # same sentence twice in the UI (detail + "Ehdotus:").
+            suggested_fix=(
+                f"Täydennä hakemusta niin, että vaatimus ({subject_label}) täyttyy, "
+                "tai liitä viranomaiselle toimitettava aineisto, josta vaatimus käy ilmi."
+            ),
+            evidence_refs=[rule_sources.get(str(rule.get("id") or ""), criteria_source)],
             confidence=0.9,
         )
         previous = criteria_subjects.get(subject_key)
@@ -1807,7 +1828,7 @@ def _review_evidence_catalog(
             "source_id": source,
             "title": str(title or source),
             "locator": str(locator or "evidence"),
-            "quote": str(quote or "").strip()[:300],
+            "quote": str(quote or "").strip()[:600],
             "text": str(text or ""),
             "attachment_id": str(attachment_id or ""),
         }
@@ -1816,7 +1837,10 @@ def _review_evidence_catalog(
         if attachment.get("delivery_scope") not in {"official_submission", "ai_context_only"}:
             continue
         text = str(attachment.get("text_excerpt") or attachment.get("summary") or "")
-        quote = next((line.strip() for line in text.splitlines() if line.strip()), text[:300])
+        # Fuller excerpt: several leading lines rather than only the first one, so the
+        # "Peruste aineistossa" disclosure shows actual document content, not a stub.
+        first_lines = "\n".join(line.strip() for line in text.splitlines() if line.strip())[:600]
+        quote = first_lines or text[:600]
         add(attachment.get("id"), attachment.get("filename") or "Hakemusasiakirja", "document", quote, text, attachment.get("id"))
         add(attachment.get("filename"), attachment.get("filename") or "Hakemusasiakirja", "document", quote, text, attachment.get("id"))
     add(criteria.get("criteria_set_id"), "Aktiivinen lupakriteeristö", "criteria", "")
@@ -1948,7 +1972,7 @@ def _clean_review_evidence_refs(raw_refs: Any, catalog: list[dict[str, Any]]) ->
             "confidence": _coerce_confidence(raw.get("confidence"), 0.7),
         }
         if quote:
-            item["quote"] = quote[:300]
+            item["quote"] = quote[:600]
         clean.append(item)
     return clean[:3]
 
@@ -3687,10 +3711,11 @@ def submit_application(db: Any, case_id: str, permit_type: str, settings: Any = 
     save_artifact(db, case_id, "lv_project", "main", project)
     queue = artifact_json(db, case_id, "authority_queue", "main", {"items": []})
     items = queue.setdefault("items", [])
-    item = next((i for i in items if i.get("application_id") == permit_type), None)
+    item: dict[str, Any] | None = next((i for i in items if i.get("application_id") == permit_type), None)
     if item is None:
         item = {"application_id": permit_type}
         items.append(item)
+    assert isinstance(item, dict)
     check_report = artifact_json(db, case_id, "check_report", permit_type, {})
     issues = check_report.get("issues") or []
     major_count = sum(1 for issue in issues if issue.get("severity") == "major" and not issue.get("resolved"))

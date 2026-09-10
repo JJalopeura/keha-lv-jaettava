@@ -26,6 +26,7 @@ COMMON_FIELDS = [
     "address",
     "property_id",
     "project_name",
+    "permit_basis",
 ]
 
 
@@ -39,6 +40,7 @@ DEFAULT_COMMON_DATA = {
     "address": "Koivutie 12",
     "property_id": "092-416-12-34",
     "project_name": "Koivutien pientalohanke",
+    "permit_basis": "",
 }
 
 

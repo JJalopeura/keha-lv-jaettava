@@ -16,7 +16,7 @@
       "id": "permit_basis",
       "field_id": "permit_basis",
       "severity": "recommendation",
-      "instruction": "Kuvaa hakemuksessa toiminnan luvanvaraisuus ja säädösperusta (esim. ympäristönsuojelulain 27 §)."
+      "instruction": "Kuva neutraalisti ja faktaalisesti ehdotettu toiminta: tavoite, sijainti, keskeiset prosessit, päästöt/jätehuolto, syötteet ja materiaalit sekä merkittävä skaala, kun lähdemateriaalissa on tietoa. Älä tee päätelmää toiminnan luvanvaraisuudesta, älä käytä lainkohtia lopputuloksena eikä lauseita kuten 'Toiminta on hakemuksen mukaan luvanvarainen'."
     },
     {
       "id": "competent_authority",

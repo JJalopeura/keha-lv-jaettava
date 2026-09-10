@@ -14,10 +14,16 @@ Palauta validi JSON:
 {
   "summary": "...",
   "strengths": [
-    {"title":"...", "detail":"...", "evidence_refs":[{"source_id":"...","locator":"...","quote":"..."}]}
+    {
+      /* detail must be application-specific, cite the evidence source from catalog, and explain why this is a real strength — not generic. Include at least one evidence_refs entry */
+      "title":"...", "detail":"...", "evidence_refs":[{"source_id":"...","locator":"...","quote":"..."}]
+    }
   ],
   "improvements": [
-    {"title":"...", "detail":"...", "action":"...", "priority":"high|normal|low", "evidence_refs":[{"source_id":"...","locator":"...","quote":"..."}]}
+    {
+      /* detail must state the specific gap with a reason and include an actionable next step (what to do, where in the application) */
+      "title":"...", "detail":"...", "action":"...", "priority":"high|normal|low", "evidence_refs":[{"source_id":"...","locator":"...","quote":"..."}]
+    }
   ]
 }
 

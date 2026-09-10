@@ -381,6 +381,7 @@ def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
             "project_url": project_url,
             # Origin marker for the home view ("Kevytasiointi" badge).
             "created_from": str(project.get("created_from") or ""),
+            "demo_hidden_home": bool(project.get("demo_hidden_home")),
         }
         cases.append(case_row)
         for application in actionable:
@@ -392,6 +393,7 @@ def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
                 "url": application["application_url"],
                 "kind": application["task_kind"],
             })
+    cases.sort(key=lambda item: bool(item.get("demo_hidden_home")))
     package_reviews = [
         _package_review_row(db, review)
         for review in db.list_package_reviews(customer_id)

@@ -12,7 +12,8 @@
   "municipality": "Kunta",
   "address": "Osoite",
   "property_id": "Kiinteistötunnus",
-  "project_name": "Hankkeen nimi"
+  "project_name": "Hankkeen nimi",
+  "permit_basis": "Toiminnan yleiskuvaus"
 } %}
 {% set permit_labels = {
   "building_residential": "Rakennuslupa",
@@ -21,7 +22,7 @@
 } %}
 {% set active_permits = project.get('permits', []) %}
 {% set all_permits = ["building_residential", "environmental_industrial", "event_public"] %}
-{% set hanke_fields = ['applicant_name', 'business_id', 'contact_person', 'phone', 'email', 'municipality', 'address', 'property_id', 'project_name'] %}
+{% set hanke_fields = ['applicant_name', 'business_id', 'contact_person', 'phone', 'email', 'municipality', 'address', 'property_id', 'project_name', 'permit_basis'] %}
 {{ page_header(project.get("name") or "Lupahanke", '', 'Hanke', [{'label': 'Omat asiat', 'href': '/'}, {'label': project.get("name") or "Lupahanke", 'href': ''}]) }}
 
 <section class="hanke-details" id="hanke-details" aria-labelledby="hanke-details-heading">
@@ -32,8 +33,8 @@
   <form method="post" action="/lv/projects/{{ case_id }}/common-data" class="hanke-form-grid">
     {% for key in hanke_fields %}
     {% set value = common.data.get(key, '') %}
-    <label class="{% if key in ['applicant_name', 'email', 'address', 'project_name'] %}hanke-field-wide{% endif %}">{{ labels.get(key, key) }}
-      <input {% if key == 'email' %}type="email"{% elif key == 'phone' %}type="tel"{% endif %} name="{{ key }}" value="{{ value }}">
+    <label class="{% if key in ['applicant_name', 'email', 'address', 'project_name', 'permit_basis'] %}hanke-field-wide{% endif %}">{{ labels.get(key, key) }}
+      {% if key == 'permit_basis' %}<textarea name="{{ key }}" rows="4">{{ value }}</textarea>{% else %}<input {% if key == 'email' %}type="email"{% elif key == 'phone' %}type="tel"{% endif %} name="{{ key }}" value="{{ value }}">{% endif %}
     </label>
     {% endfor %}
     <div class="hanke-form-actions"><button class="button secondary">Tallenna hankkeen tiedot</button></div>

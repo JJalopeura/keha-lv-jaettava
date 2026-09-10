@@ -68,7 +68,8 @@
       "label": "Toiminnan yleiskuvaus",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "common_data": true
     },
     {
       "id": "competent_authority",

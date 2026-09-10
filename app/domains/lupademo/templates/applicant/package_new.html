@@ -21,6 +21,7 @@
       <label>Kunta<input name="municipality" value="{{ profile.get('municipality', '') }}" autocomplete="address-level2" required></label>
       <label class="wide-field">Osoite<input name="address" value="{{ profile.get('address', '') }}" autocomplete="street-address"></label>
       <label class="wide-field">Kiinteistötunnus<input name="property_id" value="" autocomplete="off"></label>
+      <label class="wide-field">Toiminnan yleiskuvaus<textarea name="permit_basis" rows="3">{{ profile.get('permit_basis', '') }}</textarea></label>
     </div>
   </section>
 
