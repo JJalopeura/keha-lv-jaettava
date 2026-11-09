@@ -2480,9 +2480,14 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         else (
             "Hakemuksessa on lähettämisen estäviä puutteita."
             if counts["blocking"] or counts["red"]
-            # Majors are advisory since the gate change: the applicant may submit, so the
-            # summary must not claim that the submission waits for them.
-            else f"Hakemuksen voi lähettää. {counts['major']} merkittävää havaintoa kannattaa korjata ennen lähettämistä."
+            # The gate allows submission with advisory majors, but a low score still means
+            # "plenty to fix": a 26/100 report must not read as if it were ready.
+            else (
+                f"Hakemuksessa on useita korjattavia kohtia ({counts['major']} merkittävää havaintoa). "
+                "Lähetys on mahdollinen, mutta tarkista havainnot ensin."
+                if readiness == "not_ready"
+                else f"Hakemuksen voi lähettää. {counts['major']} merkittävää havaintoa kannattaa korjata ennen lähettämistä."
+            )
         )
     )
     checked_at = time.time()
@@ -4536,7 +4541,12 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             else (
                 "Hakemuksessa on lähettämisen estäviä puutteita."
                 if counts["blocking"] or counts["red"]
-                else f"Hakemuksen voi lähettää. {counts['major']} merkittävää havaintoa kannattaa korjata ennen lähettämistä."
+                else (
+                    f"Hakemuksessa on useita korjattavia kohtia ({counts['major']} merkittävää havaintoa). "
+                    "Lähetys on mahdollinen, mutta tarkista havainnot ensin."
+                    if readiness == "not_ready"
+                    else f"Hakemuksen voi lähettää. {counts['major']} merkittävää havaintoa kannattaa korjata ennen lähettämistä."
+                )
             )
         ),
         issues=issues,

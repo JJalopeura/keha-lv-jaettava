@@ -16,8 +16,8 @@ cp .env.example .env    # täytä Foundry-endpoint, deployment-nimet ja avain
 
 Avaa selain: http://127.0.0.1:8003 (portti vaihdettavissa `APP_PORT`-muuttujalla).
 
-Julkinen ympäristö: **https://keha-lv.kindplant-ccd82e27.swedencentral.azurecontainerapps.io**
-— Container App `keha-lv` ECDX-ympäristössä `luvn-finbert-svc-env`.
+Julkinen ympäristö: **https://keha-lv-web.azurewebsites.net**
+— App Service (Linux, F1) `keha-lv-web`, tila hakemistossa `/home/data`.
 Ks. [docs/deployment-ecdx.md](docs/deployment-ecdx.md) (julkaisu, asetukset, rajoitteet).
 
 Palvelin ei käynnisty väärin asetuksin: jos endpoint, deployment-nimi tai avain
