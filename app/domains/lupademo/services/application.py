@@ -1886,6 +1886,134 @@ def _incomplete_agents(criteria_results: list[dict[str, Any]], rules_total: int)
     return []
 
 
+# The Foundry deployment clamps max_output_tokens at 4096 whatever we request (measured:
+# a 19-rule assessment answered 4096 output tokens, status=incomplete, and the truncated
+# JSON parsed to nothing). Batching keeps every answer well inside that cap.
+CRITERIA_BATCH_SIZE = 6
+# Input size drives latency: the failing run sent 37k tokens and took 93 s, the passing
+# probe sent 10k and took 17 s. The assessor needs enough excerpt to quote evidence, not
+# the whole package.
+CRITERIA_CONTEXT_BUDGET_CHARS = 9000
+
+
+def _criteria_batches(
+    rules: list[dict[str, Any]],
+    size: int = CRITERIA_BATCH_SIZE,
+) -> list[list[dict[str, Any]]]:
+    """Split rules into batches small enough that the answer fits the output cap."""
+    if size <= 0:
+        size = len(rules) or 1
+    return [rules[index:index + size] for index in range(0, len(rules), size)]
+
+
+def _trim_retrieval_context(
+    context: dict[str, Any],
+    budget_chars: int = CRITERIA_CONTEXT_BUDGET_CHARS,
+) -> dict[str, Any]:
+    """Shorten source excerpts so a batched assessment does not re-send the whole package."""
+    payload = dict(context or {})
+    excerpts = list(payload.get("excerpts") or [])
+    if not excerpts:
+        return payload
+    per_doc = max(400, budget_chars // len(excerpts))
+    payload["excerpts"] = [
+        {**dict(item), "text": str(item.get("text") or "")[:per_doc]}
+        for item in excerpts
+        if isinstance(item, dict)
+    ]
+    return payload
+
+
+def _batch_prompt_values(
+    base_values: dict[str, Any],
+    batch_criteria: dict[str, Any],
+) -> dict[str, Any]:
+    """Copy the prompt values, narrowing the criteria and the source excerpts to one batch."""
+    values = dict(base_values)
+    values["criteria"] = json.dumps(batch_criteria, ensure_ascii=False)
+    for key in ("retrieved_context", "criteria_and_context", "attachment_context"):
+        raw = values.get(key)
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if "criteria" in payload:
+            payload["criteria"] = batch_criteria
+        if isinstance(payload.get("retrieval"), dict):
+            payload["retrieval"] = _trim_retrieval_context(payload["retrieval"])
+        elif "excerpts" in payload:
+            payload = _trim_retrieval_context(payload)
+        values[key] = json.dumps(payload, ensure_ascii=False)
+    return values
+
+
+def assess_criteria_in_batches(
+    db: Any,
+    settings: Any,
+    case_id: str,
+    base_values: dict[str, Any],
+    criteria: dict[str, Any],
+    *,
+    vector_ids: list[str] | None = None,
+    task_id: str | None = None,
+    reasoning_effort: str = "low",
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Run the criteria assessor once per batch of rules and merge the verdicts.
+
+    Returns (results, notes). Results are de-duplicated by `criteria_id`; a batch that
+    comes back empty is recorded as incomplete rather than silently shrinking the verdict.
+    """
+    rules = [rule for rule in (criteria or {}).get("rules", []) if isinstance(rule, dict)]
+    if not rules:
+        return [], []
+    batches = _criteria_batches(rules)
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    notes: list[str] = []
+    for index, batch_rules in enumerate(batches, start=1):
+        batch_criteria = {**(criteria or {}), "rules": batch_rules}
+        response = run_json_agent(
+            db,
+            settings,
+            case_id,
+            "criteria_assessor",
+            _batch_prompt_values(base_values, batch_criteria),
+            CriteriaAssessmentResponse,
+            vector_ids=vector_ids,
+            fallback={"criteria_results": []},
+            max_output_tokens=8000,
+            reasoning_effort=reasoning_effort,
+            task_id=task_id or None,
+        )
+        if isinstance(response, CriteriaAssessmentResponse):
+            batch_results = _plain(response.criteria_results)
+        elif isinstance(response, dict):
+            batch_results = response.get("criteria_results") or []
+        else:
+            batch_results = []
+        added = 0
+        for result in batch_results:
+            if not isinstance(result, dict):
+                continue
+            criteria_id = str(result.get("criteria_id") or "")
+            if criteria_id and criteria_id in seen:
+                continue
+            if criteria_id:
+                seen.add(criteria_id)
+            merged.append(result)
+            added += 1
+        if not added:
+            notes.append(
+                f"INCOMPLETE: criteria batch {index}/{len(batches)} returned no usable results"
+            )
+    return merged, notes
+
+
+
 def _degraded_agents(db: Any, case_id: str, agents: tuple[str, ...]) -> list[str]:
     """Names of check agents that fell back to a deterministic response."""
     if db is None:
@@ -2382,6 +2510,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         mark_agent_complete(db, case_id, app["permit_type"], job_id, "deterministic_checks", "Sääntöpohjainen tarkistus valmis.")
     agent_issues: list[Issue] = []
     criteria_results: list[dict[str, Any]] = []
+    assessor_notes: list[str] = []
     if settings is not None:
         criteria = active_criteria
         context = retrieval_context(db, case_id, app["permit_type"])
@@ -2415,34 +2544,24 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "consistency_validator", "Ristiriitatarkistus valmis.")
-        criteria_response = run_json_agent(
+        criteria_results, assessor_notes = assess_criteria_in_batches(
             db,
             settings,
             case_id,
-            "criteria_assessor",
             base_values,
-            CriteriaAssessmentResponse,
+            active_criteria or {},
             vector_ids=vector_ids,
-            fallback={"criteria_results": []},
-            # 19 rules x (status + short rationale + one evidence ref) does not fit in
-            # 6000 output tokens once the model's reasoning is counted; a truncated
-            # answer used to be stored as "no criteria at all".
-            max_output_tokens=8000,
-            reasoning_effort="low",
             task_id=job_id or None,
         )
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "criteria_assessor", "Kriteeriarviointi valmis.")
-        if isinstance(criteria_response, CriteriaAssessmentResponse):
-            criteria_results = _plain(criteria_response.criteria_results)
-        elif isinstance(criteria_response, dict):
-            criteria_results = criteria_response.get("criteria_results", [])
     criteria_results, criteria_notes = _normalize_criteria_results(
         criteria_results,
         active_criteria,
         app.get("form_data", {}),
         attachments,
     )
+    criteria_notes = [*assessor_notes, *criteria_notes]
     criteria_results = _pixie_wrap(
         criteria_results,
         purpose="state",
@@ -4450,6 +4569,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         active_criteria = effective_criteria(db, api_case, req.permit_type, municipality)
     issues = deterministic_issues(req.permit_type, req.form_data, req.attachments, municipality=municipality, criteria=active_criteria)
     criteria_results: list[dict[str, Any]] = []
+    assessor_notes: list[str] = []
     if db is not None and settings is not None:
         criteria = active_criteria
         base_values = {
@@ -4467,28 +4587,16 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         vector_ids = azure_vector_store_ids(db, settings, api_case)
         agent_issues = _run_check_agents(db, settings, api_case, base_values, vector_ids=vector_ids, max_output_tokens=3000)
         agent_issues = _filter_covered_attachment_issues(agent_issues, req.attachments)
-        criteria_response = run_json_agent(
+        criteria_results, assessor_notes = assess_criteria_in_batches(
             db,
             settings,
             api_case,
-            "criteria_assessor",
             base_values,
-            CriteriaAssessmentResponse,
+            criteria or {},
             vector_ids=vector_ids,
-            fallback={"criteria_results": []},
-            # 19 rules x (status + short rationale + one evidence ref) does not fit in
-            # 6000 output tokens once the model's reasoning is counted; a truncated
-            # answer used to be stored as "no criteria at all".
-            max_output_tokens=8000,
         )
-        if isinstance(criteria_response, CriteriaAssessmentResponse) and criteria_response.criteria_results:
-            criteria_results = _plain(criteria_response.criteria_results)
+        if criteria_results:
             save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": criteria_results})
-        elif isinstance(criteria_response, dict):
-            cr = criteria_response.get("criteria_results", [])
-            if cr:
-                criteria_results = _plain(cr)
-                save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": criteria_results})
         issues = merge_issues(issues, agent_issues)
     criteria_results, criteria_notes = _normalize_criteria_results(
         criteria_results,
@@ -4496,6 +4604,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         req.form_data,
         req.attachments,
     )
+    criteria_notes = [*assessor_notes, *criteria_notes]
     # Build per-rule instruction + severity lookup for synthesized findings.
     rule_instructions = {
         str(r.get("id")): str(r.get("instruction") or "").strip()

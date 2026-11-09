@@ -473,7 +473,10 @@
     {# Raw count on purpose: the submit gate reports per-finding counts
        ("2 estävää · 16 merkittävää"), so this line must use the same basis.
        The grouped field card below is a reading convenience, not a recount. #}
-    <p>{% if check_report.get('readiness') == 'ready' %}Tarkistus ei löytänyt lähettämistä estäviä puutteita.{% else %}{{ _unresolved_issues|length }} avointa havaintoa ennen lähetystä.{% endif %} · {{ _review_improvements|length }} parannusehdotusta.</p>
+    {# The count must agree with the gate in the banner above it: when the gate is open,
+       "ennen lähetystä" would contradict "Lähetys on mahdollinen" on the same screen.
+       `precheck_gate.can_submit` is the single source of truth for that sentence. #}
+    <p>{% if check_report.get('readiness') == 'ready' %}Tarkistus ei löytänyt lähettämistä estäviä puutteita.{% else %}{{ _unresolved_issues|length }} avointa havaintoa{% if precheck_gate and precheck_gate.get('can_submit') %} · lähetys on mahdollinen{% else %} ennen lähetystä{% endif %}.{% endif %} · {{ _review_improvements|length }} parannusehdotusta.</p>
   </div>
   <div class="readiness-actions">
     {% if _review_strengths or _review_improvements %}

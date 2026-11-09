@@ -23,9 +23,15 @@ import unittest
 os.environ.setdefault("KEHA_LV_DB_PATH", os.path.join(tempfile.mkdtemp(prefix="keha-ai-lane-"), "test.db"))
 
 from app.domains.lupademo.services import Issue  # noqa: E402
+import json  # noqa: E402
+
 from app.domains.lupademo.services.application import (  # noqa: E402
+    CRITERIA_BATCH_SIZE,
+    _batch_prompt_values,
+    _criteria_batches,
     _derive_check_verdict,
     _sanitize_criteria_links,
+    _trim_retrieval_context,
     reconcile_verdict,
 )
 from app.infra.llm_utils import call_llm_json  # noqa: E402
@@ -124,3 +130,54 @@ class UnassessedCriteriaScoreTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CriteriaBatchingTest(unittest.TestCase):
+    """The deployment clamps output at 4096 tokens, so a 19-rule answer truncates.
+
+    Measured on the live app: one 19-rule call answered 4096 output tokens with
+    status=incomplete and parsed to nothing; batching keeps each answer inside the cap.
+    """
+
+    def test_rules_are_split_in_order_without_loss(self) -> None:
+        rules = [{"id": f"r{i}"} for i in range(19)]
+        batches = _criteria_batches(rules, size=6)
+        self.assertEqual([len(b) for b in batches], [6, 6, 6, 1])
+        self.assertEqual([r["id"] for b in batches for r in b], [r["id"] for r in rules])
+
+    def test_default_batch_size_fits_the_output_cap(self) -> None:
+        self.assertLessEqual(CRITERIA_BATCH_SIZE, 8)
+
+    def test_empty_rule_list_yields_no_batches(self) -> None:
+        self.assertEqual(_criteria_batches([], size=6), [])
+
+    def test_retrieval_excerpts_are_trimmed_but_metadata_survives(self) -> None:
+        context = {
+            "mode": "local_excerpt",
+            "excerpts": [
+                {"source_id": "a", "delivery_scope": "official_submission", "text": "x" * 5000},
+                {"source_id": "b", "delivery_scope": "ai_context_only", "text": "y" * 5000},
+            ],
+        }
+        trimmed = _trim_retrieval_context(context, budget_chars=2000)
+        self.assertEqual(len(trimmed["excerpts"]), 2)
+        self.assertTrue(all(len(e["text"]) <= 5000 for e in trimmed["excerpts"]))
+        self.assertLess(sum(len(e["text"]) for e in trimmed["excerpts"]), 10000)
+        self.assertEqual(trimmed["excerpts"][1]["delivery_scope"], "ai_context_only")
+        self.assertEqual(context["excerpts"][0]["text"], "x" * 5000, "input must not be mutated")
+
+    def test_batch_prompt_values_narrow_criteria_and_excerpts(self) -> None:
+        base_values = {
+            "form_data": '{"a": "b"}',
+            "criteria": json.dumps({"rules": [{"id": "r1"}, {"id": "r2"}]}),
+            "retrieved_context": json.dumps({"mode": "local_excerpt", "excerpts": [{"text": "z" * 20000}]}),
+            "criteria_and_context": json.dumps(
+                {"criteria": {"rules": [{"id": "r1"}, {"id": "r2"}]}, "retrieval": {"excerpts": [{"text": "z" * 4000}]}}
+            ),
+        }
+        values = _batch_prompt_values(base_values, {"rules": [{"id": "r1"}]})
+        self.assertEqual(json.loads(values["criteria"])["rules"], [{"id": "r1"}])
+        self.assertEqual(json.loads(values["criteria_and_context"])["criteria"], {"rules": [{"id": "r1"}]})
+        self.assertLess(len(json.loads(values["retrieved_context"])["excerpts"][0]["text"]), 20000)
+        self.assertEqual(values["form_data"], '{"a": "b"}', "other prompt values must pass through")
+        self.assertEqual(json.loads(base_values["criteria"])["rules"], [{"id": "r1"}, {"id": "r2"}])
