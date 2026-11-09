@@ -58,7 +58,11 @@ jobs:
           set -euo pipefail
           chmod +x scripts/build_deploy_zip.sh scripts/rollback.sh
           ./scripts/build_deploy_zip.sh
-          ARTIFACT="$(ls deploy/artifacts/keha-lv-*.zip | tail -1)"
+          # The name is derived, never discovered: `ls | tail -1` sorts lexicographically
+          # and earlier picked a *previous* release (…-75000d5…) over the fresh one,
+          # so the pipeline deployed an older zip while reporting success.
+          ARTIFACT="deploy/artifacts/keha-lv-$(git rev-parse --short=12 HEAD).zip"
+          test -f "$ARTIFACT"
           echo "ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
 
       - name: Deploy to App Service
