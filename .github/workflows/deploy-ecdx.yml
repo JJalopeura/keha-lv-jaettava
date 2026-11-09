@@ -34,8 +34,11 @@ env:
 
 jobs:
   deploy:
-    # The artifact commit at the end of this job must not start another deploy.
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    # Releases come from `polishing` only. `main` is an old tree in this repo, and a
+    # deploy from it would replace the live app with that old build — so the branch is
+    # a hard condition, not a convention. The [skip ci] guard keeps the artifact commit
+    # at the end of this job from starting another deploy.
+    if: ${{ github.ref_name == 'polishing' && !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
