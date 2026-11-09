@@ -81,23 +81,42 @@ az webapp config appsettings set -g rg-hackathon-ecdx-proto-sdc-001 -n keha-lv-w
 
 ## Deploying a new version
 
-Two commands; the build happens on the App Service worker because
-`SCM_DO_BUILD_DURING_DEPLOYMENT=true`.
+Release = a committed artifact, so the pipeline and a human produce the same bytes.
 
 ```bash
-zip -qr /tmp/keha-app.zip app requirements.txt gunicorn.conf.py \
-  -x "app/**/__pycache__/*" "app/**/*.pyc"
-az webapp deploy -g rg-hackathon-ecdx-proto-sdc-001 -n keha-lv-web \
-  --src-path /tmp/keha-app.zip --type zip
+./scripts/build_deploy_zip.sh      # git archive HEAD -> deploy/artifacts/keha-lv-<sha>.zip
+./scripts/rollback.sh <sha>        # deploy that artifact, then poll /healthz
+git add deploy/artifacts && git commit -m "Release <sha>"
 ```
+
+`build_deploy_zip.sh` uses `git archive`, so the zip contains exactly the tracked
+`app/`, `requirements.txt` and `gunicorn.conf.py` of that commit — no `__pycache__`,
+no untracked files, and identical bytes on a rebuild. Oryx installs the
+requirements on the worker (`SCM_DO_BUILD_DURING_DEPLOYMENT=true`).
 
 `/home/data` is untouched by the deploy, so an in-progress demo keeps its hankkeet.
-Verify:
+
+## Backup and rollback
+
+**The released zip in `deploy/artifacts/` is the backup.** It is committed with the
+release, so a rollback needs no rebuild and no branch state — it is a deploy of a
+file that already exists in the repo:
 
 ```bash
-curl -s https://keha-lv-web.azurewebsites.net/healthz
-curl -s -o /dev/null -w '%{http_code}\n' https://keha-lv-web.azurewebsites.net/admin/criteria
+./scripts/rollback.sh                 # list artifacts
+./scripts/rollback.sh 75000d5a9d02    # roll back to that release
 ```
+
+Rollback swaps code only. Demo state lives in `/home/data`, which survives the
+deploy, so rolling back mid-demo does not cost the hankkeet you already built.
+
+The manifest — which artifact belongs to which commit and when it was deployed — is
+[`deploy/artifacts/RELEASES.md`](../deploy/artifacts/RELEASES.md); update it with
+every release. Each artifact is ~470 KB.
+
+Anything not committed as an artifact is not a backup: a git tag plus a rebuild is
+only equivalent if the build is reproducible, which is exactly what the script
+guarantees and a hand-rolled `zip -r` does not.
 
 The GitHub workflow `deploy-ecdx.yml` still describes the old Container Apps
 release (ACR build + `containerapp update`) and cannot run: the workflow file is
