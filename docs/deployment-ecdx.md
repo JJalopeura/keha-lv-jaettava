@@ -14,7 +14,7 @@ custom domains are not part of F1.
 |---|---|
 | Subscription | `tieto-ecdx-proto-001` (`f65d2df4-565a-4689-8453-2461622ddcf0`) |
 | Resource group | `rg-hackathon-ecdx-proto-sdc-001` |
-| Plan | `keha-lv-plan` — Linux, **F1 (free)**, 1 instance |
+| Plan | `keha-lv-plan` — Linux, **B1 (Basic)**, 1 instance, Always On |
 | Web app | `keha-lv-web`, `PYTHON\|3.12`, startup `gunicorn --config gunicorn.conf.py app.main:app` |
 | Persistent state | `/home/data` (`KEHA_LV_DATA_DIR`), survives restarts and deploys |
 | AI | `foundry-ecdx-cs-proto` — core `DeepSeek-V4-Flash`, chat `gpt-6-luna` |
@@ -36,21 +36,25 @@ The previous Container Apps deployment kept state in `/tmp`, which is why every
 deploy — and later scale-to-zero — wiped the demo. That deployment was deleted on
 2026-11-09 for exactly that reason.
 
-## Free-tier limits to know
+## Plan limits to know
 
-- **60 CPU-minutes per day** across the app. Text extraction from a large PDF
-  package is the expensive part; a normal Ren-Gas run is a few minutes of it.
-  When the quota is exhausted the site returns 503 until the daily reset.
-- **1 GB disk** shared with the deployment. A single demo package is ~100 MB, so
-  one or two packages fit comfortably; prune `/home/data/uploads` if it fills.
-- **No Always On** — first request after ~20 minutes idle pays a cold start
-  (worker boot + gunicorn). Data is unaffected.
-- **1 instance** — SQLite is single-writer and AI jobs run in-process threads, so
-  this is not a limitation in practice; scale out only after moving off SQLite.
+The plan started on **F1 (free)** and was raised to **B1** after the end-to-end run,
+because the free tier's two constraints both bite during a demo:
 
-If the quota becomes a nuisance before teardown, `az appservice plan update -g
-rg-hackathon-ecdx-proto-sdc-001 -n keha-lv-plan --sku B1` (≈ €12/month) removes the
-daily CPU cap without changing anything else.
+- **60 CPU-minutes per day** on F1. A single Ren-Gas run — 44 MB of PDFs through
+  text extraction, classification and a full check — is a large slice of that, and
+  exhausting it returns 503 until the daily reset. B1 has no daily CPU cap.
+- **No Always On** on F1: the site unloaded after ~20 minutes idle, so the first
+  click of a demo paid a cold start. B1 allows Always On, which is now enabled:
+  measured warm latency is 0.14–0.30 s for `/healthz`.
+- **1 instance** on both tiers. SQLite is single-writer and AI jobs run in-process
+  threads, so this is not a limitation; scale out only after moving off SQLite.
+- **1 GB disk** on F1 (larger on B1). A demo package is ~100 MB; prune
+  `/home/data/uploads` if it ever fills.
+
+B1 costs roughly €12/month. Going back to free is one command:
+`az appservice plan update -g rg-hackathon-ecdx-proto-sdc-001 -n keha-lv-plan --sku F1`
+(and `--always-on false`, since F1 rejects Always On).
 
 ## Configuration
 
