@@ -1,42 +1,47 @@
-# Build and deploy KEHA LV to the ECDX Container Apps environment.
+# Build the release artifact, deploy it to App Service, and keep the artifact in the repo.
 #
-# Target (created 2026-11-09, see docs/deployment-ecdx.md):
-#   container app: keha-lv          rg-hackathon-ecdx-proto-sdc-001
-#   environment:   luvn-finbert-svc-env   (external ingress, public HTTPS)
-#   registry:      caed29c7d480acr.azurecr.io/keha-lv
+# Target (migrated 2026-11-09, see docs/deployment-ecdx.md):
+#   plan:    keha-lv-plan      (Linux, F1)
+#   web app: keha-lv-web       (python 3.12, code deploy, /home/data is durable)
 #
-# This workflow only changes the image. Environment variables and secrets are
-# set on the container app itself (docs/deployment-ecdx.md), so a deploy can
-# never overwrite the Foundry key or the session secret.
+# Auth: GitHub OIDC -> Entra app `keha-lv-deploy` (no stored cloud secret). It holds
+# Website Contributor on this one web app and nothing else.
 #
-# Auth: GitHub OIDC -> Entra app `keha-lv-deploy` (no stored cloud secret).
-# It holds Contributor on the ACR (server-side `az acr build`) and
-# Container Apps Contributor on this one container app, nothing else.
+# The artifact is the backup: the same zip is deployed and committed, so a rollback
+# is scripts/rollback.sh <sha> against a file that already exists in the repo.
 
-name: Deploy KEHA LV to ECDX
+name: Deploy KEHA LV to App Service
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
+      - polishing
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
+
+concurrency:
+  group: deploy-keha-lv
+  cancel-in-progress: false
 
 env:
-  ACR_NAME: caed29c7d480acr
-  ACR_LOGIN_SERVER: caed29c7d480acr.azurecr.io
-  IMAGE_NAME: keha-lv
   RESOURCE_GROUP: rg-hackathon-ecdx-proto-sdc-001
-  APP_NAME: keha-lv
+  APP_NAME: keha-lv-web
+  HOST: https://keha-lv-web.azurewebsites.net
 
 jobs:
   deploy:
+    # The artifact commit at the end of this job must not start another deploy.
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # git archive needs the commit that produced this tree, not a shallow clone.
+          fetch-depth: 0
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
@@ -45,42 +50,46 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push the image in ACR
+      - name: Build the release artifact
         run: |
           set -euo pipefail
-          TAG="${GITHUB_SHA::12}"
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
-          az acr build \
-            --registry "$ACR_NAME" \
-            --image "$IMAGE_NAME:$TAG" \
-            --file Dockerfile \
-            .
+          chmod +x scripts/build_deploy_zip.sh scripts/rollback.sh
+          ./scripts/build_deploy_zip.sh
+          ARTIFACT="$(ls deploy/artifacts/keha-lv-*.zip | tail -1)"
+          echo "ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
 
-      - name: Point the container app at the new image
+      - name: Deploy to App Service
         run: |
           set -euo pipefail
-          az containerapp update \
-            --name "$APP_NAME" \
+          az webapp deploy \
             --resource-group "$RESOURCE_GROUP" \
-            --image "$ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG"
+            --name "$APP_NAME" \
+            --src-path "$ARTIFACT" \
+            --type zip
 
       - name: Wait for /healthz
         run: |
           set -euo pipefail
-          FQDN=$(az containerapp show \
-            --name "$APP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query properties.configuration.ingress.fqdn -o tsv)
-          echo "Target: https://$FQDN"
-          for attempt in $(seq 1 24); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$FQDN/healthz" || true)
-            if [ "$code" = "200" ]; then
-              curl -s "https://$FQDN/healthz"
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$HOST/healthz"; then
               echo
               echo "Healthy after $((attempt * 10))s"
               exit 0
             fi
             sleep 10
           done
-          echo "Health check did not pass; inspect: az containerapp logs show -n $APP_NAME -g $RESOURCE_GROUP --tail 100"
+          echo "Health check did not pass; inspect: az webapp log tail -g $RESOURCE_GROUP -n $APP_NAME" >&2
           exit 1
+
+      - name: Commit the artifact (backup / rollback point)
+        run: |
+          set -euo pipefail
+          if git status --porcelain deploy/artifacts | grep -q .; then
+            git config user.name "keha-lv deploy"
+            git config user.email "keha-lv-deploy@users.noreply.github.com"
+            git add deploy/artifacts
+            git commit -m "Release ${GITHUB_SHA:0:12} artifact [skip ci]"
+            git push
+          else
+            echo "artifact already committed"
+          fi

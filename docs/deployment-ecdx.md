@@ -118,10 +118,18 @@ Anything not committed as an artifact is not a backup: a git tag plus a rebuild 
 only equivalent if the build is reproducible, which is exactly what the script
 guarantees and a hand-rolled `zip -r` does not.
 
-The GitHub workflow `deploy-ecdx.yml` still describes the old Container Apps
-release (ACR build + `containerapp update`) and cannot run: the workflow file is
-not on the `main` branch, and its target resources no longer exist. Use the two
-commands above until it is rewritten for App Service.
+Publishing from the repo works again: `.github/workflows/deploy-ecdx.yml` builds
+the artifact, deploys it with `az webapp deploy`, waits for `/healthz`, and commits
+the artifact with `[skip ci]` so the release point lands in the repo. It runs on
+pushes to `main` and `polishing`, and on manual dispatch — with one caveat that
+applies to `workflow_dispatch`: GitHub resolves a workflow by name from the
+**default branch**, and `main` is still an old tree that does not contain this
+file, so manual dispatch returns HTTP 404 until `main` carries it. Until then, a
+push to `polishing` (or the three commands above) is the way in.
+
+Auth is OIDC to the Entra app `keha-lv-deploy` (federated credentials exist for
+both `main` and `polishing`), which holds **Website Contributor on this web app
+only** — no subscription-wide rights, no stored secret.
 
 ## Inspecting and operating
 
