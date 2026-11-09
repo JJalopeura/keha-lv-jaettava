@@ -32,30 +32,49 @@ trap cleanup EXIT
 
 echo "enabling SCM basic auth for the reset"
 set_scm_auth true
-sleep 5
+sleep 6
 
 CREDS="$(az webapp deployment list-publishing-credentials -g "$RG" -n "$APP" \
   --query "{u:publishingUserName,p:publishingPassword}" -o tsv)"
 USER="$(echo "$CREDS" | cut -f1)"
 PASS="$(echo "$CREDS" | cut -f2)"
-KUDU="https://${APP}.scm.azurewebsites.net/api/vfs/home/data"
+# Kudu's VFS is rooted at /home, so /home/data is /api/vfs/data — not
+# /api/vfs/home/data, which 404s and looks like "the file is not there".
+KUDU="https://${APP}.scm.azurewebsites.net/api/vfs/data"
 
-for f in keha_lv.db keha_lv.db-wal keha_lv.db-shm; do
-  code="$(curl -s -o /dev/null -w '%{http_code}' -u "$USER:$PASS" -X DELETE "$KUDU/$f")"
-  echo "  delete $f -> $code"
-done
+# Stop first. Deleting the SQLite file under a running worker is not safe: the VFS
+# DELETE answers 409 while the app holds the file, and forcing it through Kudu's
+# command API leaves a 4 KB database behind that has no tables — every request then
+# fails with "no such table: customers" until the file is recreated from scratch.
+echo "stopping ${APP}"
+az webapp stop -g "$RG" -n "$APP" -o none
+sleep 10
+
+echo "  removing the database"
+curl -s -u "$USER:$PASS" -H "Content-Type: application/json" -X POST \
+  "https://${APP}.scm.azurewebsites.net/api/command" \
+  -d '{"command":"rm -f /home/data/keha_lv.db /home/data/keha_lv.db-wal /home/data/keha_lv.db-shm","dir":"/home"}' \
+  | grep -q '"ExitCode":0' || { echo "  rm failed" >&2; exit 1; }
 
 code="$(curl -s -o /dev/null -w '%{http_code}' -u "$USER:$PASS" -X DELETE "$KUDU/uploads/?recursive=true")"
 echo "  delete uploads/ -> $code"
 
-echo "restarting ${APP}"
-az webapp restart -g "$RG" -n "$APP" -o none
+echo "starting ${APP}"
+az webapp start -g "$RG" -n "$APP" -o none
 
 echo -n "waiting for ${HOST}/healthz "
 for _ in $(seq 1 30); do
   if curl -fsS --max-time 10 "${HOST}/healthz" >/dev/null 2>&1; then
     echo "ok"
     curl -s --max-time 10 "${HOST}/healthz"; echo
+    page="$(curl -s -o /dev/null -w '%{http_code}' -L --max-time 40 "$HOST/")"
+    echo "login page: $page"
+    if [ "$page" != "200" ]; then
+      echo "the app is up but /login returned $page — the database did not come back clean" >&2
+      exit 1
+    fi
+    echo "state after reset (still authenticated, before the policy is restored):"
+    curl -s -u "$USER:$PASS" "$KUDU/" | python3 -c "import json,sys; [print('  ', i['name'], i.get('size', '')) for i in json.load(sys.stdin)]" 2>/dev/null || true
     exit 0
   fi
   echo -n "."

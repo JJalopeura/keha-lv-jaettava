@@ -144,6 +144,30 @@ The log stream is the only log sink — with Log Analytics gone there is no
 workspace to query, which is the trade that removed the Container Apps
 environment.
 
+## Resetting the demo state
+
+The database is durable now, which is the point — and it also means test cases
+accumulate. Reset it with:
+
+```bash
+./scripts/reset_demo_state.sh
+```
+
+It stops the site, deletes `/home/data/keha_lv.db` (and WAL/SHM) plus
+`/home/data/uploads`, starts the site, then checks `/healthz` **and** `/login` before
+reporting success. The app recreates the schema and the three-account roster on
+start.
+
+The stop matters. Deleting the database under a running worker leaves a 4 KB file
+with no tables behind, and every request then fails with
+`sqlite3.OperationalError: no such table: customers` until it is recreated — that is
+the failure mode the script's stop/start order and its `/login` check exist to
+prevent.
+
+The script needs Kudu (SCM) basic auth, which is `allow: false` on this app by
+policy, so it flips `basicPublishingCredentialsPolicies/scm` on for the duration and
+restores it on exit — including on failure.
+
 ## Removing it
 
 ```bash
