@@ -24,9 +24,12 @@ os.environ.setdefault("KEHA_LV_DB_PATH", os.path.join(tempfile.mkdtemp(prefix="k
 
 from app.domains.lupademo.services import Issue  # noqa: E402
 import json  # noqa: E402
+from unittest import mock  # noqa: E402
 
+from app.domains.lupademo.services import application as application_module  # noqa: E402
 from app.domains.lupademo.services.application import (  # noqa: E402
     CRITERIA_BATCH_SIZE,
+    assess_criteria_in_batches,
     _batch_prompt_values,
     _criteria_batches,
     _derive_check_verdict,
@@ -181,3 +184,55 @@ class CriteriaBatchingTest(unittest.TestCase):
         self.assertLess(len(json.loads(values["retrieved_context"])["excerpts"][0]["text"]), 20000)
         self.assertEqual(values["form_data"], '{"a": "b"}', "other prompt values must pass through")
         self.assertEqual(json.loads(base_values["criteria"])["rules"], [{"id": "r1"}, {"id": "r2"}])
+
+
+class CriteriaBatchSplitTest(unittest.TestCase):
+    """A batch that comes back empty must be split, not lost.
+
+    This is the structural version of the 4096-token bug: batching gives ~67% headroom
+    measured live, but if the model ever writes longer rationales than the cap allows,
+    the lane should spend an extra call rather than drop those verdicts.
+    """
+
+    def _criteria(self, n=7):
+        return {"rules": [{"id": f"r{i}", "severity": "minor"} for i in range(n)]}
+
+    def test_empty_batch_is_retried_as_halves(self):
+        calls = []
+
+        def fake(batch_rules, **_kwargs):
+            ids = [r["id"] for r in batch_rules]
+            calls.append(ids)
+            if len(batch_rules) > 3:
+                return []  # simulates a truncated answer for this batch
+            return [{"criteria_id": r["id"], "status": "green"} for r in batch_rules]
+
+        criteria = self._criteria(7)
+        with mock.patch.object(application_module, "_assess_one_criteria_batch", side_effect=lambda *a, **kw: fake(a[5], **kw)):
+            results, notes = assess_criteria_in_batches(None, None, "case", {}, criteria)
+
+        self.assertEqual(len(results), 7, "every rule must survive the split")
+        self.assertTrue(any(n.startswith("SPLIT") for n in notes), notes)
+        self.assertFalse(any(n.startswith("INCOMPLETE") for n in notes), notes)
+        self.assertGreater(len(calls), 1)
+
+    def test_single_rule_batch_that_stays_empty_is_reported(self):
+        def fake(batch_rules, **_kwargs):
+            return []
+
+        criteria = self._criteria(1)
+        with mock.patch.object(application_module, "_assess_one_criteria_batch", side_effect=lambda *a, **kw: fake(a[5], **kw)):
+            results, notes = assess_criteria_in_batches(None, None, "case", {}, criteria)
+
+        self.assertEqual(results, [])
+        self.assertTrue(any(n.startswith("INCOMPLETE") for n in notes), notes)
+
+    def test_duplicate_ids_across_batches_are_merged_once(self):
+        def fake(batch_rules, **_kwargs):
+            return [{"criteria_id": "r0", "status": "green"}]
+
+        criteria = self._criteria(3)
+        with mock.patch.object(application_module, "_assess_one_criteria_batch", side_effect=lambda *a, **kw: fake(a[5], **kw)):
+            results, _ = assess_criteria_in_batches(None, None, "case", {}, criteria)
+
+        self.assertEqual(len(results), 1)

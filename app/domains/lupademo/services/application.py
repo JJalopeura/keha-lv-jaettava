@@ -1951,6 +1951,40 @@ def _batch_prompt_values(
     return values
 
 
+def _assess_one_criteria_batch(
+    db: Any,
+    settings: Any,
+    case_id: str,
+    base_values: dict[str, Any],
+    criteria: dict[str, Any],
+    batch_rules: list[dict[str, Any]],
+    *,
+    vector_ids: list[str] | None = None,
+    task_id: str | None = None,
+    reasoning_effort: str = "low",
+) -> list[dict[str, Any]]:
+    """One assessor call for one set of rules. Returns whatever parsed, possibly nothing."""
+    batch_criteria = {**(criteria or {}), "rules": batch_rules}
+    response = run_json_agent(
+        db,
+        settings,
+        case_id,
+        "criteria_assessor",
+        _batch_prompt_values(base_values, batch_criteria),
+        CriteriaAssessmentResponse,
+        vector_ids=vector_ids,
+        fallback={"criteria_results": []},
+        max_output_tokens=8000,
+        reasoning_effort=reasoning_effort,
+        task_id=task_id or None,
+    )
+    if isinstance(response, CriteriaAssessmentResponse):
+        return _plain(response.criteria_results)
+    if isinstance(response, dict):
+        return response.get("criteria_results") or []
+    return []
+
+
 def assess_criteria_in_batches(
     db: Any,
     settings: Any,
@@ -1961,42 +1995,28 @@ def assess_criteria_in_batches(
     vector_ids: list[str] | None = None,
     task_id: str | None = None,
     reasoning_effort: str = "low",
+    max_split_depth: int = 2,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Run the criteria assessor once per batch of rules and merge the verdicts.
+    """Run the criteria assessor in batches, splitting a batch that comes back empty.
 
-    Returns (results, notes). Results are de-duplicated by `criteria_id`; a batch that
-    comes back empty is recorded as incomplete rather than silently shrinking the verdict.
+    The deployment caps output at 4096 tokens regardless of `max_output_tokens` (measured:
+    a 19-rule call answered exactly 4096 and reported `incomplete`), so the batch size is
+    chosen for headroom rather than correctness. A batch that still returns nothing is
+    retried as two halves — verbosity then costs an extra call instead of a whole batch of
+    verdicts — and only a leaf that stays empty is recorded as INCOMPLETE.
+
+    Results are de-duplicated by `criteria_id`; returns (results, notes).
     """
     rules = [rule for rule in (criteria or {}).get("rules", []) if isinstance(rule, dict)]
     if not rules:
         return [], []
-    batches = _criteria_batches(rules)
     merged: list[dict[str, Any]] = []
     seen: set[str] = set()
     notes: list[str] = []
-    for index, batch_rules in enumerate(batches, start=1):
-        batch_criteria = {**(criteria or {}), "rules": batch_rules}
-        response = run_json_agent(
-            db,
-            settings,
-            case_id,
-            "criteria_assessor",
-            _batch_prompt_values(base_values, batch_criteria),
-            CriteriaAssessmentResponse,
-            vector_ids=vector_ids,
-            fallback={"criteria_results": []},
-            max_output_tokens=8000,
-            reasoning_effort=reasoning_effort,
-            task_id=task_id or None,
-        )
-        if isinstance(response, CriteriaAssessmentResponse):
-            batch_results = _plain(response.criteria_results)
-        elif isinstance(response, dict):
-            batch_results = response.get("criteria_results") or []
-        else:
-            batch_results = []
+
+    def collect(results: list[dict[str, Any]]) -> int:
         added = 0
-        for result in batch_results:
+        for result in results:
             if not isinstance(result, dict):
                 continue
             criteria_id = str(result.get("criteria_id") or "")
@@ -2006,10 +2026,37 @@ def assess_criteria_in_batches(
                 seen.add(criteria_id)
             merged.append(result)
             added += 1
-        if not added:
+        return added
+
+    def assess(batch_rules: list[dict[str, Any]], depth: int) -> None:
+        results = _assess_one_criteria_batch(
+            db,
+            settings,
+            case_id,
+            base_values,
+            criteria,
+            batch_rules,
+            vector_ids=vector_ids,
+            task_id=task_id,
+            reasoning_effort=reasoning_effort,
+        )
+        if collect(results):
+            return
+        if len(batch_rules) > 1 and depth < max_split_depth:
+            middle = len(batch_rules) // 2
             notes.append(
-                f"INCOMPLETE: criteria batch {index}/{len(batches)} returned no usable results"
+                f"SPLIT: a criteria batch of {len(batch_rules)} returned nothing; "
+                f"retried as halves (depth {depth + 1})"
             )
+            assess(batch_rules[:middle], depth + 1)
+            assess(batch_rules[middle:], depth + 1)
+            return
+        notes.append(
+            f"INCOMPLETE: criteria batch returned no usable results for {len(batch_rules)} rule(s)"
+        )
+
+    for batch_rules in _criteria_batches(rules):
+        assess(batch_rules, 0)
     return merged, notes
 
 
