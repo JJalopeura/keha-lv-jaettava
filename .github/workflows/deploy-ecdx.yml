@@ -87,6 +87,10 @@ jobs:
       - name: Commit the artifact (backup / rollback point)
         run: |
           set -euo pipefail
+          # Append-only machine index; the human table in RELEASES.md is edited by hand
+          # for releases worth naming.
+          printf '%s\t%s\t%s\n' "$(basename "$ARTIFACT")" "${GITHUB_SHA:0:12}" "$(date -u +%Y-%m-%dT%H:%MZ)" >> deploy/artifacts/index.txt
+          sort -u -o deploy/artifacts/index.txt deploy/artifacts/index.txt
           if git status --porcelain deploy/artifacts | grep -q .; then
             git config user.name "keha-lv deploy"
             git config user.email "keha-lv-deploy@users.noreply.github.com"

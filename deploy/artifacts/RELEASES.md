@@ -21,6 +21,12 @@ The script deploys the zip, then polls `/healthz` until the site answers. State 
 `/home/data` is untouched by a deploy, so a rollback does not cost the current
 demo data — only the code version changes.
 
+## Machine index
+
+`deploy/artifacts/index.txt` is append-only and written by CI on every release
+(`artifact<TAB>commit<TAB>deployed-at`). The table above is the human record for
+releases worth naming; the index is the one that never lies about what exists.
+
 ## Adding a release
 
 ```bash
