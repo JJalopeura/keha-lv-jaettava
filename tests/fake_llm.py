@@ -1,24 +1,31 @@
+"""Deterministic LLM test double used only by the unit test suite.
+
+This is deliberately NOT part of the application: the app has no offline or
+mock provider and always calls Azure AI Foundry. Tests install this client by
+monkeypatching `app.infra.llm_factory.create_llm_client` (see `install()` at the
+bottom of this file), so production code never imports it.
+"""
+
 from __future__ import annotations
 
 import json
-import re
 import random
+import re
 from typing import Any, Dict, Optional
 import uuid
 
 
-
-class MockLLMClient:
-    model = "mock"
+class FakeLLMClient:
+    model = "fake"
 
     def create_vector_store(self, name: str) -> str:
-        return f"vs_mock_{uuid.uuid4().hex}"
+        return f"vs_fake_{uuid.uuid4().hex}"
 
     def upload_file_from_path(self, path: str) -> tuple[str, str]:
-        return (f"upload_mock_{uuid.uuid4().hex}", f"file_mock_{uuid.uuid4().hex}")
+        return (f"upload_fake_{uuid.uuid4().hex}", f"file_fake_{uuid.uuid4().hex}")
 
     def attach_file_to_vector_store(self, vector_store_id: str, file_id: str) -> str:
-        return f"vs_file_mock_{uuid.uuid4().hex}"
+        return f"vs_file_fake_{uuid.uuid4().hex}"
 
     def wait_vector_store_file_completed(self, vector_store_id: str, vs_file_id: str) -> None:
         pass
@@ -26,7 +33,7 @@ class MockLLMClient:
     def _seed(self, text: str) -> int:
         return random.Random(text or "").randint(0, 0xFFFFFFFF)
     def _response_id(self, input_text: str) -> str:
-        return f"mock-{self._seed(input_text):08x}"
+        return f"fake-{self._seed(input_text):08x}"
 
     def _mock_json(self, input_text: str) -> Dict[str, Any]:
         low = (input_text or "").lower()
@@ -35,7 +42,7 @@ class MockLLMClient:
         if "lupahakemuksen kenttäkohtainen ai-avustaja" in low:
             field_id = self._extract_first(r'"field_id"\s*:\s*"([^"]+)"', input_text) or self._extract_first(r'"id"\s*:\s*"([^"]+)"', input_text) or "project_description"
             return {
-                "request_id": f"mock-{seed:08x}",
+                "request_id": f"fake-{seed:08x}",
                 "criteria_version": "mock-criteria-v1",
                 "suggestions": [self._lupademo_suggestion(field_id, seed)],
                 "warnings": [],
@@ -44,7 +51,7 @@ class MockLLMClient:
         if "lupahakemuksen lomakekenttien esitäyttöön erikoistunut ai-avustaja" in low:
             field_ids = self._extract_all(r'"id"\s*:\s*"([^"]+)"', input_text)[:5] or ["project_description"]
             return {
-                "request_id": f"mock-{seed:08x}",
+                "request_id": f"fake-{seed:08x}",
                 "criteria_version": "mock-criteria-v1",
                 "suggestions": [self._lupademo_suggestion(field_id, seed + i) for i, field_id in enumerate(dict.fromkeys(field_ids))],
                 "warnings": [],
@@ -190,7 +197,15 @@ class MockLLMClient:
 
         if "epärakenteisen lupahakemustiedon rakenteistaja" in low:
             source_match = self._extract_first(r'"source_text"\s*:\s*"((?:\\.|[^"\\])*)"', input_text)
-            source_text = source_match or ""
+            # The real agent prompt embeds source documents raw after a
+            # `[Dokumentti: <filename>]` marker rather than as JSON. Only that
+            # section counts as evidence; the prompt's own instructions contain
+            # domain words and must not be read as source content.
+            if source_match:
+                source_text = source_match
+            else:
+                marker = input_text.find("[Dokumentti:")
+                source_text = input_text[marker:] if marker != -1 else ""
             source_id = self._extract_first(r'"source_id"\s*:\s*"([^"]+)"', input_text) or "source_text"
             evidence_terms = [
                 "rakennus",
@@ -205,9 +220,9 @@ class MockLLMClient:
                 "project_description",
             ]
             if not any(term in source_text.lower() for term in evidence_terms):
-                return {"request_id": f"mock-{seed:08x}", "extracted_fields": []}
+                return {"request_id": f"fake-{seed:08x}", "extracted_fields": []}
             return {
-                "request_id": f"mock-{seed:08x}",
+                "request_id": f"fake-{seed:08x}",
                 "extracted_fields": [
                     {
                         "field_id": "project_description" if "project_description" in low else "activity_description",
@@ -473,7 +488,7 @@ class MockLLMClient:
                 "En muuta lomakkeen tietoja automaattisesti; ehdotukset pitää hyväksyä erikseen."
             )
 
-        return f"[Demo mode] Realistic mock response.\n\nPrompt preview:\n{preview}"
+        return f"[Fake LLM] Deterministic test response.\n\nPrompt preview:\n{preview}"
 
     def responses(
         self,
@@ -504,3 +519,33 @@ class MockLLMClient:
         text = self._mock_text(input_text or "")
         for i in range(0, len(text), 3):
             yield text[i:i+3]
+
+
+# ---------------------------------------------------------------------------
+# Test wiring
+#
+# Production code always reaches Azure through `create_llm_client`. The suite
+# swaps that one function for the fake here, including the modules that bound
+# it by name at import time.
+# ---------------------------------------------------------------------------
+
+#: Modules that do `from app.infra.llm_factory import create_llm_client`.
+_BOUND_CALL_SITES = (
+    "app.domains.lupademo.routes.applicant",
+    "app.domains.lupademo.services.intake",
+    "app.domains.lupademo.services.application",
+)
+
+
+def install_fake_llm() -> None:
+    """Route every AI call in this process to FakeLLMClient."""
+    import importlib
+
+    def _factory(settings, **_kwargs):
+        return FakeLLMClient()
+
+    # Only the application call sites are swapped. `app.infra.llm_factory` keeps
+    # its real implementation so provider-configuration tests stay meaningful.
+    for module_name in _BOUND_CALL_SITES:
+        module = importlib.import_module(module_name)
+        module.create_llm_client = _factory  # type: ignore[attr-defined]

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import os
+import sys
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 os.environ["KEHA_LV_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="keha-customer-"), "test.db")
 os.environ["KEHA_LV_UPLOADS_DIR"] = tempfile.mkdtemp(prefix="keha-customer-uploads-")
 
@@ -17,16 +17,22 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.domains.lupademo.routes import create_lupademo_router  # noqa: E402
 from app.domains.lupademo.services import artifact_json, find_material_package, save_artifact  # noqa: E402
-from app.domains.lupademo.services.customer_workspace import ensure_customer_demo_data  # noqa: E402
+from app.domains.lupademo.services.customer_workspace import ensure_customer_accounts  # noqa: E402
 from app.infra.config import load_settings  # noqa: E402
 from app.infra.db import DB  # noqa: E402
 from app.infra.session import DemoSessionMiddleware  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fake_llm import install_fake_llm  # noqa: E402
+
+install_fake_llm()
+
 
 
 settings = load_settings()
 Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
 db = DB(settings.db_path)
-ensure_customer_demo_data(db)
+ensure_customer_accounts(db)
 app = FastAPI(title="KEHA LV customer workspace tests")
 app.add_middleware(
     DemoSessionMiddleware,
@@ -42,6 +48,16 @@ class CustomerWorkspace(unittest.TestCase):
     def setUp(self) -> None:
         client.post("/logout")
 
+    def _create_hanke(self, customer_id: str, name: str, permit_type: str = "environmental_industrial") -> str:
+        """Sign in as `customer_id` and create a hanke through the public route."""
+        client.post("/login", data={"customer_id": customer_id})
+        response = client.post(
+            "/projects/new",
+            data={"project_name": name, "permit_type": permit_type, "start_at": "lv_project"},
+        )
+        self.assertEqual(response.status_code, 303)
+        return response.headers["location"].rsplit("/", 1)[-1]
+
     def test_login_dashboard_logout_and_relogin(self) -> None:
         self.assertEqual(client.get("/").status_code, 303)
         self.assertEqual(client.post("/login", data={"customer_id": "ren-gas"}).status_code, 303)
@@ -52,23 +68,21 @@ class CustomerWorkspace(unittest.TestCase):
         self.assertIn("Hankkeet", dashboard.text)
         self.assertNotIn("Hallitse hankkeita ja jatka keskeneräisiä asiointeja", dashboard.text)
         self.assertNotIn("Tehtävät", dashboard.text)
+        # Live workspace: no pre-seeded hankkeet for any customer.
         self.assertNotIn("P2X:n vetylaitos", dashboard.text)
+        self.assertNotIn("Ren-Gas biokaasulaitos", dashboard.text)
         self.assertEqual(client.post("/logout").status_code, 303)
         self.assertEqual(client.post("/login", data={"customer_id": "ren-gas"}).status_code, 303)
-        self.assertIn("Ren-Gas biokaasulaitos", client.get("/").text)
+        self.assertIn("Ren-Gas Oy", client.get("/").text)
 
     def test_case_urls_are_customer_scoped(self) -> None:
+        other_case_id = self._create_hanke("p2x", "P2X:n oma hanke")
+        client.post("/logout")
         client.post("/login", data={"customer_id": "ren-gas"})
-        other_case_id = db.list_cases_for_customer("p2x")[0]["id"]
         self.assertEqual(client.get(f"/projects/{other_case_id}").status_code, 403)
 
     def test_hanke_page_prioritizes_applications_and_next_action(self) -> None:
-        client.post("/login", data={"customer_id": "ren-gas"})
-        case_id = next(
-            case["id"]
-            for case in db.list_cases_for_customer("ren-gas")
-            if "environmental_industrial" in artifact_json(db, case["id"], "lv_project", "main", {}).get("permits", [])
-        )
+        case_id = self._create_hanke("ren-gas", "Ren-Gas ympäristöhanke")
         page = client.get(f"/lv/projects/{case_id}")
         self.assertEqual(page.status_code, 200)
         self.assertIn('aria-label="Murupolku"', page.text)
@@ -81,24 +95,45 @@ class CustomerWorkspace(unittest.TestCase):
         self.assertNotIn("Hankkeen perustiedot", page.text)
         self.assertIn("Hankkeen tiedot", page.text)
 
-    def test_seeded_submitted_applications_are_visible_in_authority_queue(self) -> None:
+    def test_authority_queue_is_empty_without_submissions(self) -> None:
         response = client.get("/authority/queue")
 
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Ei hakemuksia valituilla rajauksilla", response.text)
+
+    def test_authority_queue_renders_submitted_application(self) -> None:
+        case_id = self._create_hanke("ren-gas", "Ren-Gas jono-hanke")
+        save_artifact(
+            db,
+            case_id,
+            "authority_queue",
+            "main",
+            {
+                "items": [
+                    {
+                        "application_id": "environmental_industrial",
+                        "application_title": "Ympäristölupa",
+                        "receipt_id": "LV-TEST-1",
+                        "applicant_name": "Ren-Gas Oy",
+                        "municipality": "Vantaa",
+                        "status": "käsittelyssä",
+                        "submitted_at": "2026-01-01 10:00:00",
+                        "quality_score": 80,
+                        "open_issue_count": 0,
+                        "info_request_risk": "matala",
+                        "permit_type": "environmental_industrial",
+                        "processing_stage": "vastaanotettu",
+                        "sla_due_at": "2026-02-01",
+                        "urgency": "normaali",
+                    }
+                ]
+            },
+        )
+
+        response = client.get("/authority/queue")
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("Ei hakemuksia valituilla rajauksilla", response.text)
-        self.assertEqual(response.text.count('class="row-action'), 3)
-
-    def test_existing_seeded_submissions_rebuild_missing_queue_items(self) -> None:
-        for case in db.list_cases():
-            project = artifact_json(db, case["id"], "lv_project", "main", {})
-            if project.get("seeded_customer_workspace"):
-                save_artifact(db, case["id"], "authority_queue", "main", {"items": []})
-
-        ensure_customer_demo_data(db)
-
-        response = client.get("/authority/queue")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.text.count('class="row-action'), 3)
+        self.assertEqual(response.text.count('class="row-action'), 1)
 
     def test_package_upload_does_not_create_another_hanke(self) -> None:
         """Kevytasiointi (Polku 2): LV-side entry creates a real hanke directly."""
@@ -211,7 +246,8 @@ class CustomerWorkspace(unittest.TestCase):
 
     def test_anonymous_admin_mutation_is_forbidden(self) -> None:
         """F28: case-scoped criteria mutations require the owning customer's session."""
-        other_case_id = db.list_cases_for_customer("p2x")[0]["id"]
+        other_case_id = self._create_hanke("p2x", "P2X:n kriteerihanke")
+        client.post("/logout")
         response = client.post(
             f"/cases/{other_case_id}/lupademo/admin/criteria/rule",
             data={
@@ -227,8 +263,7 @@ class CustomerWorkspace(unittest.TestCase):
 
     def test_owner_can_post_admin_criteria_rule(self) -> None:
         """F28 positive case: logged-in owner can still mutate their case's criteria."""
-        client.post("/login", data={"customer_id": "p2x"})
-        own_case_id = db.list_cases_for_customer("p2x")[0]["id"]
+        own_case_id = self._create_hanke("p2x", "P2X:n saantohanke")
         response = client.post(
             f"/cases/{own_case_id}/lupademo/admin/criteria/rule",
             data={

@@ -1,6 +1,6 @@
 """Re-exports so existing `import ... services as svc; svc.xxx(...)` call sites
-keep working unchanged after the Phase 2 split into core/jobs/intake/application.
-See /workspace/plan.md Phase 2.
+keep working unchanged after the split into core/jobs/intake/application.
+See AGENTS.md for the module map.
 
 `__all__` below documents the public API surface of the `svc` package. It is
 curated (not exhaustive) — it lists the primary entry points an agent or caller
@@ -160,7 +160,6 @@ __all__ = [
     "agent_chain_audit",
     "run_agent_chain_audit",
     "readiness_snapshot",
-    "ingest_source_materials",
     "submit_application",
     "caseworker_observation_panel",
     "update_caseworker_observation_status",

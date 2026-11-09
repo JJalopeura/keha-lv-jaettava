@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -15,6 +16,45 @@ from .azure_client import _build_responses_payload
 # Azure deployment. Configure with KEHA_LV_LLM_MIN_INTERVAL_S (seconds).
 _llm_throttle_lock = threading.Lock()
 _llm_last_call_at = 0.0
+
+# Reasoning deployments (e.g. DeepSeek on Foundry) may emit a reasoning block
+# before the answer, sometimes closed by `</think>` and sometimes by a
+# full-width `<｜end▁of▁thinking｜>` marker. The answer is what follows the LAST
+# close marker; the reverse scan would otherwise pick up JSON examples that
+# appear inside the reasoning itself.
+_THINK_CLOSERS = (r"</think(?:ing)?>", r"<\uff5cend[^\uff5c]*\uff5c>")
+_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
+def _strip_reasoning(text: str) -> str:
+    cleaned = text or ""
+    for pattern in _THINK_CLOSERS:
+        matches = list(re.finditer(pattern, cleaned, re.IGNORECASE))
+        if matches:
+            cleaned = cleaned[matches[-1].end():]
+    return cleaned
+
+
+def extract_json_payload(text: str) -> Any | None:
+    """Best-effort structured extraction from a model reply. Returns None if absent."""
+    if not text:
+        return None
+    cleaned = _FENCE.sub("", _strip_reasoning(text).strip()).strip()
+    for candidate in (cleaned, text):
+        try:
+            return json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(cleaned):
+        if char not in "{[":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(cleaned[index:])
+            return payload
+        except json.JSONDecodeError:
+            continue
+    return None
 
 
 def _min_call_interval() -> float:
@@ -85,8 +125,12 @@ def call_llm_json(
     # Azure OpenAI requires the prompt to contain "json" when using json_object
     # response format. Append a JSON output instruction if not already present.
     normalized_prompt = prompt if prompt else ""
-    if "json" not in normalized_prompt.lower():
-        normalized_prompt = f"{normalized_prompt}\n\nReturn the result as a JSON object."
+    # Be explicit every time: some deployments ignore `text.format` and will
+    # otherwise answer in prose. A trailing instruction is cheap and idempotent.
+    normalized_prompt = (
+        f"{normalized_prompt}\n\nReturn only one valid JSON object. "
+        "No prose, no explanations and no markdown code fences."
+    )
     payload = _build_responses_payload(
         client.model, input_text=normalized_prompt, vector_store_ids=vector_store_ids_list,
         response_format="json_object", max_output_tokens=max_output_tokens,
@@ -126,15 +170,14 @@ def call_llm_json(
                 if not retrying and incomplete:
                     continue
                 raise RuntimeError(err)
-            try:
-                result = json.loads(text)
+            result = extract_json_payload(text)
+            if result is not None:
                 err = None
                 return result
-            except json.JSONDecodeError as exc:
-                err = f"Failed to parse JSON output: {exc}. Raw: {text[:500]}"
-                if not retrying:
-                    continue
-                raise RuntimeError(err) from exc
+            err = f"Failed to parse JSON output: no JSON object found. Raw: {text[:500]}"
+            if not retrying:
+                continue
+            raise RuntimeError(err)
     except Exception as e:
         if err is None:
             err = str(e)

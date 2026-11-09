@@ -8,7 +8,7 @@ from .db_helpers import *  # noqa: F401,F403
 from .domain import *  # noqa: F401,F403
 
 # Ensure underscore-prefixed helpers survive the re-export chain.
-from .db_helpers import _dict, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, _real_llm_enabled_from_env
+from .db_helpers import _dict, _extraction_queue_item, _list, _plain
 
 from .db_helpers import artifact_json, event, save_artifact
 from .domain import COMMON_FIELDS, DEFAULT_COMMON_DATA, PERMIT_SCHEMAS, load_form_schema
@@ -79,18 +79,9 @@ def ensure_application(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     if app:
         return app
     common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})["data"]
+    # Live app: no pre-filled demo values. The form starts from common data and
+    # the AI fills the rest from uploaded material.
     form_data = {f["id"]: common.get(f["id"], "") for f in schema.get("fields", [])}
-    # Skip hardcoded demo defaults when real LLM is active and not in presenter mode.
-    project = artifact_json(db, case_id, "lv_project", "main", {})
-    presenter_mode = bool(project.get("presenter_mode"))
-    if not presenter_mode and _real_llm_enabled_from_env():
-        pass  # no hardcoded defaults — real AI fills suggestions
-    elif permit_type == "building_residential":
-        form_data.update({"intended_use": "Asuinrakennus", "floor_area_m2": "145", "distance_to_boundary_m": "4"})
-    elif permit_type == "environmental_industrial":
-        form_data.update({"activity_name": "Vihreän vedyn tuotantolaitos", "competent_authority": "Aluehallintovirasto"})
-    elif permit_type == "event_public":
-        form_data.update({"event_name": "Koivutien korttelijuhla", "expected_attendees": "250", "event_location": common.get("address", "")})
     app = {
         "application_id": permit_type,
         "permit_type": permit_type,

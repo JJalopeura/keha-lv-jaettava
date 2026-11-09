@@ -11,10 +11,10 @@ keha-lv-jaettava/
     infra/                          Infrastructure (no business logic)
       config.py                       Settings from env vars
       db.py                           SQLite: cases, files, artifacts, settings
-      llm_factory.py                  create_llm_client() → mock | Azure
-      llm_utils.py                    call_llm_json(), rate limiting
-      mock_llm.py                     Rule-based mock LLM (default, offline)
-      azure_client.py                 Azure OpenAI client
+      llm_factory.py                  create_llm_client() → Azure AI Foundry (raises if unconfigured)
+      llm_utils.py                    call_llm_json(), JSON extraction, rate limiting
+      azure_client.py                 Foundry Responses API client (capability-adaptive)
+      session.py                      DemoSessionMiddleware: signed browser session
     domains/lupademo/
       routes/                        HTTP handlers (thin — delegate to services)
         __init__.py                    create_lupademo_router()
@@ -27,15 +27,15 @@ keha-lv-jaettava/
                                         (finnish_datetime, FINDING_CATEGORY_LABELS,
                                         job_eta_seconds, RouteContext)
       services/                      Business logic (no HTTP)
-        domain.py                     Dataclasses, schemas, path constants, prompts (~350L)
-        db_helpers.py                 artifact_json, save_artifact, event (~80L)
-        core.py                       Case/app lifecycle, common-data sync (~250L)
-        criteria.py                   Permit criteria CRUD, history, rules (~180L)
-        jobs.py                       AI job lifecycle (~350L)
-        intake.py                     Attachments, ingestion, extraction, agents (~1860L)
-        customer_workspace.py         Customer workspace: login fixtures, package-case mapping (~410L)
+        domain.py                     Dataclasses, schemas, path constants, prompts
+        db_helpers.py                 artifact_json, save_artifact, event
+        core.py                       Case/app lifecycle, common-data sync
+        criteria.py                   Permit criteria CRUD, history, rules
+        jobs.py                       AI job lifecycle
+        intake.py                     Attachments, ingestion, extraction, agents
+        customer_workspace.py         Customer workspace: login fixtures, package-case mapping
         application.py                Suggestions, checks, packaging, authority, chat,
-                                      metrics, external API (~4470L)
+                                      metrics, external API
         __init__.py                   Re-exports — `import services as svc` works
       templates/                     31 Jinja2 HTML templates
       static/                        CSS + fonts
@@ -51,7 +51,7 @@ keha-lv-jaettava/
     product-architecture.md        Product design — user journeys, principles
     archive/                       Historical / design-phase artifacts
       v5-specs/                      Early design sketches (domain, roles, UI, workflow, contracts)
-  tests/                            Smoke tests (mock LLM, temp DB)
+  tests/                            Unit tests (tests/fake_llm.py test double, temp DB)
   testiaineisto/                    Test materials (sample zip uploads, gitignored)
   graphify-out/                     Dependency graph analysis artifacts (gitignored)
 ```
@@ -70,6 +70,7 @@ graph TD
 
     subgraph "Services (business logic)"
         application["application.py<br/>suggestions, checks, packaging,<br/>authority, chat, metrics, API"]
+        cw["customer_workspace.py<br/>login fixtures, demo seeding"]
         criteria["criteria.py<br/>permit criteria CRUD"]
         intake["intake.py<br/>attachments, ingestion,<br/>extraction, agent runner"]
         jobs["jobs.py<br/>AI job lifecycle"]
@@ -82,7 +83,6 @@ graph TD
         config["infra/config.py"]
         db["infra/db.py"]
         llm["infra/llm_factory.py<br/>infra/llm_utils.py"]
-        mock["infra/mock_llm.py"]
         azure["infra/azure_client.py"]
     end
 
@@ -91,8 +91,12 @@ graph TD
     api_v1 --> application
     admin --> application
     demo_lab --> application
+    applicant --> cw
 
     application --> intake
+    cw --> intake
+    cw --> jobs
+    cw --> core_svc
     application --> criteria
     application --> jobs
     intake --> jobs
@@ -112,7 +116,7 @@ graph TD
 ```
 Browser → FastAPI route → svc.function() → DB artifact (SQLite JSON doc)
                                               ↓
-                                         AI agent (mock or Azure)
+                                         AI agent (Azure AI Foundry)
                                               ↓
                                          svc.save_artifact() → DB
 ```
@@ -164,7 +168,7 @@ suggestions or run criteria.
 | `POST` | `.../chat` | Contextual chat (form post) | — |
 | `POST` | `.../chat/messages` | Contextual chat (JSON) | — |
 | `POST` | `.../chat/stream` | Contextual chat (SSE stream) | — |
-| `POST` | `.../voice/mock` | Voice assistant (mock transcript) | — |
+| `POST` | `.../voice/mock` | Voice assistant (reports `disabled`; no simulated speech) | — |
 
 `form_suggestions` runs `create_field_suggestion` per field **within one job**
 (no per-field sub-jobs) and marks each field agent complete as it finishes.
@@ -281,16 +285,20 @@ Same endpoints as the wizard banner: `GET /api/v1/jobs/{job_id}` (+ `/stream`,
 | Where are the permit form schemas? | `specs/form_schemas/*.schema.json` |
 | Where are the permit criteria sets? | `specs/criteria_sets/*.json` |
 | How is the DB configured? | `infra/config.py` + `infra/db.py` |
-| How do I swap mock → Azure? | Set `KEHA_LV_LLM_PROVIDER=azure` in `.env` |
+| Which Foundry deployments are used? | `AZURE_OPENAI_MODEL_CORE` / `AZURE_OPENAI_MODEL_CHAT` in `.env` |
 
 ## Key design decisions
 
 1. **Artifacts as JSON in SQLite.** Every domain object is a JSON doc, not a relational table. Simple, flexible, no migrations.
-2. **Mock LLM by default.** Runs offline with deterministic Finnish responses. No API keys needed.
+2. **Azure AI Foundry only.** Every AI call is a Foundry Responses API request; there is no mock or offline provider. A missing configuration fails loudly.
 3. **`svc.*` pattern.** All services re-exported through `__init__.py`. Routes never import from individual service modules — they use `import services as svc; svc.xxx()`.
 4. **Routes are thin.** Route handlers validate input, call a service function, return a template/redirect. No business logic in routes.
 5. **`app/infra/` not `app/core/`.** Named "infra" to avoid collision with `services/core.py`. Infrastructure code has zero business logic.
 6. **Specs live in `app/`.** Runtime specs (schemas, criteria, prompts) live next to the code that loads them. Design archives live in `docs/archive/v5-specs/`.
+7. **Submit gate = blocking findings + red criteria.** A `major` finding ("viranomainen
+   pyytäisi korjauksen") is surfaced but advisory: it no longer prevents submission, so the
+   "estävä" label means what it says. `precheck_gate_status()` is the single source of truth.
+8. **No pre-seeded content.** The seeding script, per-customer starter hankkeet and presenter replay are gone. Each account starts empty and every AI step is a real Foundry call.
 
 ## Route inventory
 

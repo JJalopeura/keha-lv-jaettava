@@ -202,6 +202,13 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
                 "criteria_histories": {permit_type: svc.criteria_history(db(), case_id, permit_type, municipality) for permit_type in svc.PERMIT_SCHEMAS},
                 "criteria_history_rows": {permit_type: svc.criteria_history_rows(svc.criteria_history(db(), case_id, permit_type, municipality)) for permit_type in svc.PERMIT_SCHEMAS},
                 "criteria_rule_rows": {permit_type: svc.criteria_rule_rows(svc.effective_criteria(db(), case_id, permit_type, municipality)) for permit_type in svc.PERMIT_SCHEMAS},
+                "criteria_field_labels": {
+                    permit_type: {
+                        field.get("id"): field.get("label", field.get("id"))
+                        for field in svc.load_form_schema(permit_type).get("fields", [])
+                    }
+                    for permit_type in svc.PERMIT_SCHEMAS
+                },
                 "criteria_test_results": {
                     permit_type: svc.artifact_json(
                         db(), case_id, "criteria_test_result", f"{permit_type}:{municipality.lower()}", {}
@@ -272,11 +279,5 @@ def create_admin_router(ctx: RouteContext) -> APIRouter:
     def criteria_test_post(case_id: str, permit_type: str = Form(...), municipality: str = Form("")):
         svc.run_criteria_test(db(), settings(), case_id, permit_type, municipality=municipality)
         return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria?municipality={municipality}", status_code=303)
-
-    @router.post("/cases/{case_id}/lupademo/admin/source-materials/ingest", dependencies=[Depends(require_case_owner)])
-    def source_materials_ingest(case_id: str):
-        app_settings = settings()
-        svc.ingest_source_materials(db(), app_settings, case_id, source_dir=getattr(app_settings, "source_material_dir", "source_materials"))
-        return RedirectResponse(url=f"/cases/{case_id}/lupademo/admin/criteria", status_code=303)
 
     return router

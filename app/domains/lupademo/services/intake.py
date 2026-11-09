@@ -25,7 +25,7 @@ from docx import Document as DocxDocument
 from app.infra.llm_factory import LLMUnavailableError, create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
-from .core import ApplicantPrecheckReport, AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, ProseSuggestionField, ProseSuggestionResponse, StructureExtractionResponse, Suggestion, _extraction_queue_item, _is_presenter_case, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
+from .core import ApplicantPrecheckReport, AttachmentClassificationResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DocumentAsset, EvidenceRef, ExtractedField, FieldSuggestionResponse, Issue, IssueListResponse, MaterialPackage, PERMIT_SCHEMAS, ProseSuggestionField, ProseSuggestionResponse, StructureExtractionResponse, Suggestion, _extraction_queue_item, _list, _plain, application_id_for, artifact_json, ensure_application, event, load_form_schema, render_agent_prompt, save_artifact, source_ref, update_application_data
 from .jobs import complete_ai_job, find_ai_job, mark_agent_complete, start_ai_job
 
 
@@ -177,6 +177,7 @@ def classify_attachment(filename: str) -> str:
         ("kemikaali", "chemical_inventory"),
         ("ilmanlaatu", "air_quality_model"),
         ("savukaasu", "air_quality_model"),
+        ("meluilmo", "noise_notice"),
         ("melu", "noise_model"),
         ("yva", "yva_statement"),
         ("bat", "bat_assessment"),
@@ -186,7 +187,17 @@ def classify_attachment(filename: str) -> str:
         ("alueen_haltija", "landowner_permission"),
         ("pelastussuunnitel", "rescue_plan"),
         ("liikenne", "traffic_plan"),
-        ("meluilmo", "noise_notice"),
+        # Yleisötapahtuman muut turvallisuus- ja tausta-asiakirjat
+        ("jarjestyksenvalvonta", "security_plan"),
+        ("järjestyksenvalvonta", "security_plan"),
+        ("ensiapu", "first_aid_plan"),
+        ("jatehuolto", "waste_plan"),
+        ("jätehuolto", "waste_plan"),
+        ("vakuutus", "insurance_certificate"),
+        ("ilmapäästö", "air_quality_model"),
+        ("ilmapaasto", "air_quality_model"),
+        ("ei_julkaistavat", "non_public_documents"),
+        ("ei julkaistavat", "non_public_documents"),
     ]
     for needle, type_ in rules:
         if needle in name:
@@ -463,7 +474,7 @@ def get_or_create_case_vector_store(db: Any, settings: Any, case_id: str, *, nam
     existing = str(case.get("case_vector_store_id") or "").strip()
     if existing and not existing.startswith("ingest_failed:"):
         return existing
-    _backend = create_llm_client(settings, purpose="core", db=db, case_id=case_id)
+    _backend = create_llm_client(settings, purpose="core")
     vector_store_id = _backend.create_vector_store(f"lupademo-{case_id[:8]}-{name_suffix}")
     db.set_case_vector_store(case_id, vector_store_id)
     return vector_store_id
@@ -481,7 +492,7 @@ def ingest_file_row_to_case_vector_store(db: Any, settings: Any, case_id: str, f
         db.update_file(int(file_row_id), status="error", error=f"Missing local file: {local_path}")
         return {"file_row_id": int(file_row_id), "status": "error", "error": "missing local file"}
     vector_store_id = get_or_create_case_vector_store(db, settings, case_id)
-    _backend = create_llm_client(settings, purpose="core", db=db, case_id=case_id)
+    _backend = create_llm_client(settings, purpose="core")
     try:
         db.update_file(int(file_row_id), status="uploading", error=None)
         upload_id, azure_file_id = _backend.upload_file_from_path(local_path)
@@ -527,9 +538,9 @@ def run_json_agent(
             "Älä käytä knowledge-aineistoa case-faktana tai case-aineistoa normilähteenä. "
             "Säilytä evidence_refs-viitteissä lähteen scope ja merkitse ristiriita tai puuttuva lähdetuki epävarmaksi."
         )
-    client = create_llm_client(settings, purpose="core", db=db, case_id=case_id, timeout_s=timeout_s)
-    # Log the actual provider used, not just the config setting.
-    provider = "mock" if _is_presenter_case(db, case_id) else str(getattr(settings, "llm_provider", "mock") or "mock").lower()
+    client = create_llm_client(settings, purpose="core", timeout_s=timeout_s)
+    # Every AI call in this build goes to Azure AI Foundry.
+    provider = "azure"
 
     def _invoke(vids: Optional[list[str]], mode: str, **extra: Any) -> Any:
         payload = call_llm_json(
@@ -594,11 +605,10 @@ def run_json_agent(
             failure = RuntimeError(
                 f"Rate-limited request failed after retries: {last_retry_exc or failure}"
             )
-        allow_fallback = (
-            provider == "mock"
-            or _is_presenter_case(db, case_id)
-            or str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
-        )
+        # Deterministic fallbacks are off by default: a plausible canned answer
+        # must never mask a failed Foundry call. Opt in only for known-degraded
+        # environments with KEHA_LV_ALLOW_FALLBACK=true.
+        allow_fallback = str(os.getenv("KEHA_LV_ALLOW_FALLBACK", "")).strip().lower() in {"1", "true", "yes", "on"}
         if fallback is None or not allow_fallback:
             if task_id:
                 try:
@@ -613,7 +623,7 @@ def run_json_agent(
                     )
                 except Exception:
                     pass
-            raise LLMUnavailableError("Azure AI ei ole käytettävissä. Mock-AI on sallittu vain esittäjätilassa.") from failure
+            raise LLMUnavailableError("Azure AI Foundry -yhteys epäonnistui. Yritä uudelleen.") from failure
         model = fallback if isinstance(fallback, response_model) else response_model(**fallback)
         save_artifact(db, case_id, "agent_output", agent, {"agent": agent, "output": model, "provider": provider, "execution_mode": "deterministic_fallback", "used_vector_store_ids": vector_ids or [], "vector_store_scope_manifest": retrieval_manifest, "fallback_used": True, "fallback_reason": str(failure)[:500], "error": str(failure)[:500]})
         return model
@@ -906,7 +916,20 @@ def add_attachment(db: Any, case_id: str, permit_type: str, filename: str, size:
         "text_chars": extraction["text_chars"],
         "extraction_error": extraction["extraction_error"],
     }
-    attachments.setdefault("attachments", []).append(attachment)
+    # Re-uploading a document replaces it in place (filename key) instead of
+    # duplicating it. ponytail: filename-based, not content-hash — fine for the
+    # demo; switch to a hash if two documents can legitimately share a filename.
+    existing = next(
+        (item for item in attachments.get("attachments", []) if item.get("filename") == filename),
+        None,
+    )
+    if existing is not None:
+        preserved_id = existing.get("id")
+        existing.update(attachment)
+        existing["id"] = preserved_id
+        attachment = existing
+    else:
+        attachments.setdefault("attachments", []).append(attachment)
     save_artifact(db, case_id, "permit_attachments", permit_type, attachments)
     if local_path and attachment["delivery_scope"] != "internal_authority_only":
         try:
@@ -1625,7 +1648,7 @@ def structure_environmental_application_from_attachments(
                 "evidence_refs": [source_ref(source.get("filename", "Hakemusaineisto"), source.get("id", "local_excerpt"), value, 0.72)] if source else [],
             }
         )
-    if _real_llm_enabled_for_case(db, case_id, settings):
+    if settings is not None:
         allowed_fields = {str(field.get("id")) for field in load_form_schema(permit_type).get("fields", [])}
         source_fallbacks = {str(item.get("field_id")): item for item in source_by_field}
         fallback_fields = [
@@ -1794,23 +1817,6 @@ def attachments_updated_at(db: Any, case_id: str, permit_type: str) -> float:
             if value > 0:
                 timestamps.append(value)
     return max(timestamps) if timestamps else 0.0
-
-
-EXPECTED_SOURCE_ARCHIVES = ["P2X.zip", "Ren-Gas.zip", "Sharpcell.zip"]
-
-
-def external_real_case_upload_allowed(base: Path, settings: Any) -> tuple[bool, str]:
-    provider = str(getattr(settings, "llm_provider", "azure") or "azure").strip().lower()
-    if provider != "azure":
-        return True, ""
-    expected_present = all((base / name).exists() for name in EXPECTED_SOURCE_ARCHIVES)
-    looks_like_real_examples = base.name == "esimerkkihakemukset" or expected_present
-    if not looks_like_real_examples:
-        return True, ""
-    allowed = str(os.getenv("LUPADEMO_ALLOW_EXTERNAL_REAL_CASE_UPLOAD", "")).strip().lower() in {"1", "true", "yes", "on"}
-    if allowed:
-        return True, ""
-    return False, "external_upload_blocked: set LUPADEMO_ALLOW_EXTERNAL_REAL_CASE_UPLOAD=1 to upload real application documents to Azure"
 
 
 def classify_source_material(filename: str, inventory_category: str = "") -> str:

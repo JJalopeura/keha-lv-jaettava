@@ -1968,6 +1968,139 @@ pre {
   content: "▴";
 }
 
+/* ===== Shared status/action blocks (status_summary + recommended_action macros) =====
+   These macros are used across the admin and authority workspaces. Without these
+   rules they rendered as unstyled headings + paragraphs — the "scrambled" summary
+   at the top of Kriteeristöt, Metrics, Demo Lab, Skenaariot, and friends. */
+.status-action-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  margin: 18px 0 22px;
+}
+
+.status-summary,
+.recommended-action {
+  display: flex;
+  gap: 16px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-left: 4px solid var(--color-status-neutral-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.status-summary > div,
+.recommended-action > div {
+  min-width: 0;
+}
+
+.status-summary .status-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-summary p,
+.recommended-action p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.status-summary > strong {
+  margin-left: auto;
+  color: var(--color-text-strong);
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.status-summary--ready,
+.status-summary--success {
+  background: var(--color-status-ready-bg);
+  border-left-color: var(--color-status-ready-border);
+}
+
+.status-summary--ready .status-label,
+.status-summary--success .status-label {
+  color: var(--color-status-ready-fg);
+}
+
+.status-summary--attention {
+  background: var(--color-status-attention-bg);
+  border-left-color: var(--color-status-attention-border);
+}
+
+.status-summary--attention .status-label {
+  color: var(--color-status-attention-fg);
+}
+
+.status-summary--blocked {
+  background: var(--color-status-blocked-bg);
+  border-left-color: var(--color-status-blocked-border);
+}
+
+.status-summary--blocked .status-label {
+  color: var(--color-status-blocked-fg);
+}
+
+.recommended-action {
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--color-surface-subtle);
+  border-left-color: var(--color-action);
+}
+
+.recommended-action h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+
+.recommended-action__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Severity legend under the criteria heading */
+.severity-explanation {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-panel);
+}
+
+.severity-explanation p {
+  margin: 0;
+}
+
+.severity-explanation code {
+  padding: 1px 6px;
+  color: var(--color-text-strong);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .status-action-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .inline-action {
   margin-top: 4px;
 }
@@ -6137,7 +6270,7 @@ button:disabled {
 .evidence-disclosure {
   margin-top: 10px;
   color: #344054;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .evidence-disclosure summary {
@@ -6158,8 +6291,18 @@ button:disabled {
   display: block;
 }
 
+.evidence-line strong {
+  font-size: 15px;
+}
+
+.evidence-line small {
+  font-size: 13px;
+  color: #475467;
+}
+
 .evidence-line p {
   margin: 4px 0 0;
+  font-size: 15px;
   color: #475467;
 }
 

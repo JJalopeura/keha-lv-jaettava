@@ -19,8 +19,14 @@ class DB:
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        # WAL keeps readers from blocking the writer while AI jobs persist their
+        # artifacts; the busy timeout turns a write collision into a short wait
+        # instead of an immediate "database is locked" error.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA synchronous=NORMAL")
         try:
             with conn:
                 yield conn
@@ -150,6 +156,10 @@ class DB:
             customer["profile"] = json.loads(customer.pop("profile_json") or "{}")
             customers.append(customer)
         return customers
+
+    def delete_customer(self, customer_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM customers WHERE id=?", (customer_id,))
 
     def create_package_review(
         self,

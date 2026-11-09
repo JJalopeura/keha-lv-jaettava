@@ -58,11 +58,11 @@ except ImportError:
 from app.infra.llm_factory import create_llm_client
 from app.infra.llm_utils import call_llm_json, vector_store_ids
 
-from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ProseSuggestionField, ProseSuggestionResponse, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, _real_llm_enabled_for_case, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
+from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, ApplicationCheckRequest, ApplicationCheckResponse, AuthorityMemoDraft, CaseworkerSummaryResponse, CriteriaAssessmentResponse, DEFAULT_COMMON_DATA, EvidenceRef, FieldSuggestionRequest, FieldSuggestionResponse, Issue, IssueListResponse, PERMIT_SCHEMAS, PackageAnalysisResult, PackageFinding, ProseSuggestionField, ProseSuggestionResponse, ROOT, SPEC_ROOT, StructureExtractionRequest, StructureExtractionResponse, Suggestion, _dict, _extraction_queue_item, _list, _plain, application_id_for, artifact_json, ensure_application, ensure_demo_case, ensure_seed_state, event, load_form_schema, load_json, save_artifact, source_ref, update_application_data
 from .criteria import *  # noqa: F401,F403
 from .criteria import _normalize_municipality
 from .jobs import complete_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
-from .intake import ALLOWED_UPLOAD_EXTENSIONS, EXPECTED_SOURCE_ARCHIVES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _coerce_confidence, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, external_real_case_upload_allowed, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
+from .intake import ALLOWED_UPLOAD_EXTENSIONS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _coerce_confidence, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -442,7 +442,7 @@ def package_analysis_from_current_state(
     question_app = dict(app)
     question_app["form_data"] = effective_form_data
     questions = intake_analysis_questions(schema, question_app, attachments, include_fields=not attachment_only)
-    if _real_llm_enabled_for_case(db, case_id, settings) and not attachment_only:
+    if settings is not None and not attachment_only:
         criteria = effective_criteria(db, case_id, permit_type, municipality)
         retrieval = build_retrieval_context(
             db,
@@ -476,6 +476,9 @@ def package_analysis_from_current_state(
         }
         agent_issues = _run_check_agents(db, settings, case_id, base_values, max_output_tokens=6000)
         agent_issues = _filter_covered_attachment_issues(agent_issues, attachments)
+        agent_issues = _dedupe_agent_findings(agent_issues)
+        agent_issues = _drop_unsupported_contradictions(agent_issues, effective_form_data)
+        agent_issues = _drop_duplicate_field_findings(agent_issues, issues)
         issues = merge_issues(issues, agent_issues)
     joined_text = "\n".join(str(att.get("text_excerpt") or att.get("summary") or "") for att in attachments).lower()
     specific_contradictions = [issue for issue in issues if issue.type == "inconsistent"]
@@ -790,7 +793,7 @@ def start_intake_analysis_job(
         "intake_analysis",
         "Aineiston analyysi ja kysymyslista",
         agent_names,
-        eta_seconds=45 if settings is not None and str(getattr(settings, "llm_provider", "mock")).lower() != "mock" else 12,
+        eta_seconds=45 if settings is not None else 12,
         auto_finalize=not managed_background,
         managed_background=managed_background,
     )
@@ -943,7 +946,7 @@ def contextual_chat_answer(db: Any, case_id: str, permit_type: str, message: str
         f"Konteksti JSON: {json.dumps(context, ensure_ascii=False)}"
     )
     if settings is not None:
-        client = create_llm_client(settings, purpose="chat", db=db, case_id=case_id)
+        client = create_llm_client(settings, purpose="chat")
         resp = client.responses(
             input_text=prompt,
             vector_store_ids=[],
@@ -1019,29 +1022,14 @@ def contextual_chat_answer(db: Any, case_id: str, permit_type: str, message: str
 
 
 def voice_feature_state(settings: Any = None) -> dict[str, Any]:
-    mode = str(os.getenv("LUPADEMO_VOICE_MODE", "") or "").strip().lower()
-    enabled_flag = str(os.getenv("LUPADEMO_ENABLE_VOICE", "") or os.getenv("ENABLE_VOICE_CHAT", "") or "").strip().lower() in {"1", "true", "yes", "on"}
-    if mode not in {"", "disabled", "mock"}:
-        mode = "disabled"
-    if mode == "mock":
-        enabled = True
-        status = "mock"
-        reason = "Mock-puhetila on käytössä ilman ulkoista realtime-yhteyttä."
-    elif enabled_flag:
-        enabled = False
-        status = "disabled"
-        reason = "Live-puhetta ei ole kytketty Lupademoon; käytä LUPADEMO_VOICE_MODE=mock testaukseen."
-    else:
-        enabled = False
-        status = "disabled"
-        reason = "Puheavustin on oletuksena poissa käytöstä."
+    """Voice assistant state. No simulated ("mock") speech in this build."""
     return {
-        "enabled": enabled,
-        "status": status,
-        "mode": mode or "disabled",
-        "reason": reason,
-        "mock_available": True,
-        "provider": str(getattr(settings, "llm_provider", "") or os.getenv("KEHA_LV_LLM_PROVIDER", "")),
+        "enabled": False,
+        "status": "disabled",
+        "mode": "disabled",
+        "reason": "Puheavustinta ei ole kytketty tähän ympäristöön.",
+        "mock_available": False,
+        "provider": "azure",
     }
 
 
@@ -1228,7 +1216,7 @@ def start_form_suggestions_job(db: Any, case_id: str, permit_type: str, settings
         "form_suggestions",
         "Hakemusluonnoksen AI-ehdotukset",
         fields,
-        eta_seconds=max(10, len(fields) * (8 if settings is not None and str(getattr(settings, "llm_provider", "mock")).lower() != "mock" else 1)),
+        eta_seconds=max(10, len(fields) * 8),
         managed_background=True,
     )
 
@@ -1333,12 +1321,78 @@ def criteria_version(permit_type: str, db: Any = None, case_id: str = "", munici
     return str(criteria.get("version") or "demo")
 
 
+def _pending_extracted_values(db: Any, case_id: str, permit_type: str) -> dict[str, str]:
+    """Values the intake pipeline found in the material but the form has not taken yet."""
+    values: dict[str, str] = {}
+    queue = artifact_json(db, case_id, "field_extraction_queue", permit_type, {"items": []})
+    for item in _list(queue.get("items")):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status") or "pending") not in {"pending", "pending_review"}:
+            continue
+        field_id = str(item.get("field_id") or "")
+        value = str(item.get("suggested_value") or item.get("extracted_value") or "").strip()
+        if field_id and value:
+            values[field_id] = value
+    analysis = artifact_json(db, case_id, "intake_analysis", permit_type, {})
+    for item in _list(analysis.get("field_extractions")):
+        if not isinstance(item, dict):
+            continue
+        field_id = str(item.get("field_id") or "")
+        value = str(item.get("extracted_value") or item.get("value") or "").strip()
+        if field_id and value:
+            values.setdefault(field_id, value)
+    return values
+
+
+def _link_criteria_to_existing_findings(
+    issues: list[Issue],
+    criteria_results: list[dict[str, Any]],
+    criteria: dict[str, Any],
+) -> list[Issue]:
+    """Point an existing finding at its criterion instead of spawning a duplicate.
+
+    A yellow criterion whose field is already reported as unfilled used to produce a
+    second row ("Kriteeri X on osittain täytetty") describing the same gap. Linking the
+    existing finding keeps the criteria traceability without the duplicate.
+    """
+    rules = {
+        str(rule.get("id")): rule
+        for rule in (criteria or {}).get("rules", [])
+        if isinstance(rule, dict) and rule.get("id")
+    }
+    for result in criteria_results:
+        cid = str(result.get("criteria_id") or "")
+        rule = rules.get(cid) or {}
+        # A green verdict may not absorb a finding: reconcile_verdict marks linked
+        # issues resolved, which would hide an empty required field.
+        if not cid or not rule or str(result.get("status") or "") == "green":
+            continue
+        field_id = str(rule.get("field_id") or "")
+        attachment_types = {
+            part.strip() for part in str(rule.get("attachment_type") or "").split(",") if part.strip()
+        }
+        for issue in issues:
+            if issue.resolved:
+                continue
+            matches = (
+                field_id and issue.field_id == field_id and not issue.attachment_id
+            ) or (
+                attachment_types and str(issue.attachment_id or "") in attachment_types
+            )
+            if matches and not issue.criteria_id:
+                issue.criteria_id = cid
+                break
+    return issues
+
+
 def deterministic_issues(
     permit_type: str,
     form_data: dict[str, Any],
     attachments: list[dict[str, Any]],
     municipality: Any = None,
     criteria: dict[str, Any] | None = None,
+    extracted_values: dict[str, str] | None = None,
 ) -> list[Issue]:
     schema = load_form_schema(permit_type)
     criteria = criteria or load_criteria(permit_type, municipality)
@@ -1361,10 +1415,25 @@ def deterministic_issues(
                 confidence=0.75,
             )
     issues: list[Issue] = []
+    extracted = {str(k): str(v) for k, v in (extracted_values or {}).items() if str(v or "").strip()}
     for schema_field in schema.get("fields", []):
-        if schema_field.get("required") and str(form_data.get(schema_field["id"], "")).strip() == "":
-            severity = "blocking" if schema_field["id"] in {"building_height_m", "stormwater_management", "permit_basis", "competent_authority", "landowner_permission"} else "major"
-            issues.append(Issue(id=f"missing_{schema_field['id']}", type="missing", severity=severity, field_id=schema_field["id"], title=f"{schema_field['label']} puuttuu", detail="Pakollinen kenttä on tyhjä.", suggested_fix=f"Täytä kenttä {schema_field['label']}.", evidence_refs=[criteria_source], confidence=0.95))
+        field_id = str(schema_field["id"])
+        if not schema_field.get("required") or str(form_data.get(field_id, "")).strip() != "":
+            continue
+        severity = "blocking" if field_id in {"building_height_m", "stormwater_management", "permit_basis", "competent_authority", "landowner_permission"} else "major"
+        label = schema_field["label"]
+        if field_id in extracted:
+            # The value exists in the material but has not been accepted onto the
+            # form. Telling the authority it is "missing" is false and makes the
+            # check look broken; say what is actually true.
+            title = f"{label} on täyttämättä lomakkeella"
+            detail = "Aineistosta on poimittu arvo, jota ei ole vielä hyväksytty hakemuslomakkeelle."
+            suggested_fix = f"Hyväksy aineistosta poimittu arvo kentälle {label} tai täytä se käsin."
+        else:
+            title = f"{label} puuttuu"
+            detail = "Pakollinen kenttä on tyhjä."
+            suggested_fix = f"Täytä kenttä {label}."
+        issues.append(Issue(id=f"missing_{field_id}", type="missing", severity=severity, field_id=field_id, title=title, detail=detail, suggested_fix=suggested_fix, evidence_refs=[criteria_source], confidence=0.95))
     for required in schema.get("required_attachments", []):
         if not attachment_requirement_covered(required, attachments):
             sev = "blocking" if permit_type == "building_residential" or required == "landowner_permission" else "major"
@@ -1760,6 +1829,71 @@ def _degraded_agents(db: Any, case_id: str, agents: tuple[str, ...]) -> list[str
     return [a for a in agents if artifact_json(db, case_id, "agent_output", a, {}).get("fallback_used")]
 
 
+def _drop_duplicate_field_findings(issues: list[Issue], deterministic: list[Issue]) -> list[Issue]:
+    """Drop agent findings about a field the deterministic check already reports.
+
+    With an empty form the validators keep re-saying "this field is missing", which the
+    grouped deterministic finding already covers. Only findings about fields that have
+    a value can add judgement, so those are kept.
+    """
+    covered = {
+        str(issue.field_id)
+        for issue in deterministic
+        if issue.type == "missing" and issue.field_id and not issue.attachment_id and not issue.resolved
+    }
+    if not covered:
+        return issues
+    kept: list[Issue] = []
+    for issue in issues:
+        if issue.type in {"missing", "incomplete"} and issue.field_id and str(issue.field_id) in covered:
+            continue
+        kept.append(issue)
+    return kept
+
+
+def _dedupe_agent_findings(issues: list[Issue]) -> list[Issue]:
+    """Collapse two validators reporting the same field+type into one finding.
+
+    The completeness and consistency agents independently describe the same name
+    conflict with slightly different wording; both cards then show up in the check.
+    """
+    best: dict[tuple[str, str], Issue] = {}
+    order: list[tuple[str, str]] = []
+    passthrough: list[Issue] = []
+    for issue in issues:
+        key = (str(issue.type), str(issue.field_id or ""))
+        if not issue.field_id or issue.type not in {"inconsistent", "incomplete", "missing"}:
+            passthrough.append(issue)
+            continue
+        current = best.get(key)
+        if current is None:
+            best[key] = issue
+            order.append(key)
+        elif SEVERITY_ORDER.get(issue.severity, 0) > SEVERITY_ORDER.get(current.severity, 0):
+            best[key] = issue
+    return passthrough + [best[key] for key in order]
+
+
+def _drop_unsupported_contradictions(issues: list[Issue], form_data: dict[str, Any]) -> list[Issue]:
+    """Drop "inconsistent" findings that have no form value to be inconsistent with.
+
+    Validators occasionally report "name differs between form and attachment" when the
+    form is simply empty. That is a transfer gap, reported by the deterministic check,
+    not a contradiction — and a false contradiction is worse than one finding less.
+    """
+    kept: list[Issue] = []
+    for issue in issues:
+        if issue.type == "inconsistent":
+            if issue.field_id and not str(form_data.get(str(issue.field_id)) or "").strip():
+                continue
+            # A contradiction between two sources always needs correcting, so it can
+            # never be "vähäinen" — that label reads as ignorable in the UI.
+            if issue.severity == "minor":
+                issue.severity = "major"
+        kept.append(issue)
+    return kept
+
+
 def _filter_covered_attachment_issues(issues: list[Issue], attachments: list[dict[str, Any]]) -> list[Issue]:
     attachment_ids = {str(item.get("id") or "") for item in attachments}
     return [
@@ -1870,6 +2004,16 @@ REVIEW_ATTACHMENT_LABELS = {
     "air_quality_model": "Ilmapäästöselvitys",
     "noise_model": "Meluselvitys",
     "chemical_inventory": "Kemikaaliluettelo",
+    "landowner_permission": "Maanomistajan lupa",
+    "rescue_plan": "Pelastussuunnitelma",
+    "traffic_plan": "Liikennesuunnitelma",
+    "site_plan": "Asemapiirros",
+    "noise_notice": "Meluilmoitus",
+    "security_plan": "Järjestyksenvalvontasuunnitelma",
+    "first_aid_plan": "Ensiapusuunnitelma",
+    "waste_plan": "Jätehuoltosuunnitelma",
+    "insurance_certificate": "Vakuutustodistus",
+    "non_public_documents": "Ei julkaistavat asiakirjat",
 }
 
 
@@ -2162,6 +2306,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         attachments,
         municipality=municipality,
         criteria=active_criteria,
+        extracted_values=_pending_extracted_values(db, case_id, app["permit_type"]),
     )
     if job_id:
         mark_agent_complete(db, case_id, app["permit_type"], job_id, "deterministic_checks", "Sääntöpohjainen tarkistus valmis.")
@@ -2193,6 +2338,9 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             task_id=job_id,
         )
         agent_issues = _filter_covered_attachment_issues(agent_issues, attachments)
+        agent_issues = _dedupe_agent_findings(agent_issues)
+        agent_issues = _drop_unsupported_contradictions(agent_issues, app.get("form_data") or {})
+        agent_issues = _drop_duplicate_field_findings(agent_issues, deterministic)
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "consistency_validator", "Ristiriitatarkistus valmis.")
@@ -2237,6 +2385,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         str(r.get("id")): str(r.get("severity") or "major").strip().lower()
         for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
     }
+    issues = _link_criteria_to_existing_findings(issues, criteria_results, active_criteria or {})
     issues, reconciliation_notes = reconcile_verdict(issues, criteria_results, rule_instructions=rule_instructions, rule_severities=rule_severities)
     reconciliation_notes = [*criteria_notes, *reconciliation_notes]
     counts, score, readiness = _derive_check_verdict(issues, criteria_results)
@@ -2282,7 +2431,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             "criteria_municipality": str(active_criteria.get("municipality") or municipality),
             "criteria_version": current_criteria_version,
             "questions": questions,
-            "provider": str(getattr(settings, "llm_provider", "deterministic") if settings is not None else "deterministic"),
+            "provider": "azure" if settings is not None else "deterministic",
         }
     )
     if settings is not None:
@@ -2407,7 +2556,10 @@ def precheck_gate_status(db: Any, case_id: str, permit_type: str, *, max_age_sec
     is_fresh = bool(report) and not stale_reasons
     return {
         "application_id": permit_type,
-        "can_submit": is_fresh and blocking_count == 0 and major_count == 0 and red_count == 0,
+        # "Estävä" means it prevents submission; "merkittävä" is a correction the
+        # authority would ask for, so it is surfaced but does not block. Only
+        # blocking findings and red criteria gate the submit.
+        "can_submit": is_fresh and blocking_count == 0 and red_count == 0,
         "is_fresh": is_fresh,
         "blocking_count": blocking_count,
         "major_count": major_count,
@@ -2448,7 +2600,10 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
     gate = precheck_gate_status(db, case_id, permit_type)
     form_data = app.get("form_data") or {}
     common_data = artifact_json(db, case_id, "lv_common_data", "main", {"data": {}}).get("data") or {}
-    missing_common_data = [key for key in DEFAULT_COMMON_DATA if not str(common_data.get(key, "")).strip()]
+    # permit_basis is environmental-specific; do not flag it for permits that do not use it.
+    schema_common_keys = {field.get("id") for field in schema.get("fields", []) if field.get("common_data")}
+    common_keys = [key for key in DEFAULT_COMMON_DATA if key != "permit_basis" or key in schema_common_keys]
+    missing_common_data = [key for key in common_keys if not str(common_data.get(key, "")).strip()]
     required_fields = [f for f in schema.get("fields", []) if f.get("required")]
     missing_required = [f.get("id") for f in required_fields if not str(form_data.get(f.get("id"), "")).strip()]
     missing_attachments = [
@@ -2476,7 +2631,7 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
         1: {
             "state": "attention" if missing_common_data else "ready",
             "label": "Yhteisiä tietoja täydennettävä" if missing_common_data else "Lähtökohta tarkistettu",
-            "detail": f"{len(missing_common_data)} yhteistä tietoa puuttuu",
+            "detail": "Kaikki yhteiset tiedot on täytetty" if not missing_common_data else f"{len(missing_common_data)} yhteistä tietoa puuttuu",
         },
         2: {
             "state": "attention" if missing_attachments else "ready",
@@ -2501,7 +2656,11 @@ def wizard_step_status(db: Any, case_id: str, permit_type: str) -> dict[str, Any
                 else (
                     f"{gate['blocking_count']} estävää · {gate['major_count']} merkittävää · {gate['red_count']} punaista kriteeriä"
                     if not gate["can_submit"]
-                    else "Lähetys on mahdollinen"
+                    else (
+                        f"Lähetys on mahdollinen · {gate['major_count']} merkittävää havaintoa kannattaa korjata"
+                        if gate["major_count"]
+                        else "Lähetys on mahdollinen"
+                    )
                 )
             ),
         },
@@ -3040,7 +3199,7 @@ def benchmark_lab_snapshot(db: Any, case_id: str) -> dict[str, Any]:
         or "Viranomaisdokumentteja käytetään vain admin/eval-benchmarkissa eikä normaalin hakemuksen knowledge basessa.",
         "vector_store_policy": "Benchmark-dokumentteja ei lähetetä normaalin arvioinnin vector storeen.",
         "eval_runner": "scripts/run_lupademo_story_evals.py",
-        "mock_llm_supported": True,
+        "mock_llm_supported": False,
     }
     save_artifact(db, case_id, "benchmark_lab", "main", result)
     return result
@@ -3199,8 +3358,7 @@ def agent_chain_audit(db: Any, case_id: str) -> dict[str, Any]:
 
 def _agent_audit_settings_summary(settings: Any) -> dict[str, Any]:
     return {
-        "llm_provider": str(getattr(settings, "llm_provider", "") or ""),
-        "demo_mode": bool(getattr(settings, "demo_mode", False)),
+        "llm_provider": "azure",
         "model_core": str(getattr(settings, "azure_openai_model_core", "") or ""),
     }
 
@@ -3521,174 +3679,6 @@ def readiness_snapshot(
     }
 
 
-def ingest_source_materials(db: Any, settings: Any, case_id: str, source_dir: str = "source_materials") -> dict[str, Any]:
-    base = resolve_source_material_dir(source_dir)
-    extracted_root = Path(settings.uploads_dir) / "lupademo_source_materials"
-    extracted_root.mkdir(parents=True, exist_ok=True)
-    discovered: list[dict[str, Any]] = []
-    missing_expected = []
-    for name in EXPECTED_SOURCE_ARCHIVES:
-        if not (base / name).exists():
-            missing_expected.append(name)
-    if base.exists():
-        for path in base.iterdir():
-            if path.suffix.lower() == ".zip":
-                target_dir = extracted_root / path.stem
-                target_dir.mkdir(parents=True, exist_ok=True)
-                with zipfile.ZipFile(path) as zf:
-                    safe_extract_zip(zf, target_dir)
-                case_name = _source_case_name(path.name)
-                for doc_path in target_dir.rglob("*"):
-                    if doc_path.is_file() and doc_path.suffix.lower() in SOURCE_MATERIAL_EXTENSIONS:
-                        discovered.append({"path": doc_path, "case": case_name, "source_archive": path.name, "analysis_base": target_dir})
-            elif path.is_file() and path.suffix.lower() in SOURCE_MATERIAL_EXTENSIONS:
-                discovered.append({"path": path, "case": _source_case_name(path.name), "source_archive": "", "analysis_base": base})
-    file_rows = []
-    inventory_index = _case_inventory_index()
-    documents = []
-    file_errors: list[dict[str, Any]] = []
-    for item in discovered:
-        path = Path(item["path"])
-        filename = path.name
-        case_name = str(item.get("case") or "unknown")
-        analysis_base = Path(item.get("analysis_base") or base)
-        source_archive = str(item.get("source_archive") or "")
-        analysis = analyze_source_material_file(
-            path,
-            base_dir=analysis_base,
-            case_name=case_name,
-            source_archive=source_archive,
-            inventory_index=inventory_index,
-        )
-        documents.append(analysis)
-        if not analysis.get("ingest_to_system"):
-            continue
-        try:
-            mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-            file_id = db.add_file(
-                case_id,
-                filename,
-                str(path),
-                mime_type,
-                path.stat().st_size,
-                kind="source_material",
-                source_group=case_name if case_name != "unknown" else "lupademo_source_materials",
-                type_primary=analysis["primary_type"],
-                type_tags=json.dumps(
-                    {
-                        "source_archive": source_archive,
-                        "inventory_category": analysis.get("inventory_category", ""),
-                        "extraction_status": analysis.get("extraction_status", ""),
-                        "document_role": analysis.get("document_role", ""),
-                    },
-                    ensure_ascii=False,
-                ),
-                vectorize=1,
-            )
-            file_rows.append(
-                {
-                    "file_id": file_id,
-                    "filename": filename,
-                    "path": str(path),
-                    "case": case_name,
-                    "source_archive": source_archive,
-                    "primary_type": analysis["primary_type"],
-                    "document_role": analysis.get("document_role", ""),
-                    "extraction_status": analysis["extraction_status"],
-                }
-            )
-        except Exception as exc:
-            file_errors.append({"filename": filename, "error": str(exc)})
-    vector_store_id = ""
-    _ingest_backend: Any = None
-    blocked_file_count = 0
-    upload_allowed, upload_block_reason = external_real_case_upload_allowed(base, settings)
-    if file_rows:
-        if not upload_allowed:
-            for row in file_rows:
-                if row.get("document_role") != "guidance_reference":
-                    row["status"] = "blocked_external_upload"
-                    row["error"] = upload_block_reason
-                    blocked_file_count += 1
-                    try:
-                        db.update_file(int(row["file_id"]), status="blocked_external_upload", error=upload_block_reason)
-                    except Exception:
-                        pass
-        uploadable_rows = [row for row in file_rows if row.get("status") != "blocked_external_upload"]
-        if not uploadable_rows and blocked_file_count:
-            vector_store_id = upload_block_reason
-        elif uploadable_rows:
-            try:
-                _ingest_backend = create_llm_client(settings, purpose="core", db=db, case_id=case_id)
-                vector_store_id = _ingest_backend.create_vector_store(f"lupademo-{case_id[:8]}-source-materials")
-                db.set_research_vector_store(case_id, vector_store_id)
-            except Exception as exc:
-                vector_store_id = f"ingest_failed:{str(exc)[:180]}"
-        if vector_store_id and not vector_store_id.startswith("ingest_failed:") and uploadable_rows and _ingest_backend:
-            for row in uploadable_rows:
-                try:
-                    db.update_file(int(row["file_id"]), status="uploading", error=None)
-                    _, azure_file_id = _ingest_backend.upload_file_from_path(row["path"])
-                    row["azure_file_id"] = azure_file_id
-                    db.update_file(int(row["file_id"]), azure_file_id=azure_file_id, status="uploaded")
-                    vs_file_id = _ingest_backend.attach_file_to_vector_store(vector_store_id, azure_file_id)
-                    row["azure_vs_file_id"] = vs_file_id
-                    db.update_file(int(row["file_id"]), azure_vs_file_id=vs_file_id, status="ingesting")
-                    _ingest_backend.wait_vector_store_file_completed(vector_store_id, vs_file_id)
-                    row["status"] = "ready"
-                    db.update_file(int(row["file_id"]), status="ready", error=None)
-                except Exception as exc:
-                    row["status"] = "error"
-                    row["error"] = str(exc)[:500]
-                    file_errors.append({"file_id": row.get("file_id"), "filename": row.get("filename"), "error": str(exc)[:500]})
-                    try:
-                        db.update_file(int(row["file_id"]), status="error", error=str(exc))
-                    except Exception:
-                        pass
-    analysis_summary = source_material_summary(documents, missing_expected)
-    authority_benchmark = authority_example_benchmark(documents)
-    ready_file_count = sum(1 for row in file_rows if row.get("status") == "ready")
-    result = {
-        "source_dir": str(base),
-        "files": file_rows,
-        "file_count": len(file_rows),
-        "ready_file_count": ready_file_count,
-        "failed_file_count": len(file_errors),
-        "blocked_file_count": blocked_file_count,
-        "external_upload_blocked": blocked_file_count > 0,
-        "external_upload_block_reason": upload_block_reason,
-        "file_errors": file_errors,
-        "missing_expected": missing_expected,
-        "vector_store_id": vector_store_id,
-        "analysis": analysis_summary,
-        "documents": documents,
-        "case_documents": [doc for doc in documents if doc.get("ingest_to_system")],
-        "guidance_reference_documents": [doc for doc in documents if doc.get("document_role") == "guidance_reference"],
-        "authority_example_documents": [doc for doc in documents if doc.get("document_role") == "authority_example"],
-        "authority_benchmark": authority_benchmark,
-    }
-    save_artifact(db, case_id, "source_material_ingest", "main", result)
-    event(
-        db,
-        case_id,
-        "source_materials.ingested",
-        "Source materials ingest attempted",
-        {
-            "file_count": len(file_rows),
-            "ready_file_count": ready_file_count,
-            "failed_file_count": len(file_errors),
-            "blocked_file_count": blocked_file_count,
-            "external_upload_blocked": blocked_file_count > 0,
-            "missing_expected": missing_expected,
-            "vector_store_id": vector_store_id,
-            "by_case": analysis_summary.get("by_case", {}),
-            "by_type": analysis_summary.get("by_type", {}),
-            "by_role": analysis_summary.get("by_role", {}),
-        },
-    )
-    return result
-
-
 def submit_application(db: Any, case_id: str, permit_type: str, settings: Any = None, *, require_precheck: bool = True) -> dict[str, Any]:
     permit_type = application_id_for(permit_type)
     if require_precheck:
@@ -3863,7 +3853,7 @@ def kevytasiointi_prose(db: Any, case_id: str, permit_type: str, settings: Any =
             response = fallback
         response.criteria_version = active_version
     agent_output = artifact_json(db, case_id, "agent_output", "prose_suggestion_agent", {})
-    provider = str(agent_output.get("provider") or getattr(settings, "llm_provider", "mock") or "mock").lower()
+    provider = str(agent_output.get("provider") or "azure").lower()
     fallback_used = bool(agent_output.get("fallback_used")) or response is fallback
     raw_fields = getattr(response, "fields", None) or []
     normalized_fields = []
@@ -4414,6 +4404,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         str(r.get("id")): str(r.get("severity") or "major").strip().lower()
         for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
     }
+    issues = _link_criteria_to_existing_findings(issues, criteria_results, active_criteria or {})
     issues, reconciliation_notes = reconcile_verdict(issues, criteria_results, rule_instructions=rule_instructions, rule_severities=rule_severities)
     reconciliation_notes = [*criteria_notes, *reconciliation_notes]
     counts, score, readiness = _derive_check_verdict(issues, criteria_results)
@@ -4443,7 +4434,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         readiness=readiness,
     )
     result = asdict(response)
-    result["provider"] = str(getattr(settings, "llm_provider", "deterministic") if settings is not None else "deterministic")
+    result["provider"] = "azure" if settings is not None else "deterministic"
     result["review"] = _build_applicant_review(
         {},
         response.summary,
@@ -4491,6 +4482,19 @@ def structure_extract(payload: dict[str, Any], db: Any = None, settings: Any = N
         )
         if isinstance(response, StructureExtractionResponse):
             extracted_fields = response.extracted_fields or fallback.extracted_fields
+            # The caller supplies `source_refs` (document ids). The LLM's own
+            # evidence may name documents, but the API contract guarantees the
+            # caller's provenance survives, so any missing ref is appended.
+            provided = [ref for ref in (req.source_refs or []) if isinstance(ref, dict)]
+            for field in extracted_fields:
+                existing_ids = {
+                    str(ref.get("source_id") or "")
+                    for ref in (field.evidence_refs or [])
+                    if isinstance(ref, dict)
+                }
+                missing = [ref for ref in provided if str(ref.get("source_id") or "") not in existing_ids]
+                if missing:
+                    field.evidence_refs = list(field.evidence_refs or []) + missing
             response = asdict(StructureExtractionResponse(request_id=req.request_id, extracted_fields=extracted_fields))
         else:
             response = asdict(fallback)

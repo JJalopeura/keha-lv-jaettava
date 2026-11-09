@@ -46,7 +46,11 @@ def _build_responses_payload(
     if input_text is None:
         raise ValueError("responses requires input_text")
     payload: Dict[str, Any] = {"model": model, "input": input_text}
-    if vector_store_ids:
+    # A JSON-output call must return JSON. Attaching file_search makes tool-capable
+    # deployments answer by narrating a search ("I'll look in the knowledge base")
+    # instead of emitting the object, so tools are only attached to prose calls.
+    # Retrieval context is already rendered into the prompt by the caller.
+    if vector_store_ids and response_format != "json_object":
         payload["tools"] = [{"type": "file_search", "vector_store_ids": vector_store_ids}]
         payload["tool_choice"] = "auto"
     if response_format == "json_object":
@@ -77,6 +81,38 @@ class AzureOpenAIClient:
     def __post_init__(self) -> None:
         self.api_path_prefix = "/openai/v1/" if "services.ai.azure.com" in self.host else "/openai/"
         self._uses_api_version = self.api_path_prefix == "/openai/"
+        # Deployments differ in which optional Responses parameters they accept
+        # (e.g. DeepSeek rejects reasoning.effort and only supports
+        # verbosity=medium). Rather than hardcoding model names, learn from the
+        # 400 and drop/repair the offending parameter for this client instance.
+        self._unsupported: set[str] = set()
+
+    def _apply_capabilities(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if "reasoning" in self._unsupported:
+            payload.pop("reasoning", None)
+        text = payload.get("text")
+        if isinstance(text, dict):
+            if "text.verbosity" in self._unsupported:
+                text.pop("verbosity", None)
+            if "text.format" in self._unsupported:
+                text.pop("format", None)
+        return payload
+
+    def _learn_capability(self, message: str) -> bool:
+        """Record an unsupported parameter from a 400 and report whether we adapted."""
+        low = message.lower()
+        if "unsupported parameter" not in low and "unsupported value" not in low:
+            return False
+        if "reasoning" in low and "reasoning" not in self._unsupported:
+            self._unsupported.add("reasoning")
+            return True
+        if "verbosity" in low and "text.verbosity" not in self._unsupported:
+            self._unsupported.add("text.verbosity")
+            return True
+        if ("json_object" in low or "format" in low) and "text.format" not in self._unsupported:
+            self._unsupported.add("text.format")
+            return True
+        return False
 
     def _headers(self) -> Dict[str, str]:
         return {"api-key": self.api_key}
@@ -136,6 +172,9 @@ class AzureOpenAIClient:
                 data = resp.json()
                 err = data.get("error", {})
                 msg = err.get("message") or data
+                param = err.get("param")
+                if param:
+                    msg = f"[param={param}] {msg}"
             except Exception:
                 msg = resp.text
             raise RuntimeError(f"{method} {path} -> HTTP {resp.status_code}: {msg}")
@@ -206,16 +245,27 @@ class AzureOpenAIClient:
         text_verbosity: Optional[str] = None,    # low|medium|high
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
-        payload = _build_responses_payload(
-            model or self.model,
-            input_text=input_text,
-            vector_store_ids=vector_store_ids,
-            response_format=response_format,
-            max_output_tokens=max_output_tokens,
-            previous_response_id=previous_response_id,
-            reasoning_effort=reasoning_effort,
-            text_verbosity=text_verbosity,
+        payload = self._apply_capabilities(
+            _build_responses_payload(
+                model or self.model,
+                input_text=input_text,
+                vector_store_ids=vector_store_ids,
+                response_format=response_format,
+                max_output_tokens=max_output_tokens,
+                previous_response_id=previous_response_id,
+                reasoning_effort=reasoning_effort,
+                text_verbosity=text_verbosity,
+            )
         )
+        # A deployment may reject an optional parameter; drop it and retry. At most
+        # three capabilities can be dropped, so four attempts is a hard bound.
+        for _ in range(4):
+            try:
+                return self.request_json("POST", f"{self.api_path_prefix}responses", json_body=payload)
+            except RuntimeError as exc:
+                if not self._learn_capability(str(exc)):
+                    raise
+                payload = self._apply_capabilities(payload)
         return self.request_json("POST", f"{self.api_path_prefix}responses", json_body=payload)
 
     def extract_output_text(self, resp: dict[str, Any]) -> str | None:

@@ -12,11 +12,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 
-os.environ.setdefault("KEHA_LV_FORCE_MOCK_LLM", "true")
 
 from app.infra.db import DB  # noqa: E402
 
 import app.domains.lupademo.services as svc  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fake_llm import install_fake_llm  # noqa: E402
+
+install_fake_llm()
+
 
 # Own temp DB instance — never via KEHA_LV_DB_PATH, or app.main (imported later
 # by test_smoke) would pin this DB and cross-pollute the suite.

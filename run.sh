@@ -25,4 +25,4 @@ if [[ -z "${SSL_CERT_FILE:-}" ]]; then
   fi
 fi
 
-exec "$PYTHON" -m uvicorn app.main:app --host "${APP_HOST:-127.0.0.1}" --port "${APP_PORT:-8002}"
+exec "$PYTHON" -m uvicorn app.main:app --host "${APP_HOST:-127.0.0.1}" --port "${APP_PORT:-8003}"

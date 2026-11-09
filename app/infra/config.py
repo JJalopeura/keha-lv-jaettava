@@ -23,10 +23,15 @@ if _env_path.exists():
 
 @dataclass(frozen=True)
 class Settings:
+    """Runtime configuration for a live Azure AI Foundry deployment.
+
+    There is no offline/mock provider: every AI call goes to the configured
+    Foundry endpoint. `core` handles high-volume JSON work (field suggestions,
+    intake, checks); `chat` handles conversational prose.
+    """
+
     db_path: str
     uploads_dir: str
-    llm_provider: str
-    demo_mode: bool
     azure_openai_host_core: str
     azure_openai_host_chat: str
     azure_openai_api_key_core: str
@@ -37,7 +42,7 @@ class Settings:
     azure_openai_timeout_s_core: float
     azure_openai_timeout_s_chat: float
     company_vector_store_ids: list[str]
-    session_secret: str = "keha-lv-demo-session-secret"
+    session_secret: str = ""
 
 
 def load_settings() -> Settings:
@@ -50,9 +55,7 @@ def load_settings() -> Settings:
     return Settings(
         db_path=os.getenv("KEHA_LV_DB_PATH", str(data_dir / "keha_lv.db")),
         uploads_dir=os.getenv("KEHA_LV_UPLOADS_DIR", str(data_dir / "uploads")),
-        session_secret=os.getenv("KEHA_LV_SESSION_SECRET", "keha-lv-demo-session-secret"),
-        llm_provider=os.getenv("KEHA_LV_LLM_PROVIDER", "mock").strip().lower() or "mock",
-        demo_mode=os.getenv("KEHA_LV_DEMO_MODE", "true").strip().lower() in {"1", "true", "yes", "on"},
+        session_secret=os.getenv("KEHA_LV_SESSION_SECRET", ""),
         azure_openai_host_core=os.getenv("AZURE_OPENAI_HOST_CORE", ""),
         azure_openai_host_chat=os.getenv("AZURE_OPENAI_HOST_CHAT", ""),
         azure_openai_api_key_core=os.getenv("AZURE_OPENAI_API_KEY_CORE", ""),

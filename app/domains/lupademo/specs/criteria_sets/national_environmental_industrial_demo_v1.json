@@ -67,18 +67,6 @@
       "instruction": "Liitä ennaltavarautumissuunnitelma, joka kattaa ympäristöriskien hallinnan, merkittävät riskit ja toimintaohjeet häiriötilanteissa."
     },
     {
-      "id": "tukes_review",
-      "attachment_type": "tukes_statement",
-      "severity": "recommendation",
-      "instruction": "Jos toiminta kuuluu vaarallisten kemikaalien käsittelyn piiriin, liitä Tukesin lausunto varautumisjärjestelyistä."
-    },
-    {
-      "id": "dnsh_compliance",
-      "attachment_type": "dnsh_statement",
-      "severity": "minor",
-      "instruction": "Liitä DNSH-selvitys (Do No Significant Harm), jos hanke saa EU-rahoitusta tai liittyy vihreän siirtymän etusijamenettelyyn."
-    },
-    {
       "id": "stormwater_management",
       "attachment_type": "stormwater_plan",
       "severity": "minor",
@@ -97,12 +85,6 @@
       "instruction": "Liitä melumallinnus, jos toiminta voi aiheuttaa merkittävää melua ympäristöön, ja kuvaa meluntorjuntatoimet."
     },
     {
-      "id": "public_summary",
-      "attachment_type": "public_summary",
-      "severity": "recommendation",
-      "instruction": "Liitä julkinen yhteenveto kuulutusta ja asianosaisten tiedonsaantia varten."
-    },
-    {
       "id": "site_map",
       "attachment_type": "site_map",
       "severity": "minor",
@@ -113,30 +95,6 @@
       "attachment_type": "baseline_report",
       "severity": "minor",
       "instruction": "Liitä perustilaselvitys maa- ja kallioperästä sekä pohjavesistä toiminnan vaikutusten arvioinnin pohjaksi."
-    },
-    {
-      "id": "waste_handling",
-      "field_id": "waste",
-      "severity": "minor",
-      "instruction": "Kuvaa jätteiden muodostuminen, luokittelu, varastointi ja toimitus hyväksyttyyn käsittelyyn sekä syntyvät jätejakeet."
-    },
-    {
-      "id": "natura_assessment",
-      "field_id": "sensitive_receptors",
-      "severity": "recommendation",
-      "instruction": "Selvitä, sijaitseeko hanke Natura-aluetta tai muita suojelukohteita lähellä ja tarvitaanko luonnonsuojelulain mukaista arviointia."
-    },
-    {
-      "id": "green_transition_priority",
-      "field_id": "activity_description",
-      "severity": "recommendation",
-      "instruction": "Jos hanke hakee vihreän siirtymän etusijamenettelyä, mainitse se hakemuksessa ja liitä etusijapyyntö."
-    },
-    {
-      "id": "permit_bundle",
-      "field_id": "activity_description",
-      "severity": "recommendation",
-      "instruction": "Tunnista hankkeen koko lupakokonaisuus (rakentaminen, kemikaalit, päästöt, putkistot) ja mainitse mahdolliset rinnakkaisluvat."
     }
   ]
 }

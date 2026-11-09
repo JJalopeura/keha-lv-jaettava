@@ -1,0 +1,86 @@
+# Build and deploy KEHA LV to the ECDX Container Apps environment.
+#
+# Target (created 2026-11-09, see docs/deployment-ecdx.md):
+#   container app: keha-lv          rg-hackathon-ecdx-proto-sdc-001
+#   environment:   luvn-finbert-svc-env   (external ingress, public HTTPS)
+#   registry:      caed29c7d480acr.azurecr.io/keha-lv
+#
+# This workflow only changes the image. Environment variables and secrets are
+# set on the container app itself (docs/deployment-ecdx.md), so a deploy can
+# never overwrite the Foundry key or the session secret.
+#
+# Auth: GitHub OIDC -> Entra app `keha-lv-deploy` (no stored cloud secret).
+# It holds Contributor on the ACR (server-side `az acr build`) and
+# Container Apps Contributor on this one container app, nothing else.
+
+name: Deploy KEHA LV to ECDX
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: caed29c7d480acr
+  ACR_LOGIN_SERVER: caed29c7d480acr.azurecr.io
+  IMAGE_NAME: keha-lv
+  RESOURCE_GROUP: rg-hackathon-ecdx-proto-sdc-001
+  APP_NAME: keha-lv
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push the image in ACR
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_SHA::12}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "$IMAGE_NAME:$TAG" \
+            --file Dockerfile \
+            .
+
+      - name: Point the container app at the new image
+        run: |
+          set -euo pipefail
+          az containerapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG"
+
+      - name: Wait for /healthz
+        run: |
+          set -euo pipefail
+          FQDN=$(az containerapp show \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Target: https://$FQDN"
+          for attempt in $(seq 1 24); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$FQDN/healthz" || true)
+            if [ "$code" = "200" ]; then
+              curl -s "https://$FQDN/healthz"
+              echo
+              echo "Healthy after $((attempt * 10))s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Health check did not pass; inspect: az containerapp logs show -n $APP_NAME -g $RESOURCE_GROUP --tail 100"
+          exit 1

@@ -1,11 +1,14 @@
-"""Customer workspace orchestration for the mocked LV applicant portal."""
+"""Customer workspace orchestration for the LV applicant portal.
+
+Accounts are the login roster only. A customer starts with an empty workspace and
+creates its own hankkeet — nothing is pre-seeded.
+"""
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
-from .core import artifact_json, ensure_application, load_form_schema, save_artifact
+from .core import artifact_json
 from .intake import find_material_package, list_attachments
 from .jobs import list_ai_jobs
 
@@ -30,7 +33,8 @@ PACKAGE_STATUS_LABELS = {
     "failed": "Käsittely epäonnistui",
 }
 
-CUSTOMER_FIXTURES: tuple[dict[str, Any], ...] = (
+#: Login roster. Identities only — no starter projects, no seeded applications.
+CUSTOMER_ACCOUNTS: tuple[dict[str, Any], ...] = (
     {
         "id": "p2x",
         "display_name": "P2X",
@@ -41,22 +45,6 @@ CUSTOMER_FIXTURES: tuple[dict[str, Any], ...] = (
             "phone": "+358 40 000 1001",
             "email": "laura.laine@p2x.example",
         },
-        "projects": (
-            {
-                "project_name": "P2X:n vetylaitos",
-                "permit_type": "environmental_industrial",
-                "municipality": "Oulu",
-                "address": "Teollisuustie 10",
-                "status": "draft",
-            },
-            {
-                "project_name": "P2X:n tuotantoalueen laajennus",
-                "permit_type": "building_residential",
-                "municipality": "Oulu",
-                "address": "Energiakatu 4",
-                "status": "submitted",
-            },
-        ),
     },
     {
         "id": "ren-gas",
@@ -68,22 +56,6 @@ CUSTOMER_FIXTURES: tuple[dict[str, Any], ...] = (
             "phone": "+358 40 000 2002",
             "email": "mikko.maki@ren-gas.example",
         },
-        "projects": (
-            {
-                "project_name": "Ren-Gas biokaasulaitos",
-                "permit_type": "environmental_industrial",
-                "municipality": "Vantaa",
-                "address": "Kierrätystie 8",
-                "status": "draft",
-            },
-            {
-                "project_name": "Ren-Gas tankkausaseman muutos",
-                "permit_type": "building_residential",
-                "municipality": "Vantaa",
-                "address": "Lentokentäntie 22",
-                "status": "submitted",
-            },
-        ),
     },
     {
         "id": "sharpcell",
@@ -95,127 +67,63 @@ CUSTOMER_FIXTURES: tuple[dict[str, Any], ...] = (
             "phone": "+358 40 000 3003",
             "email": "salla.salmi@sharpcell.example",
         },
-        "projects": (
-            {
-                "project_name": "Sharpcell akkukennotuotanto",
-                "permit_type": "environmental_industrial",
-                "municipality": "Tampere",
-                "address": "Akkukatu 1",
-                "status": "draft",
-            },
-            {
-                "project_name": "Sharpcell pilottilaboratorio",
-                "permit_type": "building_residential",
-                "municipality": "Tampere",
-                "address": "Innovaatiokatu 6",
-                "status": "submitted",
-            },
-        ),
     },
 )
 
 
-def customer_fixtures() -> list[dict[str, Any]]:
-    """Return a copy-safe list of the selectable demo customers."""
-    return [
-        {
-            "id": fixture["id"],
-            "display_name": fixture["display_name"],
-            "profile": dict(fixture["profile"]),
-        }
-        for fixture in CUSTOMER_FIXTURES
-    ]
+def ensure_customer_accounts(db: Any) -> None:
+    """Make sure the login roster exists. Never creates projects or applications.
 
-
-def ensure_customer_demo_data(db: Any) -> None:
-    """Create the customer identities and their starter hankkeet once."""
-    from .. import scenarios
-
-    for fixture in CUSTOMER_FIXTURES:
-        customer_id = str(fixture["id"])
-        profile = dict(fixture["profile"])
-        db.upsert_customer(customer_id, str(fixture["display_name"]), profile)
-        existing_cases = db.list_cases_for_customer(customer_id)
-        if existing_cases:
-            for case in existing_cases:
-                case_id = str(case["id"])
-                project = artifact_json(db, case_id, "lv_project", "main", {})
-                if not project.get("seeded_customer_workspace"):
-                    continue
-                for permit_type, status in (project.get("statuses") or {}).items():
-                    if status == "submitted":
-                        _set_seed_application_state(db, case_id, str(permit_type), status)
-            continue
-        for project in fixture["projects"]:
-            started = scenarios.create_generic_project(
-                db,
-                project_name=str(project["project_name"]),
-                permit_type=str(project["permit_type"]),
-                applicant_name=str(profile.get("applicant_name") or ""),
-                municipality=str(project.get("municipality") or ""),
-                address=str(project.get("address") or ""),
-                customer_id=customer_id,
-                customer_profile=profile,
-                created_from="lv",
-            )
-            _set_seed_application_state(
-                db,
-                started["case_id"],
-                started["permit_type"],
-                str(project.get("status") or "draft"),
-            )
-
-
-def _set_seed_application_state(db: Any, case_id: str, permit_type: str, status: str) -> None:
-    app = ensure_application(db, case_id, permit_type)
-    app["status"] = status
-    save_artifact(db, case_id, "permit_application", permit_type, app)
-    project = artifact_json(db, case_id, "lv_project", "main", {})
-    project.setdefault("statuses", {})[permit_type] = status
-    project["seeded_customer_workspace"] = True
-    save_artifact(db, case_id, "lv_project", "main", project)
-    db.set_case_status(case_id, "submitted" if status == "submitted" else "application_draft")
-    if status != "submitted":
+    Accounts removed from `CUSTOMER_ACCOUNTS` are pruned when they own no cases, so a
+    database created by an older roster converges on the current one. An account that
+    still owns cases is kept rather than orphaning them.
+    """
+    for account in CUSTOMER_ACCOUNTS:
+        db.upsert_customer(str(account["id"]), str(account["display_name"]), dict(account["profile"]))
+    known = {str(account["id"]) for account in CUSTOMER_ACCOUNTS}
+    try:
+        stored = db.list_customers()
+    except Exception:
         return
+    for customer in stored:
+        customer_id = str(customer.get("id") or "")
+        if not customer_id or customer_id in known:
+            continue
+        try:
+            if db.list_cases_for_customer(customer_id):
+                continue
+        except Exception:
+            continue
+        try:
+            db.delete_customer(customer_id)
+        except Exception:
+            pass
 
-    received_at = time.strftime("%Y-%m-%d %H:%M:%S")
-    receipt_id = f"LV-SEED-{case_id[:8].upper()}"
-    save_artifact(
-        db,
-        case_id,
-        "receipt",
-        permit_type,
-        {
-            "receipt_id": receipt_id,
-            "application_id": permit_type,
-            "received_at": received_at,
-            "authority": load_form_schema(permit_type).get("authority_default", "Viranomainen"),
-            "package_id": f"seeded-{case_id[:8]}",
-            "official_attachment_count": 0,
-        },
-    )
-    common = artifact_json(db, case_id, "lv_common_data", "main", {}).get("data", {})
-    queue = artifact_json(db, case_id, "authority_queue", "main", {"items": []})
-    if not any(item.get("application_id") == permit_type for item in queue.get("items", [])):
-        queue.setdefault("items", []).append(
+
+def customer_fixtures(db: Any | None = None) -> list[dict[str, Any]]:
+    """Return the selectable login accounts, in roster order.
+
+    The code roster is authoritative for who can log in; stored rows only supply the
+    profile fields (a customer may have edited their contact details).
+    """
+    stored: dict[str, dict[str, Any]] = {}
+    if db is not None:
+        try:
+            stored = {str(item.get("id") or ""): item for item in db.list_customers()}
+        except Exception:
+            stored = {}
+    accounts: list[dict[str, Any]] = []
+    for account in CUSTOMER_ACCOUNTS:
+        customer_id = str(account["id"])
+        row = stored.get(customer_id) or {}
+        accounts.append(
             {
-                "application_id": permit_type,
-                "application_title": load_form_schema(permit_type).get("title", permit_type),
-                "receipt_id": receipt_id,
-                "applicant_name": (app.get("form_data") or {}).get("applicant_name") or common.get("applicant_name", ""),
-                "municipality": (app.get("form_data") or {}).get("municipality") or common.get("municipality", ""),
-                "status": "käsittelyssä",
-                "submitted_at": received_at,
-                "quality_score": 75,
-                "open_issue_count": 0,
-                "info_request_risk": "matala",
-                "permit_type": permit_type,
-                "processing_stage": "vastaanotettu",
-                "sla_due_at": time.strftime("%Y-%m-%d", time.localtime(time.time() + 30 * 24 * 60 * 60)),
-                "urgency": "normaali",
+                "id": customer_id,
+                "display_name": str(row.get("display_name") or account["display_name"]),
+                "profile": dict(row.get("profile") or account["profile"]),
             }
         )
-    save_artifact(db, case_id, "authority_queue", "main", queue)
+    return accounts
 
 
 def customer_case(db: Any, customer_id: str, case_id: str) -> dict[str, Any]:
@@ -381,7 +289,6 @@ def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
             "project_url": project_url,
             # Origin marker for the home view ("Kevytasiointi" badge).
             "created_from": str(project.get("created_from") or ""),
-            "demo_hidden_home": bool(project.get("demo_hidden_home")),
         }
         cases.append(case_row)
         for application in actionable:
@@ -393,7 +300,6 @@ def customer_dashboard(db: Any, customer_id: str) -> dict[str, Any]:
                 "url": application["application_url"],
                 "kind": application["task_kind"],
             })
-    cases.sort(key=lambda item: bool(item.get("demo_hidden_home")))
     package_reviews = [
         _package_review_row(db, review)
         for review in db.list_package_reviews(customer_id)

@@ -1,6 +1,5 @@
 """Persistence primitives: artifact CRUD, event log, type helpers. Depends on domain.py types only."""
 
-import os
 import time
 from dataclasses import asdict, is_dataclass
 from typing import Any, Optional
@@ -12,9 +11,6 @@ __all__ = [
     "_plain",
     "save_artifact",
     "event",
-    "_real_llm_enabled_from_env",
-    "_real_llm_enabled_for_case",
-    "_is_presenter_case",
     "_extraction_queue_item",
     "source_ref",
 ]
@@ -48,29 +44,6 @@ def event(db: Any, case_id: str, action: str, detail: str, data: Optional[dict[s
     events = artifact_json(db, case_id, "lupademo_events", "main", {"events": []})
     events.setdefault("events", []).append(payload)
     save_artifact(db, case_id, "lupademo_events", "main", events)
-
-
-def _real_llm_enabled_from_env() -> bool:
-    """Reads config from env vars directly (no settings object needed)."""
-    provider = str(os.getenv("KEHA_LV_LLM_PROVIDER", "mock") or "mock").strip().lower()
-    if provider == "mock":
-        return False
-    return str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() not in {"1", "true", "yes", "on"}
-
-
-def _is_presenter_case(db: Any, case_id: str) -> bool:
-    """True when this case was created via the demo presenter (should always use mock AI)."""
-    project = artifact_json(db, case_id, "lv_project", "main", {})
-    return bool(project.get("presenter_mode"))
-
-
-def _real_llm_enabled_for_case(db: Any, case_id: str, settings: Any) -> bool:
-    """True when a non-presenter case must execute the configured AI path."""
-    if _is_presenter_case(db, case_id):
-        return False
-    if str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}:
-        return False
-    return settings is not None
 
 
 def _extraction_queue_item(item: dict[str, Any]) -> dict[str, Any]:

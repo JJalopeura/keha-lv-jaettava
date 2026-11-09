@@ -10,10 +10,11 @@ Stdlib unittest on purpose: no pytest dependency.
 """
 
 import os
+import sys
 import tempfile
 import unittest
+from pathlib import Path
 
-os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 os.environ["KEHA_LV_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="keha-golden-"), "test.db")
 os.environ["KEHA_LV_UPLOADS_DIR"] = tempfile.mkdtemp(prefix="keha-golden-uploads-")
 
@@ -26,6 +27,12 @@ from app.domains.lupademo.scenarios import create_case_from_scenario  # noqa: E4
 from app.infra.config import load_settings  # noqa: E402
 from app.infra.db import DB  # noqa: E402
 from app.infra.session import DemoSessionMiddleware  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fake_llm import install_fake_llm  # noqa: E402
+
+install_fake_llm()
+
 
 # Fully isolated app + DB so the golden gate never touches the shared `app.main`
 # state that test_smoke.py relies on (app.main pins its DB at import time —

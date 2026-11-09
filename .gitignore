@@ -7,15 +7,22 @@ build/
 .eggs/
 *.egg
 
-# Virtual environments
+# Virtual environments (including the local scratch/broken ones)
 venv/
 .venv/
+.venv-macos-broken/
 env/
+.azure-venv/
+.deps/
+.npm-global/
 
 # Environment variables
 .env
+
+# Runtime state
 data/
 graphify-out/
+*.log
 
 # IDE
 .vscode/settings.json
@@ -26,42 +33,42 @@ graphify-out/
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-testiaineisto/*
-.agents/skills/
-skills-lock.json
+# Local agent / tooling scratch
+.pi/
+.pi-glla/
 .audit/
 .scratch/
-docs/
-.github/
-quality/
-pixie_qa/
-.playwright-mcp/
-ux-wizard-step2-final-desktop.png
 .copilot-tracking/
-hosiaisluoma-wizard-step2-desktop.png
-hosiaisluoma-wizard-step2-final-desktop.png
-ux-wizard-step1-desktop.png
-ux-wizard-step2-desktop.png
-.gitignore
-ux-wizard-step2-final-mobile-v2.png
-.gitignore
-ux-wizard-step2-final-mobile.png
-ux-wizard-step2-materials-first.png
-ux-wizard-step3-final-desktop.png
-ux-wizard-step3-final-mobile.png
-wizard-complete-form-mobile-final.png
-desktop-demo-lab-viewport.png
-homepage-after-first-pass.png
-wizard-ai-sidebar-green.png
-.pi/
-.azure-venv/
-wayfinder/
-.npm-global/
+.playwright-mcp/
+skills-lock.json
+.agents/skills/
+.github/agents/
+.github/skills/
 
-# KEHA LV example-package documentation (data itself stays ignored)
+# Local QA dumps and skill output (not shipped)
+pixie_qa/
+wayfinder/
+
+# Test material: the unzipped packages stay local, the document source is committed
+testiaineisto/*
 !testiaineisto/*.md
 !testiaineisto/validate_docs.py
-.pi-glla/
-.deps/
+
+# Screenshots and capture output are scratch, never shipped
+*.png
+
+# docs/ IS tracked. The patterns below are one-shot session reports that stay local.
+# reports that stay local. A new docs/ file is committed unless it matches one.
+docs/ui-test-screenshots/
+docs/next-*.md
+docs/next-run-*.md
+docs/next-session-*.md
+docs/archive/next-session-*.md
+docs/finalization-*.md
+docs/quality-workflow-performance-summary-*.md
+docs/sweep-report-*.md
+docs/ui-ux-*.md
+docs/hosiaisluoma-reference-plan.md
+docs/polku2-service-mode-plan.md
+*.pptx
+~$*

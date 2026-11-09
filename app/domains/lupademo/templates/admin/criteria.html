@@ -106,13 +106,6 @@
       </form>
     </div>
   </div>
-  <div class="criteria-workspace-context" aria-label="Aktiivinen kriteeristökonteksti">
-    <span class="criteria-workspace-context__icon" aria-hidden="true">K</span>
-    <div>
-      <strong>{{ active_city }} ohjaa nyt AI-tarkistuksia</strong>
-      <p>Muokkaukset vaikuttavat uuden hakemuksen tarkistusporttiin, aineistotyöpöydän analyysiin ja rajapintapalautteisiin. Valmistellut demo-hakemukset (hyväksytty aineisto) tuottavat vain vähäisiä havaintoja ja suosituksia — estäviä tai merkittäviä puutteita raportoidaan vain keskeneräisistä luonnoksista.</p>
-    </div>
-  </div>
 </section>
 
 <div class="severity-explanation">
@@ -193,9 +186,11 @@
     <div>
       <h3>Säännöt</h3>
       {% set rule_rows = criteria_rule_rows.get(criteria.permit_type, []) %}
+      {% set permit_field_labels = (criteria_field_labels|default({})).get(criteria.permit_type, {}) %}
       <div class="rule-list">
         {% for rule in rule_rows %}
         <div class="result-item">
+          {% set rule_field_label = permit_field_labels.get(rule.field_id) or field_labels.get(rule.field_id) %}
           {% set rule_attachment_label = namespace(value='') %}
           {% for attachment_id in rule.attachment_type.split(',') if rule.attachment_type %}
           {% set attachment_label = attachment_labels.get(attachment_id.strip(), attachment_id.strip()|replace('_', ' ')|capitalize) %}
@@ -203,8 +198,8 @@
           {% endfor %}
           <details class="criteria-rule-disclosure" {% if loop.first %}open{% endif %}>
             <summary class="criteria-rule-summary">
-              <span><strong>{{ field_labels.get(rule.field_id, "Yleinen vaatimus") }}</strong><small>{{ rule_attachment_label.value or "Ei liitevaatimusta" }}</small></span>
-              <span class="status {{ 'bad' if rule.severity == 'blocking' else ('warn' if rule.severity == 'major' else 'good') }}">{{ severity_labels.get(rule.severity, rule.severity) }}</span>
+              <span><strong>{{ rule_field_label or ("Yleinen vaatimus" if not rule.field_id else rule.field_id) }}</strong><small>{{ rule_attachment_label.value or "Ei liitevaatimusta" }}</small></span>
+              <span class="status {{ 'bad' if rule.severity == 'blocking' else ('warn' if rule.severity == 'major' else '') }}">{{ severity_labels.get(rule.severity, rule.severity) }}</span>
             </summary>
           <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule">
             <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}">
@@ -213,7 +208,7 @@
             <div class="form-grid">
               <label>Kenttä
                 <input type="hidden" name="field_id" value="{{ rule.field_id }}">
-                <span class="criteria-readable-value">{{ field_labels.get(rule.field_id, rule.field_id or "Kaikki kentät") }}</span>
+                <span class="criteria-readable-value">{{ rule_field_label or ("Kaikki kentät" if not rule.field_id else rule.field_id) }}</span>
               </label>
               <label>Vaadittava liite
                 <select name="attachment_type">
@@ -225,13 +220,12 @@
               <label>Vakavuus<select name="severity">{% for severity in ["blocking", "major", "minor", "recommendation"] %}<option value="{{ severity }}" {% if rule.severity == severity %}selected{% endif %}>{{ severity_labels.get(severity, severity) }}</option>{% endfor %}</select></label>
             </div>
             <label>Arviointiohje <span aria-hidden="true">*</span><textarea aria-label="Arviointiohje" name="instruction" required>{{ rule.instruction }}</textarea></label>
-            <p class="criteria-rule-impact"><strong>Vaikutus AI-tarkistukseen:</strong> {% if rule.field_id %}tarkistaa kentän {{ field_labels.get(rule.field_id, "valitun kentän") }}{% endif %}{% if rule.field_id and rule_attachment_label.value %} ja {% endif %}{% if rule_attachment_label.value %}vaatii liitteen {{ rule_attachment_label.value }}{% endif %}{% if not rule.field_id and not rule_attachment_label.value %}ohjaa yleistä arviointia{% endif %}.</p>
             <button>Tallenna sääntö</button>
           </form>
-          </details>
-          <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule/delete" class="inline-action">
+          <form method="post" action="/cases/{{ case_id }}/lupademo/admin/criteria/rule/delete" class="inline-action criteria-rule-delete">
             <input type="hidden" name="permit_type" value="{{ criteria.permit_type }}"><input type="hidden" name="municipality" value="{{ selected_municipality }}"><input type="hidden" name="rule_id" value="{{ rule.id }}"><button class="secondary">Poista</button>
           </form>
+          </details>
         </div>
         {% else %}<p class="muted">Ei sääntöjä.</p>{% endfor %}
       </div>
@@ -255,17 +249,4 @@
 </details>
 {% endfor %}
 
-{% call technical_details("Lähdeaineiston ylläpito") %}
-<p>Lähdeaineiston tuonti ylläpitää ohje- ja lakiaineiston hakupohjaa. Viranomaisesimerkit rajataan erilliseen arviointikäyttöön.</p>
-<form method="post" action="/cases/{{ case_id }}/lupademo/admin/source-materials/ingest"><button>Aja lähdeaineiston tuonti</button></form>
-{% if source_ingest %}
-<dl class="data-list">
-  <div class="data-row"><dt>Käsitelty</dt><dd>{{ source_ingest.file_count }} tiedostoa</dd></div>
-  <div class="data-row"><dt>Valmiina haussa</dt><dd>{{ source_ingest.ready_file_count if source_ingest.ready_file_count is defined else source_ingest.file_count }}</dd></div>
-  <div class="data-row"><dt>Epäonnistui</dt><dd>{{ source_ingest.failed_file_count or 0 }}</dd></div>
-  <div class="data-row"><dt>Viranomaisesimerkkejä</dt><dd>{{ source_ingest.analysis.excluded_authority_example_count or 0 }}</dd></div>
-</dl>
-{% if source_ingest.file_errors %}<div class="table-wrap"><table><caption>Lähdeaineiston virheet</caption><tr><th>Tiedosto</th><th>Virhe</th></tr>{% for item in source_ingest.file_errors %}<tr><td>{{ item.filename }}</td><td>{{ item.error }}</td></tr>{% endfor %}</table></div>{% endif %}
-{% else %}<p class="muted">Lähdeaineistoa ei ole vielä käsitelty.</p>{% endif %}
-{% endcall %}
 {% endblock %}

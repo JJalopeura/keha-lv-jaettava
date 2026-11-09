@@ -18,7 +18,6 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, so `import app...` works from any cwd
 
-os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 os.environ["KEHA_LV_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="keha-test-"), "test.db")
 
 from fastapi import FastAPI  # noqa: E402
@@ -33,10 +32,13 @@ from app.infra.config import Settings, load_settings  # noqa: E402
 from app.infra.db import DB  # noqa: E402
 from app.infra.llm_factory import create_llm_client  # noqa: E402
 from app.infra.llm_utils import call_llm_json, vector_store_ids  # noqa: E402
-from app.infra.mock_llm import MockLLMClient  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fake_llm import FakeLLMClient, install_fake_llm  # noqa: E402
 from app.domains.lupademo.services.application import deterministic_suggestion  # noqa: E402
 from app.domains.lupademo.services.intake import azure_vector_store_ids, build_retrieval_context  # noqa: E402
 from app.main import app, db as app_db, recover_orphaned_jobs  # noqa: E402
+
+install_fake_llm()
 
 PERMIT = "environmental_industrial"
 KEY = {"X-Lupademo-Api-Key": "demo-avi-key"}
@@ -261,8 +263,6 @@ class ProviderContracts(unittest.TestCase):
         values = {
             "db_path": ":memory:",
             "uploads_dir": tempfile.gettempdir(),
-            "llm_provider": "azure",
-            "demo_mode": False,
             "azure_openai_host_core": "https://core.openai.azure.com",
             "azure_openai_host_chat": "https://chat.services.ai.azure.com",
             "azure_openai_api_key_core": "core-key",
@@ -279,9 +279,8 @@ class ProviderContracts(unittest.TestCase):
 
     def test_factory_selects_core_and_chat_configuration(self) -> None:
         settings = self._settings()
-        with patch.dict(os.environ, {"KEHA_LV_FORCE_MOCK_LLM": "false"}):
-            core = create_llm_client(settings, purpose="core")
-            chat = create_llm_client(settings, purpose="chat")
+        core = create_llm_client(settings, purpose="core")
+        chat = create_llm_client(settings, purpose="chat")
 
         self.assertIsInstance(core, AzureOpenAIClient)
         self.assertEqual((core.host, core.api_key, core.model, core.timeout_s), (
@@ -297,11 +296,11 @@ class ProviderContracts(unittest.TestCase):
             settings.azure_openai_timeout_s_chat,
         ))
 
-    def test_factory_force_mock_overrides_azure(self) -> None:
-        with patch.dict(os.environ, {"KEHA_LV_FORCE_MOCK_LLM": "true"}):
-            selected = create_llm_client(self._settings())
+    def test_factory_rejects_missing_configuration(self) -> None:
+        with self.assertRaises(Exception) as ctx:
+            create_llm_client(self._settings(azure_openai_api_key_core=""))
 
-        self.assertIsInstance(selected, MockLLMClient)
+        self.assertIn("AZURE_OPENAI_API_KEY_CORE", str(ctx.exception))
 
     def test_azure_responses_request_contract(self) -> None:
         captured: dict[str, object] = {}

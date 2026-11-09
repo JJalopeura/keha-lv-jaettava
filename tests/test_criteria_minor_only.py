@@ -13,13 +13,13 @@ Stdlib unittest on purpose: no pytest dependency.
 """
 
 import atexit
+import sys
 import os
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 _tmp_db_dir = tempfile.mkdtemp(prefix="keha-minor-")
 _tmp_uploads_dir = tempfile.mkdtemp(prefix="keha-minor-uploads-")
 # Self-clean: each run otherwise leaks ~400M of ingested package uploads in /tmp.
@@ -37,6 +37,12 @@ from app.infra.session import DemoSessionMiddleware  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fake_llm import install_fake_llm  # noqa: E402
+
+install_fake_llm()
+
 
 _settings = load_settings()
 _db = DB(_settings.db_path)

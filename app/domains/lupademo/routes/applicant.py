@@ -35,7 +35,7 @@ def _process_material_zip(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     package = svc.create_pending_material_package(db(), case_id, application_id, filename, document_count)
-    azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
+    azure_enabled = True
     job = svc.start_material_ingest_job(
         db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
     )
@@ -123,14 +123,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
     router = APIRouter(dependencies=[Depends(customer_guard)])
 
     def ai_execution_label(case_id: str) -> str:
-        configured = settings()
-        force_mock = os.getenv("KEHA_LV_FORCE_MOCK_LLM", "").strip().lower() in {"1", "true", "yes", "on"}
-        project = svc.artifact_json(db(), case_id, "lv_project", "main", {})
-        if project.get("presenter_mode") or force_mock:
-            return "AI-simulaatio"
-        if str(configured.llm_provider or "mock").strip().lower() == "azure":
-            return "Azure OpenAI ja sääntöpohjaiset tarkistukset"
-        return "Azure OpenAI ei ole käytettävissä"
+        return "Azure AI Foundry ja sääntöpohjaiset tarkistukset"
 
     def material_return_url(case_id: str, application_id: str, package_id: str = "", fragment: str = "") -> str:
         if package_id:
@@ -158,14 +151,14 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
 
     @router.get("/login", response_class=HTMLResponse)
     def login(request: Request):
-        customer_ws.ensure_customer_demo_data(db())
+        customer_ws.ensure_customer_accounts(db())
         if current_customer(request):
             return RedirectResponse(url="/", status_code=303)
-        return templates.TemplateResponse(request, "applicant/login.html", {"customers": customer_ws.customer_fixtures()})
+        return templates.TemplateResponse(request, "applicant/login.html", {"customers": customer_ws.customer_fixtures(db())})
 
     @router.post("/login")
     def login_post(request: Request, customer_id: str = Form(...)):
-        customer_ws.ensure_customer_demo_data(db())
+        customer_ws.ensure_customer_accounts(db())
         customer = db().get_customer(customer_id)
         if not customer:
             raise HTTPException(status_code=404, detail="customer_not_found")
@@ -184,7 +177,6 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         customer = current_customer(request)
         if not customer:
             return RedirectResponse(url="/login", status_code=303)
-        customer_ws.ensure_customer_demo_data(db())
         return templates.TemplateResponse(request, "applicant/landing.html", customer_ws.customer_dashboard(db(), customer["id"]))
 
     @router.get("/demo/scenarios", response_class=HTMLResponse)
@@ -306,7 +298,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         permit_type = started["permit_type"]
         svc.event(db(), case_id, "kevytasiointi.started", "Kevytasiointi started from LV", {"permit_type": permit_type})
         package = svc.create_pending_material_package(db(), case_id, permit_type, display_name, document_count)
-        azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
+        azure_enabled = True
         job = svc.start_material_ingest_job(
             db(), case_id, permit_type, document_count, azure_enabled=azure_enabled, package_id=package["package_id"]
         )
@@ -358,7 +350,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
             "project": {"name": review.get("display_name") or "Hakemuspaketin tarkistus", "presenter_mode": False, "permits": [permit_type]},
             "common": {"data": {"municipality": municipality}},
             "sync": {"changes": []},
-            "ai_mode_status": ai_mode_status({}, settings()),
+            "ai_mode_status": ai_mode_status(),
             "application": app,
             "schema": svc.load_form_schema(permit_type),
             "criteria": criteria,
@@ -516,8 +508,8 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         except KeyError:
             raise HTTPException(status_code=404, detail="Package not found")
         # Prose suggestions need the intake analysis; without it the LLM has no
-        # retrieval context and returns junk. Analysis runs automatically after
-        # ingest, so this only triggers if it failed or is still running.
+        # retrieval context. Analysis runs automatically after ingest, so this only
+        # triggers if it failed or is still running.
         analysis = svc.artifact_json(db(), found["case_id"], "intake_analysis", found["permit_type"], {})
         if not analysis:
             raise HTTPException(status_code=409, detail="analysis_not_ready")
@@ -930,7 +922,7 @@ def create_applicant_router(ctx: RouteContext) -> APIRouter:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
         document_count = result.get("added_count", len(payload))
-        azure_enabled = str(getattr(settings(), "llm_provider", "mock") or "mock").lower() != "mock"
+        azure_enabled = True
         job = svc.start_material_ingest_job(
             db(), case_id, application_id, document_count, azure_enabled=azure_enabled, package_id=result.get("material_package", {}).get("package_id", "")
         )

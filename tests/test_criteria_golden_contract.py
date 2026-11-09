@@ -5,8 +5,6 @@ import tempfile
 import time
 import unittest
 
-os.environ.setdefault("KEHA_LV_LLM_PROVIDER", "azure")
-os.environ.pop("KEHA_LV_FORCE_MOCK_LLM", None)
 os.environ["KEHA_LV_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="criteria-golden-"), "test.db")
 os.environ["KEHA_LV_UPLOADS_DIR"] = tempfile.mkdtemp(prefix="criteria-golden-uploads-")
 

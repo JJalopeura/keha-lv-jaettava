@@ -278,15 +278,9 @@ def context_app(
     }
 
 
-def ai_mode_status(project: dict[str, Any], settings_obj: Any) -> dict[str, str]:
-    """Describe the provider visible to the current demo case."""
-    if project.get("presenter_mode"):
-        return {"label": "AI-simulaatio", "kind": "simulation"}
-    if str(os.getenv("KEHA_LV_FORCE_MOCK_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}:
-        return {"label": "Testin AI-simulaatio", "kind": "simulation"}
-    if str(getattr(settings_obj, "llm_provider", "mock") or "mock").lower() == "azure":
-        return {"label": "Azure OpenAI", "kind": "azure"}
-    return {"label": "Azure OpenAI ei käytettävissä", "kind": "error"}
+def ai_mode_status() -> dict[str, str]:
+    """Describe the AI backend visible to the user. There is exactly one: Foundry."""
+    return {"label": "Azure AI Foundry", "kind": "azure"}
 
 
 def context_app_with_material(
@@ -370,7 +364,7 @@ class RouteContext:
             "project": project,
             "common": common,
             "sync": sync,
-            "ai_mode_status": ai_mode_status(project, self.settings()),
+            "ai_mode_status": ai_mode_status(),
         }
         if permit_type:
             app = svc.ensure_application(self.db(), case_id, permit_type)

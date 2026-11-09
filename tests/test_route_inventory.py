@@ -16,7 +16,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 
-os.environ["KEHA_LV_FORCE_MOCK_LLM"] = "true"
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -25,6 +24,12 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from app.domains.lupademo.routes import create_lupademo_router  # noqa: E402
 from app.infra.config import load_settings  # noqa: E402
 from app.infra.db import DB  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fake_llm import install_fake_llm  # noqa: E402
+
+install_fake_llm()
+
 
 # Build an isolated app so this test never touches the shared `app.main` state
 # that test_smoke.py relies on (which asserts exact attachment counts).

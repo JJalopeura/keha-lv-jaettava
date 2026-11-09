@@ -234,6 +234,12 @@
       "rescue_plan": "Pelastussuunnitelma",
       "traffic_plan": "Liikennesuunnitelma",
       "waste_plan": "Jätehuoltosuunnitelma",
+      "site_plan": "Asemapiirros",
+      "noise_notice": "Meluilmoitus",
+      "security_plan": "Järjestyksenvalvontasuunnitelma",
+      "first_aid_plan": "Ensiapusuunnitelma",
+      "insurance_certificate": "Vakuutustodistus",
+      "non_public_documents": "Ei julkaistavat asiakirjat",
       "other": "Muu asiakirja"
     } %}
     <article class="managed-document-row">
@@ -464,6 +470,9 @@
     <p class="section-kicker">Valmius</p>
     <h2>{% if check_report.get('readiness') == 'ready' %}Valmis{% elif check_report.get('readiness') == 'almost_ready' %}Hakemus tarvitsee vielä täsmennyksiä{% else %}Aloita estävistä puutteista{% endif %}</h2>
     {% set _unresolved_issues = check_report.get('issues', [])|selectattr('resolved', 'ne', true)|list %}
+    {# Raw count on purpose: the submit gate reports per-finding counts
+       ("2 estävää · 16 merkittävää"), so this line must use the same basis.
+       The grouped field card below is a reading convenience, not a recount. #}
     <p>{% if check_report.get('readiness') == 'ready' %}Tarkistus ei löytänyt lähettämistä estäviä puutteita.{% else %}{{ _unresolved_issues|length }} avointa havaintoa ennen lähetystä.{% endif %} · {{ _review_improvements|length }} parannusehdotusta.</p>
   </div>
   <div class="readiness-actions">
@@ -565,8 +574,23 @@
     {% set severity_labels = {"blocking": "Estävä", "major": "Merkittävä", "minor": "Vähäinen", "recommendation": "Suositus"} %}
     {% set check_attachment_labels = {"site_map": "Asemapiirros / sijaintikartta", "zoning_extract": "Kaavaote", "public_summary": "Julkinen yhteenveto", "site_plan": "Asemapiirros / sijaintikartta", "main_drawings": "Pääpiirustukset", "facade_drawings": "Julkisivupiirustukset", "stormwater_plan": "Hulevesisuunnitelma", "environmental_application": "Ympäristölupahakemus", "bat_assessment": "BAT-arviointi", "monitoring_plan": "Tarkkailu ja raportointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "chemical_inventory_or_sds": "Kemikaaliluettelo / käyttöturvallisuustiedotteet (SDS)", "judgement_freshness_assessment": "Lausunto perustellun päätelmän ajantasaisuudesta", "dnsh_statement": "DNSH-selvitys", "tukes_statement": "Tukesin lausunto", "air_monitoring_plan": "Ilmapäästöjen tarkkailuohjelma", "energy_report": "Energiaselvitys / energiatodistus", "landowner_permission": "Maanomistajan lupa", "rescue_plan": "Pelastussuunnitelma", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "confidential_attachment": "Luottamuksellinen liite"} %}
     {% set check_field_labels = {"location_environment": "Sijainti ja ympäristö", "confidential_attachment": "Luottamuksellinen liite"} %}
+    {% set _missing_field_rows = check_report.issues|selectattr('resolved', 'ne', true)|selectattr('type', 'equalto', 'missing')|selectattr('field_id')|rejectattr('attachment_id')|list %}
     <div class="check-issue-grid">
-    {% for issue in check_report.issues if not issue.get('resolved') %}
+    {% if _missing_field_rows|length > 1 %}
+    {% set _mf_severity = 'blocking' if _missing_field_rows|selectattr('severity', 'equalto', 'blocking')|list else 'major' %}
+    {% set _mf_ns = namespace(labels=[], pending=0) %}
+    {% for fi in _missing_field_rows %}
+      {% if 'täyttämättä lomakkeella' in fi.title %}{% set _mf_ns.pending = _mf_ns.pending + 1 %}{% endif %}
+      {% set _mf_ns.labels = _mf_ns.labels + [fi.title|replace(' on täyttämättä lomakkeella', '')|replace(' puuttuu', '')] %}
+    {% endfor %}
+    <div class="issue {{ _mf_severity }}" id="check-missing-fields">
+      <strong>{{ severity_labels.get(_mf_severity, "Tarkistettava") }} · Hakemuslomakkeelta puuttuu {{ _missing_field_rows|length }} pakollista kenttää</strong>
+      <p>{% if _mf_ns.pending %}{{ _mf_ns.pending }} kenttää odottaa aineistosta poimittua arvoa.{% else %}Pakolliset kentät ovat täyttämättä.{% endif %} Kentät: {{ _mf_ns.labels[:12]|join(', ') }}{% if _mf_ns.labels|length > 12 %}…{% endif %}</p>
+      <small>Ehdotus: {% if _mf_ns.pending %}Hyväksy aineistosta poimitut arvot vaiheessa 3 tai täytä kentät käsin.{% else %}Täytä pakolliset kentät.{% endif %}</small>
+      <a class="issue-follow-up" href="/cases/{{ case_id }}/lupademo/application/{{ application.application_id }}/wizard/3">Siirry hakemukseen vaiheeseen 3</a>
+    </div>
+    {% endif %}
+    {% for issue in check_report.issues if not issue.get('resolved') and not (issue.type == 'missing' and issue.field_id and not issue.attachment_id) %}
     <div class="issue {{ issue.severity }}" id="{% if issue.severity == 'blocking' %}check-blocking{% endif %}">
       {% set issue_fields = schema.fields|selectattr('id', 'equalto', issue.field_id)|list if issue.field_id else [] %}
       {% set issue_title = issue.title %}
@@ -640,6 +664,11 @@
   "rescue_plan": "Pelastussuunnitelma",
   "traffic_plan": "Liikennesuunnitelma",
   "waste_plan": "Jätehuoltosuunnitelma",
+  "noise_notice": "Meluilmoitus",
+  "security_plan": "Järjestyksenvalvontasuunnitelma",
+  "first_aid_plan": "Ensiapusuunnitelma",
+  "insurance_certificate": "Vakuutustodistus",
+  "non_public_documents": "Ei julkaistavat asiakirjat",
   "other": "Muu asiakirja"
 } %}
 {% set package_scope_labels = {"official_submission": "Viranomaiselle toimitettava", "ai_context_only": "Vain tekoälyn käytössä", "ephemeral": "Tilapäinen aineisto"} %}

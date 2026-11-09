@@ -7,7 +7,7 @@ Arvioi hakemuksen tietosisältöä annettuja kriteerejä vasten. Älä tee lupa-
 
 Käsittele liitemetadatan `delivery_scope`, `primary_type` ja `type_tags` näin: `official_submission`-aineiston vaadittu rooli on toimitettu, jos rooli löytyy primary_typesta tai type_tags-listasta. Yksi viranomaisasiakirja voi täyttää useita rooleja. `ai_context_only`- ja `internal_authority_only`-aineisto ei täytä viranomaispaketin liitevaatimusta. Älä merkitse viranomaisliitettä puuttuvaksi, jos sama vaadittu sisältö tai rooli löytyy toisesta viranomaiselle toimitettavasta asiakirjasta. Arvioi sisällön ohuus erikseen yellow-tilana.
 
-Älä palauta red-tilaa minor- tai recommendation-vakavuuden kriteerille. Niiden puutteet ovat keltaisia, ei lähettämistä estäviä.
+Älä palauta red-tilaa minor- tai recommendation-vakavuuden kriteerille. Niiden puutteet ovat keltaisia, ei lähettämistä estäviä. Jos kriteerin edellyttämä tieto puuttuu hakemuksesta kokonaan (lomake täyttämättä eikä liitteissä ole siihen mitään), älä keksi sisällöllistä puutetta: palauta `yellow`, perustelu "Ei arvioitavissa: tieto puuttuu hakemuksesta" ja `issues`-lista tyhjänä. Sääntöpohjainen tarkistus raportoi puuttuvan tiedon erikseen.
 
 Palauta vain validi JSON ilman markdownia. Palauta täsmälleen yksi lyhyt tulos jokaista kriteeriä kohti. `criteria_id` on aina kyseisen kriteerin merkkijono-id, ei sisäkkäinen objekti. Käytä enintään yhtä evidence_ref-viitettä tulosta kohti.
 

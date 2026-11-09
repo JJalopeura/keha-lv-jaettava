@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -13,7 +14,7 @@ from app.infra.llm_factory import LLMUnavailableError
 from app.infra.session import DemoSessionMiddleware
 from app.domains.lupademo import services as svc
 from app.domains.lupademo.routes import create_lupademo_router
-from app.domains.lupademo.services.customer_workspace import ensure_customer_demo_data
+from app.domains.lupademo.services.customer_workspace import ensure_customer_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +22,18 @@ settings = load_settings()
 Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
 db = DB(settings.db_path)
 
-app = FastAPI(title="KEHA LV AI-demo")
+_session_secret = settings.session_secret
+if not _session_secret:
+    _session_secret = secrets.token_urlsafe(32)
+    logger.warning(
+        "KEHA_LV_SESSION_SECRET is unset; generated an ephemeral key. "
+        "Browser sessions will not survive a restart."
+    )
+
+app = FastAPI(title="KEHA LV — Lupahakemuspalvelu")
 app.add_middleware(
     DemoSessionMiddleware,
-    secret_key=settings.session_secret,
+    secret_key=_session_secret,
     session_cookie="lv_session",
     same_site="lax",
     https_only=False,
@@ -61,7 +70,7 @@ def recover_orphaned_jobs(db_obj: DB) -> None:
 
 @app.on_event("startup")
 def startup_recover_orphaned_jobs():
-    ensure_customer_demo_data(db)
+    ensure_customer_accounts(db)
     recover_orphaned_jobs(db)
 
 
@@ -76,7 +85,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 @app.exception_handler(LLMUnavailableError)
 async def llm_unavailable_handler(request: Request, exc: LLMUnavailableError) -> HTMLResponse | JSONResponse:
-    detail = "Azure AI ei ole käytettävissä. Mock-AI on sallittu vain esittäjätilassa."
+    detail = "Azure AI Foundry ei ole käytettävissä. Tarkista yhteysasetukset."
     if request.url.path.startswith("/api/"):
         return JSONResponse(status_code=503, content={"detail": detail})
     return HTMLResponse(
@@ -91,4 +100,9 @@ async def llm_unavailable_handler(request: Request, exc: LLMUnavailableError) ->
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok", "llm_provider": settings.llm_provider}
+    return {
+        "status": "ok",
+        "llm_provider": "azure",
+        "model_core": settings.azure_openai_model_core,
+        "model_chat": settings.azure_openai_model_chat,
+    }

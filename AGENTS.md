@@ -1,20 +1,22 @@
 ---
-title: KEHA LV AI Demo Agent Guide
+title: KEHA LV Agent Guide
 description: Architecture, conventions, and validated workflows for repository agents
 ---
 
 ## What this project is
 
-A standalone, shareable demo of an AI-assisted permit-application platform ("Lupahakemus", LV) for Finnish municipal and regional authorities (KEHA / ELY centers, municipalities, AVI).
+An AI-assisted permit-application platform ("Lupahakemus", LV) for Finnish municipal
+and regional authorities (KEHA / ELY centers, municipalities, AVI).
 
 It demonstrates: AI filling application forms from unstructured materials, AI checking completeness against permit criteria, separating official attachments from AI-only context, submission packaging, authority review workflows, and an external AI suggestion-service API with tenant isolation.
 
-Runs fully offline with a mock LLM (rule-based, instant) by default. Swap to Azure OpenAI via `.env`.
+Every AI call goes to Azure AI Foundry; there is no mock or offline provider. A
+missing endpoint, deployment name or key fails loudly instead of degrading.
 
 ## Scope boundaries
 
-**In scope:** the demo webapp, mock LLM, scenario scripts, API playground, criteria admin, authority views, benchmark lab.
-**Out of scope:** production auth, real user data, real integration with authority systems, real legal decisions. This is a demo.
+**In scope:** the webapp, Azure AI Foundry integration, scenario tooling, API playground, criteria admin, authority views, benchmark lab.
+**Out of scope:** production auth, real user data, real integration with authority systems, real legal decisions. The login roster is still a fixture, not an identity provider.
 
 ## Architecture
 
@@ -28,42 +30,47 @@ app/
   infra/                     Infrastructure (no business logic):
     config.py                  Settings dataclass from env vars
     db.py                      SQLite store
-    llm_factory.py             create_llm_client() → mock or Azure
-    llm_utils.py               call_llm_json(), rate limiting
-    mock_llm.py                Rule-based mock (default, offline)
-    azure_client.py            Azure OpenAI client
+    llm_factory.py             create_llm_client() → Azure AI Foundry client (raises if unconfigured)
+    llm_utils.py               call_llm_json(), JSON extraction, rate limiting
+    azure_client.py            Foundry Responses API client (capability-adaptive)
+    session.py                 DemoSessionMiddleware: signed browser session (customer_id)
   domains/lupademo/
     routes/                  HTTP handlers (thin — delegate to services):
       __init__.py               thin create_lupademo_router that mounts 5 sub-routers
+      common.py                 Shared RouteContext + route helpers (no routes of its own)
       applicant.py              68 handlers — wizard, intake, application studio, common
-                                data, packaging, chat/voice (~1171 lines)
+                                data, packaging, chat/voice
       authority.py              9 handlers — queue, detail, observations, summary/memo
       api_v1.py                  17 handlers — external suggestion-service endpoints
       admin.py                   12 handlers — criteria admin, API demo/playground
       demo_lab.py               24 handlers — benchmark, metrics, audit, UI-only demo
     services/                Business logic package:
       domain.py                 Dataclasses, type contracts, schemas, path constants,
-                                prompt loading. No intra-package deps. (~350 lines)
+                                prompt loading. No intra-package deps.
                                 → "what does an Issue look like?"
       db_helpers.py             Persistence primitives: artifact_json, save_artifact,
-                                event, _dict/_list/_plain, source_ref. (~80 lines)
+                                event, _dict/_list/_plain, source_ref.
                                 → "how do I read/write artifacts?"
       core.py                   Application orchestration: case setup, application
                                 lifecycle, common-data sync. Re-exports from domain
-                                and db_helpers. (~250 lines)
+                                and db_helpers.
                                 → "how do I create a case/app?"
       criteria.py               Permit criteria CRUD: load, save, version history,
-                                rule management, severity ordering. (~180 lines)
+                                rule management, severity ordering.
                                 → "how do I manage permit criteria/rules?"
       jobs.py                   Generic AI job lifecycle (start/advance/complete/
-                                cancel/retry). Depends on core only. (~350 lines)
+                                cancel/retry). Depends on core only.
       intake.py                 Attachments, material packages, ingestion, extraction,
                                 classification, retrieval, agent runner.
-                                Depends on core+jobs. (~1500 lines)
+                                Depends on core+jobs.
       application.py            Suggestions, checks, packaging, authority views,
                                 chat/voice, metrics, external API. The largest module.
-                                Depends on core+jobs+intake+criteria. (~2700 lines)
-      __init__.py               Re-exports everything. `import services as svc` works.
+                                Depends on core+jobs+intake+criteria.
+      customer_workspace.py     Customer workspace: login roster, dashboard assembly,
+                                package-case mapping. Depends on core+jobs+intake.
+                                NOT re-exported by __init__ — import it directly.
+      __init__.py               Re-exports core/jobs/intake/application only.
+                                `import services as svc` works.
 
                                 Dependency order (graphify-verified):
                                 application → intake → jobs → core → domain + db_helpers
@@ -77,8 +84,7 @@ app/
 docs/archive/v5-specs/        Archived v5 reference specs (not loaded at runtime)
 data/                         Created at first run: SQLite DB + uploads/ (gitignored)
 testiaineisto/                Test packages (sample zip uploads)
-tests/                        Smoke tests (mock LLM, temp DB)
-rules/                        ast-grep rules for pi-lens diagnostics
+tests/                        Unit tests (deterministic fake LLM in tests/fake_llm.py, temp DB)
 ```
 
 ## Key concepts
@@ -90,10 +96,11 @@ A customer owns many cases (`case_id`, UUID), which are the durable LV projects 
 
 ### Customers
 
-The mock applicant login selects one of three demo customers: P2X, Ren-Gas Oy,
-or Sharpcell. The signed browser session contains the selected `customer_id`.
-There is no customer switcher. Logout clears the session, and logging in again
-restores the selected customer's persisted hankkeet, applications, and packages.
+The applicant login selects one of the roster accounts (P2X, Ren-Gas Oy, Sharpcell,
+Kaupunkiyhdistys Vantaa ry, Ren-Gas Nordic Oy). It is a picker over a fixed roster,
+not real authentication. Nothing is pre-seeded: every account starts with an empty
+workspace and creates its own hankkeet. The signed browser session contains the
+selected `customer_id`; there is no customer switcher. Logout clears the session.
 
 Customer profile data is reusable input for new hankkeet. Each hanke keeps its
 own `lv_common_data` snapshot so later profile edits do not rewrite old work.
@@ -180,7 +187,7 @@ Uploaded files stored on disk (`data/uploads/`) + metadata in SQLite `files` tab
 - `ai_context_only` — Only for AI analysis, not sent to authority
 - `ephemeral` — UI-only uploads, not persisted
 
-### AI features (mock or Azure OpenAI)
+### AI features (Azure AI Foundry)
 
 - **Field suggestions** — AI fills individual form fields from materials
 - **Intake analysis** — Classifies documents, extracts structure, identifies gaps
@@ -189,7 +196,7 @@ Uploaded files stored on disk (`data/uploads/`) + metadata in SQLite `files` tab
 - **Authority summary** — Summarizes application for caseworker
 - **Additional info draft** — Drafts a request for more info from applicant
 - **Decision support** — Drafts a decision memo
-- **Voice assistant** — Mock voice transcript → AI assistant response
+- **Voice assistant** — not connected in this build; the endpoint reports `disabled`
 
 ### Suggestion service (external-facing API)
 
@@ -224,7 +231,7 @@ Separate UI at `/cases/{case_id}/lupademo/authority/`:
 ## How the DB works
 
 - Single SQLite file at `data/keha_lv.db`
-- Tables: `customers`, `cases`, `files`, `artifacts`, `app_settings`, `llm_overrides`, `ai_logs`
+- Tables: `customers`, `cases`, `files`, `artifacts`, `app_settings`, `ai_logs`
 - `package_reviews` stores standalone package-review sessions (legacy review
   rows; kevytasiointi no longer creates them).
 - `cases.customer_id` is the customer-workspace ownership key. API `tenant_id`
@@ -234,13 +241,23 @@ Separate UI at `/cases/{case_id}/lupademo/authority/`:
   lives in the signed browser session, not in a global setting.
 - No migrations — schema created on first `DB.__init__`
 
-## How the mock LLM works
+## How the AI backend works
 
-When `KEHA_LV_LLM_PROVIDER=mock` (default), `mock_llm.py` responds instantly:
+All AI work is a Foundry Responses API call, split by purpose:
 
-- For field suggestions: returns plausible Finnish values from prompt context
-- No network calls, no API keys needed
-- Demo scenarios are pre-seeded so AI features work out of the box
+- **core** (`AZURE_OPENAI_MODEL_CORE`, currently `DeepSeek-V4-Flash`) — high-volume
+  JSON work: field suggestions, intake/structure extraction, document classifying,
+  criteria assessment, precheck reports.
+- **chat** (`AZURE_OPENAI_MODEL_CHAT`, currently `gpt-6-luna`) — conversational prose:
+  contextual chat, authority summaries, memos.
+
+`call_llm_json` appends an explicit JSON-only instruction, strips reasoning blocks
+(`<think>` / `<｜end▁of▁thinking｜>`), and locates the JSON payload in the reply. The
+client learns unsupported parameters from a 400 and retries without them, so a
+deployment that rejects `reasoning.effort` or `text.verbosity` still works.
+
+Deterministic agent fallbacks are **off** by default (`KEHA_LV_ALLOW_FALLBACK=true`
+to enable) so a canned answer cannot mask a failed call.
 
 ## How to run
 
@@ -248,27 +265,25 @@ When `KEHA_LV_LLM_PROVIDER=mock` (default), `mock_llm.py` responds instantly:
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ./run.sh
-# → http://127.0.0.1:8002
+# → http://127.0.0.1:8003
 ```
 
 ## How to test
 
 ```bash
-PYTHONWARNINGS=ignore KEHA_LV_FORCE_MOCK_LLM=true .venv/bin/python -m unittest discover tests
+PYTHONWARNINGS=ignore .venv/bin/python -m unittest discover tests
 ```
 
-Tests use the mock LLM and a temporary database. No Azure credentials or `data/`
-state are needed. `tests/test_smoke.py` forces mock mode during module import, so
-environment overrides do not turn the normal suite into live Azure tests.
+Tests never call Azure. `tests/fake_llm.py` is a deterministic test double that is
+installed by monkeypatching `create_llm_client` at each application call site, so
+production code has no mock provider. Tests use a temporary database; no
+credentials or `data/` state are needed.
 
-For an optional live Azure check, source the ignored `.env`, explicitly set
-`KEHA_LV_LLM_PROVIDER=azure` and `KEHA_LV_FORCE_MOCK_LLM=false`, and use temporary
-`KEHA_LV_DB_PATH` and `KEHA_LV_UPLOADS_DIR` values. Verify persisted provenance
-with `provider == "azure"` and `fallback_used is False`; plausible output alone
-can hide a deterministic fallback. Never print credentials, endpoint values,
-prompts, or raw responses. See
-`docs/ai-functionality-validation-handoff.md` for the procedure, completed
-contracts, current limitations, and sanitized validation results.
+For a live check, source the ignored `.env` and use temporary `KEHA_LV_DB_PATH`
+and `KEHA_LV_UPLOADS_DIR` values. Verify persisted provenance with
+`provider == "azure"` and `fallback_used is False`; plausible output alone can
+hide a deterministic fallback. Never print credentials, endpoint values, prompts,
+or raw responses.
 
 ## Templates
 
@@ -281,10 +296,10 @@ When adding a new template, extend `shared/light_base.html`.
 
 ## Files to never read in full unless essential
 
-- `app/domains/lupademo/services/application.py` — ~3000 lines; use `read_symbol` or `read_enclosing` to target specific functions
-- `app/domains/lupademo/services/intake.py` — ~1700 lines; same approach
-- `app/domains/lupademo/routes/applicant.py` — ~1171 lines; use `read_enclosing` for individual route handlers
-- `app/core/llm_utils.py` — imported by services, use `read_symbol` for `call_llm_json`
+- `app/domains/lupademo/services/application.py` — use `read_symbol` or `read_enclosing` to target specific functions
+- `app/domains/lupademo/services/intake.py` — same approach
+- `app/domains/lupademo/routes/applicant.py` — use `read_enclosing` for individual route handlers
+- `app/infra/llm_utils.py` — imported by services, use `read_symbol` for `call_llm_json`
 
 ## Common patterns when editing
 

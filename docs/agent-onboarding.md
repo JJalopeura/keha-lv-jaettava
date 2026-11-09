@@ -1,4 +1,4 @@
-# New Agent Onboarding — KEHA LV Demo
+# New Agent Onboarding — KEHA LV
 
 A short ramp-up for an AI agent (or human) starting work in this repo. Read
 these in order; each builds on the last. This is the "fast path" — for the full
@@ -8,18 +8,18 @@ module map and dependency graph, see `ARCHITECTURE.md`.
 
 | File | What it gives you |
 |------|-------------------|
-| `AGENTS.md` | The mental model: what the project is, scope boundaries, key concepts, how the DB/mock-LLM work, common edit patterns, coupling hotspots. **Start here.** |
+| `AGENTS.md` | The mental model: what the project is, scope boundaries, key concepts, how the DB/AI backend work, common edit patterns, coupling hotspots. **Start here.** |
 | `ARCHITECTURE.md` | The module map, dependency graph (Mermaid), data flow, and the wizard/workbench route tables. |
 | `docs/route-inventory.md` | Every HTTP route (method, path, handler, module, template), enforced by a guard test. |
 
 ## 2. Run these two commands
 
 ```bash
-# Start the app (mock LLM, offline, port 8001)
+# Start the app (live Azure AI Foundry, port 8003)
 ./run.sh
 
-# Run the full test suite (mock LLM, temp DB, ~1s)
-PYTHONWARNINGS=ignore KEHA_LV_FORCE_MOCK_LLM=true .venv/bin/python -m unittest discover tests
+# Run the full test suite (deterministic fake LLM, temp DB)
+PYTHONWARNINGS=ignore .venv/bin/python -m unittest discover tests
 
 # Optional: lint (focused config — see pyproject.toml)
 ruff check app tests
@@ -35,8 +35,9 @@ ruff check app tests
   (`/applicant/packages/*`, material-first) and the **wizard**
   (`/projects/new` → wizard, form-first). They share state but are separate
   journeys. **Do not mix-match them.** See `AGENTS.md` → "Two entry paths".
-- **Mock LLM by default** — deterministic, offline, no keys. Swap to Azure via
-  `.env` (`KEHA_LV_LLM_PROVIDER=azure`).
+- **Azure AI Foundry only** — every AI call is a Foundry Responses API request
+  (`core` = JSON work, `chat` = prose). No mock or offline provider exists; a
+  missing endpoint/deployment/key fails loudly.
 - **`svc.*` pattern** — all services re-exported through `services/__init__.py`
   (with an explicit `__all__`). Routes use `import services as svc; svc.xxx()`.
 
