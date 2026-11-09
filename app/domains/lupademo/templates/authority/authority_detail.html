@@ -91,6 +91,7 @@
 <section class="drafts-section" id="verdict">
   <div class="section-heading-line"><div><p class="section-kicker">AI-tarkistuksen tulos</p><h2>Verdikti: {{ check_report.get('readiness', '') }} · {{ check_report.get('score', '') }}/100</h2><p class="muted">{{ check_report.get('summary', '') }}</p></div></div>
   {% if check_report.degraded and check_report.degraded.fallback_used_agents %}<div class="issue minor" role="alert"><strong>Epätäydellinen tarkistus</strong><p>AI ei voinut tarkistaa: {{ check_report.degraded.fallback_used_agents|join(', ') }}.</p></div>{% endif %}
+  {% if check_report.degraded and check_report.degraded.incomplete_agents %}<div class="issue minor" role="alert"><strong>Kriteeriarviointi jäi kesken</strong><p>Kriteerivertailu ei palauttanut tuloksia; kriteerien osuus pisteytyksestä jätettiin neutraaliksi.</p></div>{% endif %}
   <div class="draft-grid">
     {% set _auth_field_rows = check_report.issues|selectattr('resolved', 'ne', true)|selectattr('type', 'equalto', 'missing')|selectattr('field_id')|rejectattr('attachment_id')|list %}
     <article><h3>Havainnot ({{ check_report.issues|length - ((_auth_field_rows|length - 1) if _auth_field_rows|length > 1 else 0) }})</h3>
@@ -99,12 +100,12 @@
       <div class="review-row {{ _auth_sev }}"><span class="review-icon">!</span><div><strong>{{ {'blocking': 'Estävä', 'major': 'Merkittävä', 'minor': 'Vähäinen'}.get(_auth_sev, _auth_sev) }}</strong><p>Hakemuslomakkeelta puuttuu {{ _auth_field_rows|length }} pakollista kenttää. Hakija täydentää ne hakemusvaiheessa.</p><small>{% for fi in _auth_field_rows[:12] %}{{ fi.title|replace(' on täyttämättä lomakkeella', '')|replace(' puuttuu', '') }}{% if not loop.last %}, {% endif %}{% endfor %}{% if _auth_field_rows|length > 12 %}…{% endif %}</small></div></div>
       {% endif %}
       {% for issue in check_report.issues %}{% if not issue.resolved and not (issue.type == 'missing' and issue.field_id and not issue.attachment_id) %}
-      <div class="review-row {{ issue.severity }}"><span class="review-icon">!</span><div><strong>{{ {'blocking': 'Estävä', 'major': 'Merkittävä', 'minor': 'Vähäinen'}.get(issue.severity, issue.severity) }}{% if issue.criteria_id %} · {{ issue.criteria_id }}{% endif %}</strong><p>{{ authority_copy(issue.title) }}</p>{% for ref in issue.evidence_refs[:2] %}<small>{{ ref.title }}{% if ref.locator %} · {{ ref.locator }}{% endif %}{% if ref.quote %} · “{{ ref.quote[:160] }}”{% endif %}</small>{% endfor %}</div></div>
+      <div class="review-row {{ issue.severity }}"><span class="review-icon">!</span><div><strong>{{ {'blocking': 'Estävä', 'major': 'Merkittävä', 'minor': 'Vähäinen'}.get(issue.severity, issue.severity) }}{% if issue.criteria_id %} · {{ (criteria_rules.get(issue.criteria_id) or {}).get('title') or issue.criteria_id }}{% endif %}</strong><p>{{ authority_copy(issue.title) }}</p>{% for ref in issue.evidence_refs[:2] %}<small>{{ ref.title }}{% if ref.locator %} · {{ ref.locator }}{% endif %}{% if ref.quote %} · “{{ ref.quote[:160] }}”{% endif %}</small>{% endfor %}</div></div>
       {% endif %}{% endfor %}
     </article>
     <article><h3>Kriteerit</h3>
       {% for cr in check_report.get('criteria_results', []) %}
-      <div class="review-row {{ 'blocking' if cr.status == 'red' else ('major' if cr.status == 'yellow' else 'ready') }}"><span class="review-icon">{{ '!' if cr.status != 'green' else '✓' }}</span><div><strong>{{ {'green': 'Täyttyy', 'yellow': 'Osittain', 'red': 'Ei täyty'}.get(cr.status, cr.status) }} · {{ cr.criteria_id }}</strong><p>{{ authority_copy(cr.rationale) }}</p></div></div>
+      <div class="review-row {{ 'blocking' if cr.status == 'red' else ('major' if cr.status == 'yellow' else 'ready') }}"><span class="review-icon">{{ '!' if cr.status != 'green' else '✓' }}</span><div><strong>{{ {'green': 'Täyttyy', 'yellow': 'Osittain', 'red': 'Ei täyty'}.get(cr.status, cr.status) }} · {{ (criteria_rules.get(cr.criteria_id) or {}).get('title') or cr.criteria_id }}</strong><p>{{ authority_copy(cr.rationale) }}</p></div></div>
       {% else %}<p class="empty-copy">Kriteeriarviota ei ole.</p>{% endfor %}
     </article>
   </div>

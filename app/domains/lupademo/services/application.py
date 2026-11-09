@@ -155,7 +155,8 @@ def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str, mu
                 "confidence": 1.0,
             }
         )
-    counts, score, readiness = _derive_check_verdict(issues, criteria_results)
+    rules_total = len(criteria.get("rules") or [])
+    counts, score, readiness = _derive_check_verdict(issues, criteria_results, criteria_expected=rules_total)
     result = {
         "request_id": f"criteria_test_{uuid.uuid4().hex[:8]}",
         "criteria_version": criteria_version(permit_type, db, case_id, municipality),
@@ -473,6 +474,7 @@ def package_analysis_from_current_state(
             "criteria_and_context": json.dumps({"criteria": criteria, "retrieval": retrieval}, ensure_ascii=False),
             "common_data": json.dumps(common.get("data", {}), ensure_ascii=False),
             "attachment_context": json.dumps(retrieval, ensure_ascii=False),
+            "domain_hints": domain_hints_text(criteria or {}),
         }
         agent_issues = _run_check_agents(db, settings, case_id, base_values, max_output_tokens=6000)
         agent_issues = _filter_covered_attachment_issues(agent_issues, attachments)
@@ -1345,6 +1347,28 @@ def _pending_extracted_values(db: Any, case_id: str, permit_type: str) -> dict[s
     return values
 
 
+def _sanitize_criteria_links(issues: list[Issue], criteria: dict[str, Any]) -> tuple[list[Issue], list[str]]:
+    """Drop `criteria_id` values that do not exist in the active criteria set.
+
+    The validators sometimes cite a plausible-sounding criterion that was never authored
+    (`kemikaaliturvallisuus`). The finding is still worth showing, but the link would
+    render as a criterion the authority cannot look up, so only the link is dropped.
+    """
+    rule_ids = {
+        str(rule.get("id"))
+        for rule in (criteria or {}).get("rules", [])
+        if isinstance(rule, dict) and rule.get("id")
+    }
+    if not rule_ids:
+        return issues, []
+    notes: list[str] = []
+    for issue in issues:
+        if issue.criteria_id and issue.criteria_id not in rule_ids:
+            notes.append(f"LINK: dropped unknown criteria_id {issue.criteria_id} from issue {issue.id}")
+            issue.criteria_id = None
+    return issues, notes
+
+
 def _link_criteria_to_existing_findings(
     issues: list[Issue],
     criteria_results: list[dict[str, Any]],
@@ -1404,13 +1428,15 @@ def deterministic_issues(
     )
     # Per-rule evidence: the rule's own instruction is the quoted requirement, so the
     # "Perusteet ja lähteet" disclosure shows the criterion text, not a bare locator.
+    # The short `title` names the criterion, and `basis` (when a criteria set carries
+    # it) becomes the locator so the reviewer sees the legal basis of the requirement.
     rule_sources: dict[str, EvidenceRef] = {}
     for rule in criteria.get("rules", []):
         if isinstance(rule, dict) and rule.get("id"):
             rule_sources[str(rule["id"])] = EvidenceRef(
                 source_id=str(rule["id"]),
-                title=str(rule.get("instruction") or rule["id"]),
-                locator="criteria",
+                title=str(rule.get("title") or rule.get("instruction") or rule["id"]),
+                locator=str(rule.get("basis") or "") or "criteria",
                 quote=str(rule.get("instruction") or ""),
                 confidence=0.75,
             )
@@ -1490,7 +1516,11 @@ def deterministic_issues(
             continue
         subject_key = (field_id, attachment_type)
         subject = attachment_type if missing_attachment and not missing_field else field_id or attachment_type
-        subject_label = _review_subject_label(subject, criteria)
+        # A rule's own short title names the requirement better than the attachment or
+        # field label it happens to point at ("Tarkkailu- ja raportointiohjelma" vs
+        # "Veden käyttö ja jätevedet"). Fall back to the label map for rule-less subjects
+        # and for criteria sets written before titles existed.
+        subject_label = str(rule.get("title") or "").strip() or _review_subject_label(subject, criteria)
         _rule_sev = str(rule.get("severity") or "major")
         if _rule_sev == "recommendation":  # 02: recommendation is not an Issue severity; map to minor
             _rule_sev = "minor"
@@ -1715,6 +1745,7 @@ def reconcile_verdict(
     criteria_results: list[dict[str, Any]],
     rule_instructions: dict[str, str] | None = None,
     rule_severities: dict[str, str] | None = None,
+    rule_titles: dict[str, str] | None = None,
 ) -> tuple[list[Issue], list[str]]:
     """03/04: reconcile issues with the criteria verdict so a red/yellow criterion always
     yields (or aligns with) an issue carrying its criteria_id, and a green criterion wins
@@ -1737,7 +1768,7 @@ def reconcile_verdict(
         linked = [i for i in issues if i.criteria_id == cid and not i.resolved]
         crit_ref = EvidenceRef(
             source_id=cid,
-            title=str(c.get("rationale") or f"Kriteeri {cid}"),
+            title=str(c.get("rationale") or (rule_titles or {}).get(cid) or f"Kriteeri {cid}"),
             locator="criteria",
             confidence=_coerce_confidence(c.get("confidence"), 0.75),
         )
@@ -1759,13 +1790,16 @@ def reconcile_verdict(
                 if rule_fix and (status == "yellow" or target == "minor")
                 else ("Täydennä hakemusta niin, että kriteerin vaatimus täyttyy." if status == "red" else "Tarkista ja täydennä kriteerin vaatimus.")
             )
+            # Name the criterion the way the criteria set names it. `Kriteeri yva_process`
+            # is an internal id and must never reach the applicant's review list.
+            label = str((rule_titles or {}).get(cid) or "").strip() or f"Kriteeri {cid}"
             if not linked:
                 issues.append(
                     Issue(
                         id=f"criteria_{cid}",
                         type="incomplete",
                         severity=target,
-                        title=f"Kriteeri {cid} ei täyty" if status == "red" else f"Kriteeri {cid} on osittain täytetty",
+                        title=f"{label} ei täyty" if status == "red" else f"{label} on osittain täytetty",
                         detail=str(c.get("rationale") or ("Kriteeri ei täyty toimitettujen tietojen perusteella." if status == "red" else "Kriteerin vaatimus on osittain täytetty; käsittelijän tarkistettava.")),
                         suggested_fix=suggested_fix,
                         criteria_id=cid,
@@ -1787,13 +1821,29 @@ def reconcile_verdict(
                 if SEVERITY_ORDER.get(i.severity, 1) >= SEVERITY_ORDER["major"]:
                     i.resolved = True
                     notes.append(f"P3: green criterion {cid} resolved linked issue {i.id}")
+                elif i.type == "missing":
+                    # A green criterion says the requirement's evidence exists, so a
+                    # "this is missing" finding about the same criterion is a
+                    # self-contradiction on the page ("täyttyy" next to "puuttuu"),
+                    # even when both are advisory. Quality notes (incomplete/risk) stay.
+                    i.resolved = True
+                    notes.append(f"P4: green criterion {cid} resolved contradicting missing-issue {i.id}")
     return issues, notes
 
 
-def _derive_check_verdict(issues: list[Issue], criteria_results: list[dict[str, Any]]) -> tuple[dict[str, int], int, str]:
+def _derive_check_verdict(
+    issues: list[Issue],
+    criteria_results: list[dict[str, Any]],
+    criteria_expected: int = 0,
+) -> tuple[dict[str, int], int, str]:
     """03/04: code-owned 50/50 score derivation from reconciled issues + criteria verdict.
     Single source of truth for run_application_check (wizard/authority) AND
     suggestion_service_check (/api/v1 precheck) so all three surfaces render the same verdict.
+
+    `criteria_expected` is the number of active rules. It separates "no criteria set
+    applies" (nothing to fail, full marks) from "the assessor returned nothing for a
+    criteria set that exists" (unknown, so the criteria half scores neutral 0.5 instead
+    of ballooning the application to a perfect score).
     """
     counts = {
         "blocking": sum(1 for i in issues if i.severity == "blocking" and not i.resolved),
@@ -1805,8 +1855,10 @@ def _derive_check_verdict(issues: list[Issue], criteria_results: list[dict[str, 
     }
     if criteria_results:
         crit_score = (counts["green"] + 0.5 * counts["yellow"]) / len(criteria_results)
+    elif criteria_expected:
+        crit_score = 0.5  # assessment missing, not a pass
     else:
-        crit_score = 1.0  # 04-C2: no criteria ran -> neutral, not a green verdict
+        crit_score = 1.0  # 04-C2: no criteria set applies -> nothing to fail
     # Minor-only policy: vähäinen puute ei estä käsittelyä — advisory findings only
     # subtract until the cap, so a clean prepared application full of minor hints
     # still reads as ready. Blocking/major keep their full uncapped penalties.
@@ -1820,6 +1872,18 @@ def _derive_check_verdict(issues: list[Issue], criteria_results: list[dict[str, 
     # only a fully clean verdict (no blocking/major/red) reads as ready.
     readiness = "ready" if ready else ("almost_ready" if score >= 40 else "not_ready")
     return counts, score, readiness
+
+
+def _incomplete_agents(criteria_results: list[dict[str, Any]], rules_total: int) -> list[str]:
+    """Agents that owed results and returned none.
+
+    A truncated or empty assessment used to disappear silently: the criteria half of the
+    score then read as perfect and the applicant saw a clean report with no criteria at
+    all. Name it so the review screens can say the check was incomplete.
+    """
+    if rules_total and not criteria_results:
+        return ["criteria_assessor"]
+    return []
 
 
 def _degraded_agents(db: Any, case_id: str, agents: tuple[str, ...]) -> list[str]:
@@ -1926,6 +1990,12 @@ def _normalize_criteria_results(
             continue
         result = dict(raw)
         criteria_id = str(result.get("criteria_id") or "")
+        if rules and criteria_id not in rules:
+            # An assessment of a criterion that does not exist in the active set is not
+            # evidence: keeping it would synthesize a finding titled with a hallucinated
+            # id and attach a generic suggestion to the applicant's review list.
+            notes.append(f"DROPPED: assessor returned unknown criterion {criteria_id or '<empty>'}")
+            continue
         rule = rules.get(criteria_id, {})
         rule_severity = str(rule.get("severity") or "major").strip().lower()
         field_id = str(rule.get("field_id") or "")
@@ -2325,6 +2395,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             "attachment_context": json.dumps(context, ensure_ascii=False),
             "criteria": json.dumps(criteria, ensure_ascii=False),
             "retrieved_context": json.dumps(context, ensure_ascii=False),
+            "domain_hints": domain_hints_text(criteria or {}),
         }
         vector_ids = azure_vector_store_ids(db, settings, case_id)
         agent_issues = _run_check_agents(
@@ -2353,7 +2424,10 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             CriteriaAssessmentResponse,
             vector_ids=vector_ids,
             fallback={"criteria_results": []},
-            max_output_tokens=6000,
+            # 19 rules x (status + short rationale + one evidence ref) does not fit in
+            # 6000 output tokens once the model's reasoning is counted; a truncated
+            # answer used to be stored as "no criteria at all".
+            max_output_tokens=8000,
             reasoning_effort="low",
             task_id=job_id or None,
         )
@@ -2385,10 +2459,19 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         str(r.get("id")): str(r.get("severity") or "major").strip().lower()
         for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
     }
+    rule_labels = rule_titles(active_criteria or {})
+    issues, link_notes = _sanitize_criteria_links(issues, active_criteria or {})
     issues = _link_criteria_to_existing_findings(issues, criteria_results, active_criteria or {})
-    issues, reconciliation_notes = reconcile_verdict(issues, criteria_results, rule_instructions=rule_instructions, rule_severities=rule_severities)
-    reconciliation_notes = [*criteria_notes, *reconciliation_notes]
-    counts, score, readiness = _derive_check_verdict(issues, criteria_results)
+    issues, reconciliation_notes = reconcile_verdict(
+        issues,
+        criteria_results,
+        rule_instructions=rule_instructions,
+        rule_severities=rule_severities,
+        rule_titles=rule_labels,
+    )
+    reconciliation_notes = [*criteria_notes, *link_notes, *reconciliation_notes]
+    rules_total = len((active_criteria or {}).get("rules") or [])
+    counts, score, readiness = _derive_check_verdict(issues, criteria_results, criteria_expected=rules_total)
     blocked = [i for i in issues if i.severity == "blocking" and not i.resolved]
     minors = [i for i in issues if i.severity == "minor" and not i.resolved]
     summary = (
@@ -2397,16 +2480,25 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         else (
             "Hakemuksessa on lähettämisen estäviä puutteita."
             if counts["blocking"] or counts["red"]
-            else "Hakemus tarvitsee vielä täsmennyksiä ennen lähettämistä."
+            # Majors are advisory since the gate change: the applicant may submit, so the
+            # summary must not claim that the submission waits for them.
+            else f"Hakemuksen voi lähettää. {counts['major']} merkittävää havaintoa kannattaa korjata ennen lähettämistä."
         )
     )
     checked_at = time.time()
     current_criteria_version = criteria_version(app["permit_type"], db, case_id, municipality)
     active_criteria = effective_criteria(db, case_id, app["permit_type"], municipality)
+    incomplete_agents = _incomplete_agents(criteria_results, rules_total)
+    if incomplete_agents:
+        reconciliation_notes = [
+            *reconciliation_notes,
+            f"INCOMPLETE: {', '.join(incomplete_agents)} returned no criteria results for {rules_total} rules; criteria half scored 0.5",
+        ]
     degraded = {
         "fallback_used_agents": _degraded_agents(
             db, case_id, ("completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report")
         ),
+        "incomplete_agents": incomplete_agents,
         "reconciliation_notes": reconciliation_notes,
     }
     response = ApplicationCheckResponse(
@@ -4365,6 +4457,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             "attachment_context": json.dumps({"mode": "api_payload", "attachments": req.attachments}, ensure_ascii=False),
             "criteria": json.dumps(criteria, ensure_ascii=False),
             "retrieved_context": json.dumps({"mode": "api_payload", "attachments": req.attachments}, ensure_ascii=False),
+            "domain_hints": domain_hints_text(criteria or {}),
         }
         vector_ids = azure_vector_store_ids(db, settings, api_case)
         agent_issues = _run_check_agents(db, settings, api_case, base_values, vector_ids=vector_ids, max_output_tokens=3000)
@@ -4378,7 +4471,10 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             CriteriaAssessmentResponse,
             vector_ids=vector_ids,
             fallback={"criteria_results": []},
-            max_output_tokens=6000,
+            # 19 rules x (status + short rationale + one evidence ref) does not fit in
+            # 6000 output tokens once the model's reasoning is counted; a truncated
+            # answer used to be stored as "no criteria at all".
+            max_output_tokens=8000,
         )
         if isinstance(criteria_response, CriteriaAssessmentResponse) and criteria_response.criteria_results:
             criteria_results = _plain(criteria_response.criteria_results)
@@ -4404,14 +4500,30 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         str(r.get("id")): str(r.get("severity") or "major").strip().lower()
         for r in (active_criteria or {}).get("rules", []) if isinstance(r, dict)
     }
+    rule_labels = rule_titles(active_criteria or {})
+    issues, link_notes = _sanitize_criteria_links(issues, active_criteria or {})
     issues = _link_criteria_to_existing_findings(issues, criteria_results, active_criteria or {})
-    issues, reconciliation_notes = reconcile_verdict(issues, criteria_results, rule_instructions=rule_instructions, rule_severities=rule_severities)
-    reconciliation_notes = [*criteria_notes, *reconciliation_notes]
-    counts, score, readiness = _derive_check_verdict(issues, criteria_results)
+    issues, reconciliation_notes = reconcile_verdict(
+        issues,
+        criteria_results,
+        rule_instructions=rule_instructions,
+        rule_severities=rule_severities,
+        rule_titles=rule_labels,
+    )
+    reconciliation_notes = [*criteria_notes, *link_notes, *reconciliation_notes]
+    rules_total = len((active_criteria or {}).get("rules") or [])
+    counts, score, readiness = _derive_check_verdict(issues, criteria_results, criteria_expected=rules_total)
+    incomplete_agents = _incomplete_agents(criteria_results, rules_total)
+    if incomplete_agents:
+        reconciliation_notes = [
+            *reconciliation_notes,
+            f"INCOMPLETE: {', '.join(incomplete_agents)} returned no criteria results for {rules_total} rules; criteria half scored 0.5",
+        ]
     degraded = {
         "fallback_used_agents": _degraded_agents(
             db, api_case, ("completeness_validator", "consistency_validator", "criteria_assessor")
         ),
+        "incomplete_agents": incomplete_agents,
         "reconciliation_notes": reconciliation_notes,
     }
     response = ApplicationCheckResponse(
@@ -4424,7 +4536,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
             else (
                 "Hakemuksessa on lähettämisen estäviä puutteita."
                 if counts["blocking"] or counts["red"]
-                else "Hakemus tarvitsee vielä täsmennyksiä ennen lähettämistä."
+                else f"Hakemuksen voi lähettää. {counts['major']} merkittävää havaintoa kannattaa korjata ennen lähettämistä."
             )
         ),
         issues=issues,

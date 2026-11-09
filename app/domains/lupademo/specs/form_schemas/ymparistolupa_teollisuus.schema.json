@@ -212,6 +212,11 @@
     "bat_assessment",
     "monitoring_plan",
     "risk_preparedness_plan",
-    "stormwater_plan"
+    "stormwater_plan",
+    "site_map",
+    "air_monitoring_plan",
+    "judgement_freshness_assessment",
+    "dnsh_statement",
+    "tukes_statement"
   ]
 }

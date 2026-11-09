@@ -154,7 +154,10 @@ def call_llm_json(
         _throttle()
         for attempt in range(2):
             retrying = attempt == 1
-            request_tokens = max(max_output_tokens or 0, 6000) * 2 if retrying else max_output_tokens
+            # A truncated answer is not an answer: the JSON may still parse (an empty
+            # list looks valid) while most of the assessment is missing, which is how a
+            # silently perfect score used to happen. Retry once with a bigger budget.
+            request_tokens = min(max(max_output_tokens or 0, 6000) * 2, 16000) if retrying else max_output_tokens
             request_reasoning = "low" if retrying else reasoning_effort
             resp = client.responses(
                 input_text=normalized_prompt, vector_store_ids=vector_store_ids_list,
@@ -162,19 +165,23 @@ def call_llm_json(
                 reasoning_effort=request_reasoning, text_verbosity=text_verbosity,
             )
             text = client.extract_output_text(resp)
+            truncated = resp.get("status") == "incomplete" and (
+                (resp.get("incomplete_details") or {}).get("reason") == "max_output_tokens"
+            )
             if text is None:
                 err = f"No output_text in response: {resp}"
-                incomplete = resp.get("status") == "incomplete" and (
-                    (resp.get("incomplete_details") or {}).get("reason") == "max_output_tokens"
-                )
-                if not retrying and incomplete:
+                if not retrying and truncated:
                     continue
                 raise RuntimeError(err)
             result = extract_json_payload(text)
-            if result is not None:
+            if result is not None and not (truncated and not retrying):
                 err = None
                 return result
-            err = f"Failed to parse JSON output: no JSON object found. Raw: {text[:500]}"
+            err = (
+                f"Truncated JSON output (max_output_tokens): {text[:200]}"
+                if truncated
+                else f"Failed to parse JSON output: no JSON object found. Raw: {text[:500]}"
+            )
             if not retrying:
                 continue
             raise RuntimeError(err)

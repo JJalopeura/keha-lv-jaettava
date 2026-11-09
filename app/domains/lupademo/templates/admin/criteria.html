@@ -132,6 +132,9 @@
         <div><strong>{{ major_rules|length }}</strong><span>merkittävää</span></div>
         <div><strong>{{ advisory_rules|length }}</strong><span>vähäistä/suositusta</span></div>
       </div>
+      {% if not blocking_rules and not major_rules %}
+      <p class="muted">Valmistellulle hakemukselle tämä kriteeristö tuottaa vain vähäisiä havaintoja ja suosituksia: nolla estävää ja nolla merkittävää. Estävät havainnot tulevat pakollisista kentistä ja viranomaisliitteistä, eivät kriteereistä.</p>
+      {% endif %}
       <dl class="data-list">
         <div class="data-row"><dt>Päivitetty</dt><dd>{{ criteria.get('updated_at')|finnish_datetime if criteria.get('updated_at') else "Alkuperäinen versio" }}</dd></div>
         <div class="data-row"><dt>Päivittäjä</dt><dd>{{ criteria.get('updated_by') or "Demon lähtöaineisto" }}</dd></div>

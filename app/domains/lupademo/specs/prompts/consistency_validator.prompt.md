@@ -47,6 +47,13 @@ Tarkista erityisesti:
 - numeeriset arvot poikkeavat toisistaan
 - toimivaltainen viranomainen ja luvanvaraisuus eivät sovi yhteen
 
+Toimialakohtaiset tarkistuskohteet. Käytä näitä etsintälistana äläkä raportoi kohtaa,
+jossa ei ole todellista eroa lähteiden välillä.
+{{domain_hints}}
+
+Lomakeskeema (kenttien nimet ja merkitys):
+{{form_schema}}
+
 Lomakedata:
 {{form_data}}
 

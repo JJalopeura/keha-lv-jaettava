@@ -13,30 +13,35 @@
   "rules": [
     {
       "id": "stormwater_required",
+      "title": "Hulevesien hallinta",
       "field_id": "stormwater_management",
       "severity": "minor",
       "instruction": "Varmista, että hakemuksessa on selvitys hulevesi- ja perustusten kuivatusvesijärjestelmästä ja että se käsittelee imeytyksen, viivytyksen tai johtamisen."
     },
     {
       "id": "distance_boundary_check",
+      "title": "Etäisyys rajasta",
       "field_id": "distance_to_boundary_m",
       "severity": "recommendation",
       "instruction": "Tarkista, että etäisyys rakennuspaikan rajasta on yhdenmukainen lomakkeen ja asemapiirroksen välillä (asemakaava-alueen demo-oletus 4 m, ellei muuta perustetta)."
     },
     {
       "id": "height_required",
+      "title": "Rakennuksen korkeus",
       "field_id": "building_height_m",
       "severity": "minor",
       "instruction": "Varmista, että rakennuksen korkeus on ilmoitettu ja se vastaa pääpiirustuksia."
     },
     {
       "id": "noise_context",
+      "title": "Melu ja ympäristö",
       "field_id": "noise_context",
       "severity": "minor",
       "instruction": "Jos hanke sijoittuu melualueelle tai liikenneväylän läheisyyteen, pyydä selvitys rakenteiden ääneneristävyydestä."
     },
     {
       "id": "official_drawings",
+      "title": "Viralliset piirustukset",
       "attachment_type": "main_drawings",
       "severity": "minor",
       "instruction": "Tarkista, että pääpiirustukset on merkitty viranomaiselle toimitettavaksi liitteeksi."

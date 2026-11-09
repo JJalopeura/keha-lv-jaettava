@@ -96,11 +96,12 @@ A customer owns many cases (`case_id`, UUID), which are the durable LV projects 
 
 ### Customers
 
-The applicant login selects one of the roster accounts (P2X, Ren-Gas Oy, Sharpcell,
-Kaupunkiyhdistys Vantaa ry, Ren-Gas Nordic Oy). It is a picker over a fixed roster,
-not real authentication. Nothing is pre-seeded: every account starts with an empty
-workspace and creates its own hankkeet. The signed browser session contains the
-selected `customer_id`; there is no customer switcher. Logout clears the session.
+The applicant login selects one of three roster accounts (P2X Oy, Ren-Gas Oy,
+Sharpcell Oy). It is a picker over a fixed roster, never real authentication. Every
+account starts with an empty workspace and creates its own hankkeet — nothing is
+pre-seeded, and `ensure_customer_accounts` prunes roster rows that own no cases. The
+signed browser session contains the selected `customer_id`; there is no customer
+switcher. Logout clears the session.
 
 Customer profile data is reusable input for new hankkeet. Each hanke keeps its
 own `lv_common_data` snapshot so later profile edits do not rewrite old work.

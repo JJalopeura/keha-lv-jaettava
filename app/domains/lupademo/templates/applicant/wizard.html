@@ -491,6 +491,13 @@
   <p>AI ei voinut tarkistaa: {{ _degraded_agents|join(', ') }}. Tulokset ovat tästä syystä epätäydellisiä.</p>
 </div>
 {% endif %}
+{% set _incomplete_agents = (check_report.get('degraded') or {}).get('incomplete_agents', []) %}
+{% if _incomplete_agents %}
+<div class="issue minor" role="alert" id="check-incomplete">
+  <strong>Kriteeriarviointi jäi kesken</strong>
+  <p>Kriteerivertailu ei palauttanut tuloksia, joten kriteerien osuus pisteytyksestä jätettiin neutraaliksi. Aja tarkistus uudelleen ennen lähettämistä.</p>
+</div>
+{% endif %}
 <section class="grid two check-layout" id="check">
   <div class="check-intro">
     <div>
@@ -625,7 +632,7 @@
     {% set rule = criteria_rules.get(cr.criteria_id, {}) %}
     {% set rule_sev = (rule.get('severity') or 'major')|string %}
     {% set display_sev = ('minor' if rule_sev in ('minor', 'recommendation') else 'blocking') if cr.status == 'red' else 'minor' %}
-    {% set cr_title = (rule.get('instruction') or cr.criteria_id)|truncate(120, True, '…') %}
+    {% set cr_title = rule.get('title') or ((rule.get('instruction') or cr.criteria_id)|truncate(120, True, '…')) %}
     <div class="issue {{ display_sev }}">
       <strong>{{ severity_labels.get(display_sev, 'Tarkistettava') }} · {{ cr_title }}</strong>
       <p>{{ cr.rationale }}</p>

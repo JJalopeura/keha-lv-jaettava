@@ -209,6 +209,36 @@ def criteria_history_rows(history: dict[str, Any]) -> list[dict[str, Any]]:
     return list(reversed(rows))
 
 
+def rule_titles(criteria: dict[str, Any]) -> dict[str, str]:
+    """Map rule id -> short human label.
+
+    Criteria sets carry an optional `title` per rule. Without it the review UI
+    falls back to the machine id (`yva_process`) or a truncated regulation
+    sentence, both of which read badly in an application review.
+    """
+    titles: dict[str, str] = {}
+    for rule in (criteria or {}).get("rules", []) or []:
+        if not isinstance(rule, dict):
+            continue
+        rule_id = str(rule.get("id") or "").strip()
+        title = str(rule.get("title") or "").strip()
+        if rule_id and title:
+            titles[rule_id] = title
+    return titles
+
+
+def domain_hints_text(criteria: dict[str, Any]) -> str:
+    """Permit-type-specific review hints for the AI validators, as bullet text.
+
+    The prompt files are permit-agnostic; without this block a Ympäristölupa
+    check is told what matters in a building permit rather than in a YSL
+    application. Empty when the criteria set defines no `domain_hints`.
+    """
+    hints = (criteria or {}).get("domain_hints") or []
+    lines = [f"- {str(hint).strip()}" for hint in hints if str(hint or "").strip()]
+    return "\n".join(lines)
+
+
 def criteria_rule_rows(criteria: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     rules = criteria.get("rules", []) if isinstance(criteria, dict) else []
@@ -221,6 +251,7 @@ def criteria_rule_rows(criteria: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "index": index,
                 "id": rule.get("id", ""),
+                "title": rule.get("title", ""),
                 "field_id": rule.get("field_id", ""),
                 "attachment_type": rule.get("attachment_type", ""),
                 "severity": rule.get("severity", "major"),

@@ -299,6 +299,24 @@ Same endpoints as the wizard banner: `GET /api/v1/jobs/{job_id}` (+ `/stream`,
    pyytäisi korjauksen") is surfaced but advisory: it no longer prevents submission, so the
    "estävä" label means what it says. `precheck_gate_status()` is the single source of truth.
 8. **No pre-seeded content.** The seeding script, per-customer starter hankkeet and presenter replay are gone. Each account starts empty and every AI step is a real Foundry call.
+9. **Rules own presence, criteria own substance.** The deterministic lane reports what is
+   missing (required fields, official attachments). The criteria lane judges whether the
+   content satisfies a requirement, so a criterion must never duplicate an
+   "attachment/field is missing" finding: the assessor returns `yellow` with an
+   "Ei arvioitavissa" rationale and no issue, and unknown criterion ids from the model are
+   dropped instead of turned into findings. Criteria stay `minor`/`recommendation` in the
+   demo sets, which is why a prepared application can never be scored as blocked by them.
+10. **A criterion is authored data, not prose.** Each rule carries a short `title` (the name
+    the applicant and the authority see), the `instruction` (the quoted requirement), an
+    optional `basis` (shown as the legal source in "Perusteet ja lähteet") and an optional
+    `domain_hints` block on the set that feeds the validators. Machine ids never reach a
+    review screen; the templates fall back to `_review_subject_label` only for rule-less
+    subjects.
+11. **A truncated answer is not an answer.** `call_llm_json` retries once with a larger
+    output budget when the provider reports `status: incomplete` (the JSON can parse while
+    most of it is missing). If the assessor still returns nothing while rules exist, the
+    report carries `degraded.incomplete_agents`, the criteria half scores neutral 0.5 instead
+    of full marks, and both review screens say the assessment was incomplete.
 
 ## Route inventory
 

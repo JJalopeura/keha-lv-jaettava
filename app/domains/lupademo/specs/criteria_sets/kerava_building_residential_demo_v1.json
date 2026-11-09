@@ -12,24 +12,28 @@
   "rules": [
     {
       "id": "required_energy_report",
+      "title": "Energiaselvitys",
       "attachment_type": "energy_report",
       "severity": "minor",
       "instruction": "Varmista, että uudisrakennuksen hakemukseen on liitetty energiaselvitys tai energiatodistus viranomaiselle toimitettavana aineistona."
     },
     {
       "id": "stormwater_required_kerava",
+      "title": "Hulevesien hallinta (Kerava)",
       "field_id": "stormwater_management",
       "severity": "minor",
       "instruction": "Varmista, että hulevesien hallinta on kuvattu tonttikohtaisesti ja että sen yhteys asemapiirrokseen on tarkistettavissa."
     },
     {
       "id": "site_context",
+      "title": "Sijainti ja ympäristö",
       "field_id": "project_description",
       "severity": "minor",
       "instruction": "Varmista, että hankkeen kuvauksessa on yksilöity rakennuspaikka ja hankkeen suhde ympäröivään yhdyskuntarakenteeseen."
     },
     {
       "id": "official_drawings_kerava",
+      "title": "Viralliset piirustukset (Kerava)",
       "attachment_type": "main_drawings",
       "severity": "minor",
       "instruction": "Tarkista, että pääpiirustukset on merkitty viranomaiselle toimitettavaksi liitteeksi."

@@ -45,6 +45,10 @@ Palauta validi JSON:
   ]
 }
 
+Toimialakohtaiset tarkistuskohteet. Käytä näitä etsintälistana: raportoi vain se, mikä
+puuttuu tai on ristiriitaista tässä hakemuksessa. Älä luettele listaa vastauksessa.
+{{domain_hints}}
+
 Lomakeskeema:
 {{form_schema}}
 

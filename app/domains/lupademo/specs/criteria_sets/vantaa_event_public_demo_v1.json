@@ -12,6 +12,7 @@
   "rules": [
     {
       "id": "landowner_permission",
+      "title": "Maanomistajan lupa",
       "field_id": "landowner_permission",
       "attachment_type": "landowner_permission",
       "severity": "minor",
@@ -19,6 +20,7 @@
     },
     {
       "id": "rescue_plan",
+      "title": "Pelastussuunnitelma",
       "field_id": "rescue_plan",
       "attachment_type": "rescue_plan",
       "severity": "minor",
@@ -26,6 +28,7 @@
     },
     {
       "id": "traffic_arrangements",
+      "title": "Liikennejärjestelyt",
       "field_id": "traffic_arrangements",
       "severity": "recommendation",
       "instruction": "Kuvaa liikennejärjestelyt, jos tapahtuma vaikuttaa katualueeseen tai kulkureitteihin."

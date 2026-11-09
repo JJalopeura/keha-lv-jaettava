@@ -12,12 +12,14 @@
   "rules": [
     {
       "id": "height_required_national",
+      "title": "Rakennuksen korkeus",
       "field_id": "building_height_m",
       "severity": "minor",
       "instruction": "Varmista, että rakennuksen korkeus on ilmoitettu hakemuksessa ja se vastaa pääpiirustuksia."
     },
     {
       "id": "official_drawings_national",
+      "title": "Viralliset piirustukset",
       "attachment_type": "main_drawings",
       "severity": "minor",
       "instruction": "Tarkista, että pääpiirustukset on merkitty viranomaiselle toimitettavaksi liitteeksi."
