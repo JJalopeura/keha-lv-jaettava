@@ -1,0 +1,98 @@
+# Build the release artifact, deploy it to App Service, and keep the artifact in the repo.
+#
+# Target (migrated 2026-11-09, see docs/deployment-ecdx.md):
+#   plan:    keha-lv-plan      (Linux, F1)
+#   web app: keha-lv-web       (python 3.12, code deploy, /home/data is durable)
+#
+# Auth: GitHub OIDC -> Entra app `keha-lv-deploy` (no stored cloud secret). It holds
+# Website Contributor on this one web app and nothing else.
+#
+# The artifact is the backup: the same zip is deployed and committed, so a rollback
+# is scripts/rollback.sh <sha> against a file that already exists in the repo.
+
+name: Deploy KEHA LV to App Service
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - polishing
+
+permissions:
+  id-token: write
+  contents: write
+
+concurrency:
+  group: deploy-keha-lv
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-hackathon-ecdx-proto-sdc-001
+  APP_NAME: keha-lv-web
+  HOST: https://keha-lv-web.azurewebsites.net
+
+jobs:
+  deploy:
+    # Releases come from `polishing` only. `main` is an old tree in this repo, and a
+    # deploy from it would replace the live app with that old build — so the branch is
+    # a hard condition, not a convention. The [skip ci] guard keeps the artifact commit
+    # at the end of this job from starting another deploy.
+    if: ${{ github.ref_name == 'polishing' && !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # git archive needs the commit that produced this tree, not a shallow clone.
+          fetch-depth: 0
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build the release artifact
+        run: |
+          set -euo pipefail
+          chmod +x scripts/build_deploy_zip.sh scripts/rollback.sh
+          ./scripts/build_deploy_zip.sh
+          ARTIFACT="$(ls deploy/artifacts/keha-lv-*.zip | tail -1)"
+          echo "ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
+
+      - name: Deploy to App Service
+        run: |
+          set -euo pipefail
+          az webapp deploy \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$APP_NAME" \
+            --src-path "$ARTIFACT" \
+            --type zip
+
+      - name: Wait for /healthz
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$HOST/healthz"; then
+              echo
+              echo "Healthy after $((attempt * 10))s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Health check did not pass; inspect: az webapp log tail -g $RESOURCE_GROUP -n $APP_NAME" >&2
+          exit 1
+
+      - name: Commit the artifact (backup / rollback point)
+        run: |
+          set -euo pipefail
+          if git status --porcelain deploy/artifacts | grep -q .; then
+            git config user.name "keha-lv deploy"
+            git config user.email "keha-lv-deploy@users.noreply.github.com"
+            git add deploy/artifacts
+            git commit -m "Release ${GITHUB_SHA:0:12} artifact [skip ci]"
+            git push
+          else
+            echo "artifact already committed"
+          fi
