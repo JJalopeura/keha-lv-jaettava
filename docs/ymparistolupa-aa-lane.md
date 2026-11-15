@@ -112,6 +112,16 @@ Run-to-run variance is real: the same case re-checked took 89 s once and 406 s a
 time, and the agent findings differ between runs. That is Foundry latency and LLM
 variance, not the app; the deterministic criteria results stayed stable.
 
+## What the check no longer covers, on purpose
+
+The YVA statement, BAT assessment, savukaasumallinnus, melumallinnus, perustilaselvitys,
+kemikaaliluettelo and hulevesisuunnitelma are still *classified*, stored, shown in the
+material list and delivered to the authority when the applicant adds them — they are just
+no longer separate criteria rules, so their absence opens no finding. That was the
+"strictly the ten sections" decision. Nothing in the UI or `AGENTS.md` claims those checks
+run; if that coverage is wanted back, the fix is to add rules with the matching
+`attachment_type` (the types and labels already exist) rather than to change the form.
+
 ## Known limits
 
 - The package has no yleiskartta, kaavaote or prosessikaavio, so those requirements
@@ -159,8 +169,13 @@ Two operational additions:
 
 `scripts/e2e_live.py` — the same package through the deployed site:
 
-- zip ingest round-trip: 235 s (local: 79 s; B1 is 1 vCPU and PDF text extraction is
-  CPU-bound), intake analysis 24 s
+- zip ingest round-trip: 213–235 s (local: 79 s; B1 is 1 vCPU and PDF text extraction is
+  CPU-bound), intake analysis 24–29 s. The zip ingest does not chain the analysis on the
+  wizard path (the applicant clicks "Aineiston analyysi"); on the Kevytasiointi path the
+  ingest job does chain it, so `POST /analyze` answers 409 `analysis_already_running`.
+- wizard path on the hardened build: 11 AI extractions offered, check 88 s, 0 blocking,
+  gate open, submitted (`LV-20261115-611DCF`); Kevytasiointi path submitted
+  (`LV-20261115-961475`) with the same package
 - the first live attempt hit one HTTP 500 on `GET .../wizard/2` while the ingest job was
   running; a local 60-poll reproduction never failed and the second live run polled the
   same page aggressively for 4 minutes with zero errors. The error-log middleware now

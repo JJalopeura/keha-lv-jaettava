@@ -122,6 +122,14 @@ def wait_job(page_url: str, label_prefix: str, timeout_s: float, label: str) -> 
     raise SystemExit(f"{label} timed out after {timeout_s:.0f}s")
 
 
+def job_exists(case_id: str, kind: str) -> bool:
+    """True when the application already has a job of this kind (running or done)."""
+    page = session.get(BASE + f"/cases/{case_id}/lupademo/application/{PERMIT}/wizard/2")
+    if page.status_code != 200:
+        return False
+    return bool(active_job(page.text, ""))
+
+
 def extraction_fields(*pages: str) -> list[str]:
     fields: list[str] = []
     for html in pages:
@@ -197,7 +205,7 @@ def path_b() -> None:
     submitted = session.post(BASE + base + "/submit")
     log(f"  submit -> {submitted.status_code} {submitted.headers.get('location')}")
     receipt = must(session.get(BASE + base + "/receipt")).text
-    receipt_id = re.search(r"Kuittitunnus\s*<strong>([^<]+)</strong>", receipt)
+    receipt_id = re.search(r"Kuittitunnus\s*<strong>([^<]+)</strong>", receipt) or re.search(r"Kuittinumero\s+(LV-[0-9A-Za-z-]+)", receipt)
     log(f"  receipt: {receipt_id.group(1) if receipt_id else 'missing'}")
 
 
@@ -227,18 +235,42 @@ def path_a() -> None:
     case_id = case_match.group(1)
     base = f"/cases/{case_id}/lupademo/application/{PERMIT}"
     wait_job(f"/applicant/packages/{package_id}", "Aineiston valmistelu", 1800, "ingest (kevyt)")
-    must(session.post(f"{BASE}/applicant/packages/{package_id}/analyze"), 303, "kevyt analyze")
+    if not job_exists(case_id, "intake_analysis"):
+        response = session.post(f"{BASE}/applicant/packages/{package_id}/analyze")
+        if response.status_code not in {303, 409}:
+            raise SystemExit(f"kevyt analyze -> {response.status_code}")
     wait_job(f"/applicant/packages/{package_id}", "Aineiston analyysi", 1800, "analysis (kevyt)")
 
     must(session.post(f"{BASE}/applicant/packages/{package_id}/save", data=FORM_DATA), 303, "kevyt save")
     submitted = session.post(f"{BASE}/applicant/packages/{package_id}/submit", data=FORM_DATA)
     log(f"  submit -> {submitted.status_code} {submitted.headers.get('location')}")
     final = must(session.get(f"{BASE}/applicant/packages/{package_id}")).text
-    receipt_id = re.search(r"Kuittitunnus\s*<strong>([^<]+)</strong>", final)
+    receipt_id = re.search(r"Kuittitunnus\s*<strong>([^<]+)</strong>", final) or re.search(r"Kuittinumero\s+(LV-[0-9A-Za-z-]+)", final)
+    log(f"  receipt: {receipt_id.group(1) if receipt_id else 'missing'}")
+
+
+def path_a_resume(package_id: str) -> None:
+    log(f"\n== Path A resume: {package_id} ==")
+    login()
+    page = must(session.get(f"{BASE}/applicant/packages/{package_id}")).text
+    case_match = re.search(r"/cases/([0-9a-f-]+)/lupademo/application/", page)
+    if not case_match:
+        raise SystemExit("case id not found on the Kevytasiointi page")
+    case_id = case_match.group(1)
+    wait_job(f"/applicant/packages/{package_id}", "Aineiston analyysi", 1800, "analysis (kevyt resume)")
+    must(session.post(f"{BASE}/applicant/packages/{package_id}/save", data=FORM_DATA), 303, "kevyt save")
+    submitted = session.post(f"{BASE}/applicant/packages/{package_id}/submit", data=FORM_DATA)
+    log(f"  submit -> {submitted.status_code} {submitted.headers.get('location')}")
+    final = must(session.get(f"{BASE}/applicant/packages/{package_id}")).text
+    receipt_id = re.search(r"Kuittitunnus\s*<strong>([^<]+)</strong>", final) or re.search(r"Kuittinumero\s+(LV-[0-9A-Za-z-]+)", final)
     log(f"  receipt: {receipt_id.group(1) if receipt_id else 'missing'}")
 
 
 if __name__ == "__main__":
+    resume_package = os.environ.get("KEHA_LV_RESUME_PACKAGE", "")
+    if resume_package:
+        path_a_resume(resume_package)
+        raise SystemExit(0)
     log(f"target: {BASE}")
     health = must(session.get(BASE + "/healthz"), label="healthz")
     log(f"healthz: {health.text.strip()[:200]}")
