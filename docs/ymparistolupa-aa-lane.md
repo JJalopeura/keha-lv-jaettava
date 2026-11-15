@@ -96,7 +96,9 @@ Two copy/fidelity fixes around the same area:
 
 `scripts/e2e_aa_package.py` — wizard and Kevytasiointi, same package, temp DB:
 
-- ingest: 79 s for 11 files (9 stored, 2 AVI decisions skipped as authority documents)
+- ingest: 79–95 s for 11 files, all 11 stored (the two AVI decisions, Liite 14 a/b, are
+  precedent decisions the applicant attached — they were previously skipped by a
+  `päätös` filename heuristic and that loss is fixed)
 - classification: the application PDF is the only `environmental_application`; YVA bundle
   → `yva_statement`, UUDELY → `judgement_freshness_assessment`, BAT → `bat_assessment`,
   savukaasumalli → `air_quality_model`, hulevesiarvio → `baseline_report`
@@ -121,6 +123,19 @@ no longer separate criteria rules, so their absence opens no finding. That was t
 "strictly the ten sections" decision. Nothing in the UI or `AGENTS.md` claims those checks
 run; if that coverage is wanted back, the fix is to add rules with the matching
 `attachment_type` (the types and labels already exist) rather than to change the form.
+
+## Fixture policy: one package, the current one
+
+Only `Ren-Gas pelkkä hakemus 20261104.zip` is used for this lane. The earlier, larger
+Ren-Gas package (46 MB, with melumallinnus, perustilaselvitys and the neighbourhood maps)
+is retired: it solves gaps the demo package deliberately does not contain, so a check
+against it is not comparable. `tests/test_criteria_minor_only.py` and both e2e scripts use
+the current package only.
+
+Because the current package is thinner, a *correct* check shows **more** suggestions than
+the old complete package did — but they stay advisory: only an empty required form field
+blocks, criteria are minor-only, and the majors are "merkittävä" review points, not send
+blockers (measured: 0 blocking / 1 major / 7 minor on the 11-file run, gate open).
 
 ## Known limits
 
@@ -180,4 +195,5 @@ Two operational additions:
   running; a local 60-poll reproduction never failed and the second live run polled the
   same page aggressively for 4 minutes with zero errors. The error-log middleware now
   exists so a recurrence leaves a traceback instead of a guess.
-- 2 of 11 files are not ingested (the two AVI decisions, `internal_authority_only`).
+- all 11 files of the package are ingested; `internal_authority_only` now means authority
+  *correspondence* (kuulutus, lausuntopyyntö, vireilletulo), not an applicant's attachment.
