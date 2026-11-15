@@ -2354,6 +2354,75 @@ def _drop_unsupported_contradictions(issues: list[Issue], form_data: dict[str, A
     return kept
 
 
+CONSULTANT_IDENTIFIER_HINTS = (
+    "konsultin",
+    "konsultti",
+    "laatijan",
+    "laatija",
+    "suunnittelijan",
+    "suunnittelija",
+    "afry",
+    "projektinumero",
+)
+
+# "Common data is empty but the form has the value" is a sync state the wizard already
+# shows per field; it is not a content contradiction the authority would act on.
+COMMON_DATA_SYNC_HINTS = (
+    "yhteisissä tiedoissa",
+    "yhteisten tietojen",
+    "yhteisiä tietoja",
+    "lv:n yhteisissä",
+    "common data",
+)
+
+
+def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
+    """Drop agent findings that contradict the app's own stated policy.
+
+    Two classes kept recurring across runs of the same case, so they are handled in code
+    rather than by asking the prompt again:
+    - a consultant's/document author's Y-tunnus compared with the applicant's;
+    - an unsynced LV common-data value compared with a filled form field.
+    Both are prompt-level rules already; an LLM that ignores them turns a clean report
+    into majors on a re-check, which is worse than one finding less.
+    """
+    kept: list[Issue] = []
+    dropped: list[Issue] = []
+    for issue in issues:
+        text = f"{issue.title} {issue.detail}".lower()
+        consultant_identifier = (
+            issue.type == "inconsistent"
+            and any(hint in text for hint in CONSULTANT_IDENTIFIER_HINTS)
+            and ("y-tunnus" in text or "y tunnus" in text or "ytunnus" in text)
+        )
+        unsynced_common_data = (
+            issue.type in {"inconsistent", "incomplete", "missing"}
+            and any(hint in text for hint in COMMON_DATA_SYNC_HINTS)
+        )
+        if consultant_identifier or unsynced_common_data:
+            dropped.append(issue)
+            continue
+        kept.append(issue)
+    if dropped:
+        # The audit trail keeps the decision visible instead of silently losing it.
+        dropped_ids = ", ".join(sorted(str(issue.id) for issue in dropped))
+        kept.append(
+            Issue(
+                id="policy_filter_note",
+                type="incomplete",
+                severity="recommendation",
+                title="Tarkistus suodatti kaksi policy-tason havaintoa",
+                detail=(
+                    "Konsultin Y-tunnusta ja tallentamatonta yhteistä tietoa ei raportoida ristiriitana. "
+                    f"Suodatetut havainnot: {dropped_ids}."
+                ),
+                suggested_fix="Tallenna muuttuneet tiedot LV:n yhteisiin tietoihin ja tarkista tunnukset.",
+                confidence=0.9,
+            )
+        )
+    return kept
+
+
 def _filter_covered_attachment_issues(issues: list[Issue], attachments: list[dict[str, Any]]) -> list[Issue]:
     attachment_ids = {str(item.get("id") or "") for item in attachments}
     return [
@@ -2854,6 +2923,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         agent_issues = _filter_covered_attachment_issues(agent_issues, attachments)
         agent_issues = _dedupe_agent_findings(agent_issues)
         agent_issues = _drop_unsupported_contradictions(agent_issues, app.get("form_data") or {})
+        agent_issues = _demote_policy_conflicts(agent_issues)
         agent_issues = _drop_duplicate_field_findings(agent_issues, deterministic)
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")

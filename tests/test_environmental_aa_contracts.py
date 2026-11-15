@@ -285,3 +285,52 @@ class ValuePresenceContractTest(unittest.TestCase):
             budget_chars=600,
         )
         self.assertEqual([item["source_id"] for item in selected["excerpts"]], ["b"])
+
+
+class PolicyConflictFilterTest(unittest.TestCase):
+    """Agent findings that contradict the app's own stated policy are dropped."""
+
+    def _issue(self, **kwargs):
+        from app.domains.lupademo.services.domain import Issue
+
+        base = dict(id="x", type="inconsistent", severity="major", title="", detail="", confidence=0.8)
+        base.update(kwargs)
+        return Issue(**base)
+
+    def test_consultant_business_id_is_not_the_applicants_contradiction(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts([
+            self._issue(
+                id="consistency-2",
+                title="Hakijan Y-tunnuksen ristiriita lomakedatan ja liitteen välillä",
+                detail="Liitteen on laatinut AFRY Finland Oy ja sen Y-tunnus 0625905-6 poikkeaa hakijan Y-tunnuksesta.",
+            ),
+        ])
+        ids = {issue.id for issue in issues}
+        self.assertNotIn("consistency-2", ids)
+        self.assertIn("policy_filter_note", ids)
+
+    def test_unsynced_common_data_is_not_a_contradiction(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts([
+            self._issue(
+                id="consistency-3",
+                title="Yhteisissä tiedoissa Hankkeen yleiskuvaus on tyhjä, lomakedatassa on kuvaus",
+                detail="Yhteisten tietojen permit_basis on tyhjä.",
+            ),
+        ])
+        self.assertNotIn("consistency-3", {issue.id for issue in issues})
+
+    def test_a_real_capacity_contradiction_survives(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts([
+            self._issue(
+                id="consistency-4",
+                title="Metaanin tuotantokapasiteetti eri lähteissä ristiriidassa",
+                detail="Hakemuksessa 15 000 t/a, liitteessä 12 000 t/a ilman selitystä.",
+            ),
+        ])
+        self.assertEqual([issue.id for issue in issues], ["consistency-4"])
