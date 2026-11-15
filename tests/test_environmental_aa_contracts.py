@@ -349,3 +349,18 @@ class PolicyConflictFilterTest(unittest.TestCase):
         self.assertEqual(demoted.type, "incomplete")
         self.assertEqual(demoted.severity, "minor")
         self.assertTrue(any(issue.id == "policy_reclassify_note" for issue in issues))
+
+    def test_annual_production_vs_storage_is_not_a_contradiction(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts([
+            self._issue(
+                id="consistency-6",
+                title="Vetykapasiteetti ristiriidassa lomakedatan ja kemikaaliluettelon välillä",
+                detail="Lomakkeella vety 7 500 t/v, kemikaaliluettelossa vetyä varastoidaan 10 t säiliöissä.",
+            ),
+        ])
+        demoted = next(issue for issue in issues if issue.id == "consistency-6")
+        self.assertEqual(demoted.type, "incomplete")
+        self.assertEqual(demoted.severity, "minor")
+        self.assertTrue(demoted.title.startswith("Täsmennettävä:"))

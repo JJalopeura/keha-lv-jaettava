@@ -2378,6 +2378,19 @@ COMMON_DATA_SYNC_HINTS = (
 # A form field is a summary and an attachment is a 65-page document. "The attachment
 # says more than the field" is a completeness nudge, not a contradiction between two
 # values of the same quantity.
+# Annual production vs storage inventory are different quantities, not two values of one
+# thing (Ren-Gas: vety 7 500 t/v produced, 10 t stored).
+QUANTITY_ROLE_HINTS = (
+    "varastoidaan",
+    "varastointi",
+    "varastointimäär",
+    "varastoitavan",
+    "säiliö",
+    "sailio",
+    "kertavarasto",
+)
+ANNUAL_MARKERS = ("/v", "vuodessa", "t/a", "tonnia vuodessa", "gwh/v", "mwh/v")
+
 SUMMARY_VS_DOCUMENT_HINTS = (
     "tarkemmin",
     "yksityiskohtaisem",
@@ -2416,6 +2429,23 @@ def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
         )
         if consultant_identifier or unsynced_common_data:
             dropped.append(issue)
+            continue
+        annual_vs_storage = (
+            issue.type == "inconsistent"
+            and any(hint in text for hint in QUANTITY_ROLE_HINTS)
+            and any(marker in text for marker in ANNUAL_MARKERS)
+        )
+        if annual_vs_storage:
+            issue.type = "incomplete"
+            issue.severity = "minor"
+            if not issue.title.startswith("Täsmennettävä:"):
+                issue.title = f"Täsmennettävä: {issue.title}"
+            issue.suggested_fix = (
+                issue.suggested_fix
+                or "Esitä vuosituotanto ja varastointimäärä erikseen sekä samoissa yksiköissä."
+            )
+            reclassified += 1
+            kept.append(issue)
             continue
         if issue.type == "inconsistent" and any(hint in text for hint in SUMMARY_VS_DOCUMENT_HINTS):
             # Same quantity is not in dispute: the form summarises, the document details.

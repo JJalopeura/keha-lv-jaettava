@@ -1211,7 +1211,12 @@ def find_material_package(db: Any, package_id: str) -> dict[str, Any]:
 def suggested_scope_for_attachment(primary_type: str, filename: str = "") -> str:
     name = (filename or "").lower()
     authority_types = {"authority_notice", "authority_additional_info_request", "decision_or_notice"}
-    if primary_type in authority_types or any(needle in name for needle in ["päätös", "paatos", "kuulutus", "lausuntopyyntö", "lausuntopyynto", "vireilletulo"]):
+    # A "päätös" inside an applicant's material package is usually a *precedent* the
+    # applicant attached (Liite 14 a/b in the Ren-Gas package), not correspondence the
+    # authority sent about this application. Dropping it silently lost 2 of 11 files.
+    # Authority correspondence stays internal: notices, requests for statements, the
+    # initiation notice.
+    if primary_type in authority_types or any(needle in name for needle in ["kuulutus", "lausuntopyyntö", "lausuntopyynto", "vireilletulo"]):
         return "internal_authority_only"
     if any(needle in name for needle in ["muistiinpano", "tyoversio", "työversio", "tyoaineisto", "työaineisto", "tausta-aineisto", "taustaa"]):
         return "ai_context_only"

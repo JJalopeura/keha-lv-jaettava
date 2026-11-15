@@ -63,27 +63,10 @@ GENERIC_FIX = "Täydennä tieto tai lisää vaatimus täyttävä viranomaisliite
 # rework goal). The packages are ingested with their REAL bytes via the product's
 # zip-ingestion path; form values derive from the package documents.
 REAL_PACKAGES = {
-    "P2X": {
-        "zip": "testiaineisto/esimerkkihakemukset/P2X.zip",
-        "form_data": {
-            "municipality": "Joensuu",
-            "applicant_name": "P2X Solutions Oy",
-            "business_id": "2483724-7",  # demo-stand-in (Y-tunnusta ei julkaista md:ssä)
-            "activity_name": "Power-to-X-laitos (CO₂-talteenotto ja metanolisynteesi)",
-            "permit_basis": "Hanke sijaitsee Joensuussa teollisuusalueella ja tuottaa uusiutuvaa metanolia CO₂:n talteenotolla ja elektrolyysillä. Aikataulu ja vaikutusalue kuvataan hakemuksessa; lähestymiskartta on liitteenä.",
-            "site_location": "Joensuu, teollisuusalue (toiminnansijaintikartta liitteenä); kiinteistön nimi ja tunnus hakemuksessa.",
-            "zoning_context": "Teollisuus- ja varastoaluetta; kaavaote (Liite 6 Asemakaavaote) liitteenä.",
-            "activity_description": "CO₂:n talteenotto ja metanolisynteesi Power-to-X-laitoksella Joensuussa; vihreän siirtymän etusijamenettely.",
-            "production_capacity": "Metanolituotanto laitoksen mitoituksen mukaisesti (ks. hakemus); volyymit ja kapasiteetti samoin yksiköin päästö- ja jätemäärien kanssa.",
-            "byproducts": "Erillistä sivutuoteluokittelua ei haeta; prosessin sivuvirrat kuvataan hakemuksessa.",
-            "process_description": "CO₂-talteenotto, elektrolyysi ja metanolisynteesi (Liite 1 Hiilidioksidin talteenotto); yksikköprosessit ja päästölähteet hakemuksessa.",
-            "risk_preparedness": "Ennaltavarautumissuunnitelma ja toimintaohjeet häiriötilanteisiin hakemusaineistossa; kemikaalien käsittely ja vuodot tunnistettu.",
-            "land_use_environment": "Lähimmät asuinalueet etäisyydellä; luonnonyleiskuvaus liitteenä (Karttakuva 721).",
-            "land_use_impacts": "Merkittävimmät vaikutukset meluun ja liikenteeseen; kokonaisvaikutus vähäinen.",
-        },
-    },
+    # Only the CURRENT Ren-Gas package is used. The earlier, "complete" Ren-Gas
+    # package (46 MB, with melumallinnus, perustilaselvitys and the neighbourhood
+    # maps) is retired: the demo material is the 2026-11-04 application package.
     "Ren-Gas": {
-        # 2026-11-04 paketti: pelkkä hakemus + sen liitteet, ei koko YVA-aineistoa.
         "zip": "testiaineisto/esimerkkihakemukset/Ren-Gas pelkkä hakemus 20261104.zip",
         "form_data": {
             "municipality": "Kerava",
@@ -95,30 +78,11 @@ REAL_PACKAGES = {
             "zoning_context": "Alue on asemakaavassa teollisuuskorttelialuetta; kaavamerkinnät ja kaavatilanne hakemuksen kohdassa 2.3.",
             "activity_description": "Power-to-Gas-laitos: vedyn tuotanto, hiilidioksidin talteenotto savukaasuista, metaanin tuotanto ja kaukolämmön tuotanto Keravalla.",
             "production_capacity": "Metaania 15 000 t/a, metaanin tuotantoteho 25 MW ja kaukolämpöä noin 32 MW.",
-            "byproducts": "Sivutuoteluokittelua ei haeta; prosessin jätteet ja sivuvirrat kuvataan hakemuksen kohdassa 3.8.",
+            "byproducts": "Sivutuoteluokitteluа ei haeta; prosessin jätteet ja sivuvirrat kuvataan hakemuksen kohdassa 3.8.",
             "process_description": "Vedyn tuotanto, CO₂:n talteenotto, metaanisynteesi, metaanin syöttö siirtoverkkoon sekä apujäähdytys ja kaukolämmön tuotanto (hakemus 3.3).",
             "risk_preparedness": "Liite 12 Ennaltavarautumissuunnitelma Ren-Gas Kerava; tunnistetut onnettomuus- ja häiriötilanteet hakemuksen kohdassa 5.",
             "land_use_environment": "Alueen itäpuolella valtatie 4, eteläpuolella metsäalue ja Keravanjoki; lähimmät asuinalueet ja herkät kohteet hakemuksen kohdassa 2.4.",
             "land_use_impacts": "YVA-selostuksen mukaiset vaikutukset maankäyttöön ja lähialueen asutukseen (Liite 4 a).",
-        },
-    },
-    "Sharpcell": {
-        "zip": "testiaineisto/esimerkkihakemukset/Sharpcell.zip",
-        "form_data": {
-            "municipality": "Valkeakoski",
-            "applicant_name": "SharpCell Oy",
-            "business_id": "3102847-6",  # demo-stand-in
-            "activity_name": "Paperitehtaan jätevesien käsittely, Projekti Aurora (LSSAVI-8122-2025)",
-            "permit_basis": "Ympäristönsuojelulain mukainen luvanvarainen toiminta UPM Tervasaaren tehtaalla; LSSAVI-käsittely. Tiivistelmä kuvaa sijainnin, tarkoituksen ja vaikutusalueen.",
-            "site_location": "UPM Tervasaaren tontti, Valkeakoski.",
-            "zoning_context": "Teollisuusympäristö, Valkeakoski; kaavatilanne hakemuksessa.",
-            "activity_description": "Paperitehtaalle kohdistuvat jätevedet ja niihin liittyvä toiminta (Projekti Aurora).",
-            "production_capacity": "Tuotanto hakemusasiakirjojen mukaan.",
-            "byproducts": "Sivutuoteluokittelua ei haeta.",
-            "process_description": "Jätevesien käsittelyprosessi hakemusasiakirjojen mukaan.",
-            "risk_preparedness": "Varautumissuunnitelma hakemusasiakirjojen mukaan.",
-            "land_use_environment": "Vesistö ja lähialueen käyttäjät kuvattuna hakemuksessa.",
-            "land_use_impacts": "Ympäristövaikutukset hakemusasiakirjojen mukaan.",
         },
     },
 }
@@ -200,8 +164,9 @@ def _assert_minor_only(self, permit_label: str, report: dict) -> None:
 
 
 class RealPackageMinorOnlyTest(unittest.TestCase):
-    """The three REAL testiaineisto packages, ingested via the product's zip path,
-    checked as prepared applications: vähäinen findings only."""
+    """The current Ren-Gas application package, ingested via the product's zip path and
+    checked as a prepared application: vähäinen findings only. Earlier packages are
+    retired and must not be used as fixtures."""
 
     @classmethod
     def setUpClass(cls) -> None:
