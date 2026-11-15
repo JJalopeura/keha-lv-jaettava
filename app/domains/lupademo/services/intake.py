@@ -436,7 +436,6 @@ def evidence_chunks(
     attachments: list[dict[str, Any]],
     *,
     chunk_chars: int = EVIDENCE_CHUNK_CHARS,
-    allowed_scopes: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Split the stored attachment texts into overlapping chunks for relevance selection.
 
@@ -445,7 +444,7 @@ def evidence_chunks(
     table of contents. The chunks let each criteria batch pull the passages its own rules
     talk about, wherever in the document they are.
     """
-    scopes = allowed_scopes or EVIDENCE_ALLOWED_SCOPES
+    scopes = EVIDENCE_ALLOWED_SCOPES
     chunks: list[dict[str, Any]] = []
     step = max(1, chunk_chars - EVIDENCE_CHUNK_OVERLAP)
     for att in attachments:
