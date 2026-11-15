@@ -108,6 +108,35 @@ def update_lv_common_data(db: Any, case_id: str, updates: dict[str, str]) -> dic
     return current
 
 
+def _seed_empty_common_fields(db: Any, case_id: str, app: dict[str, Any]) -> None:
+    """Fill an empty LV common field from the application field the applicant filled.
+
+    The hanke-level common data is the root, the application is a leaf, and the wizard's
+    step 1 shows the root. When the applicant fills "Hankkeen yleiskuvaus" (or any other
+    common-data field) on the application form — by hand or by accepting an AI extraction
+    — an empty root should inherit it instead of showing "-" on step 1. A non-empty root is
+    never overwritten: that is the user's own value, and divergence stays a visible sync
+    proposal.
+    """
+    form_data = app.get("form_data") or {}
+    schema = load_form_schema(str(app.get("permit_type") or ""))
+    common_fields = {
+        str(field.get("id"))
+        for field in schema.get("fields", [])
+        if field.get("common_data") and field.get("id") in COMMON_FIELDS
+    }
+    if not common_fields:
+        return
+    common = artifact_json(db, case_id, "lv_common_data", "main", {"data": DEFAULT_COMMON_DATA.copy()})["data"]
+    seed = {
+        field_id: str(form_data.get(field_id) or "").strip()
+        for field_id in common_fields
+        if str(form_data.get(field_id) or "").strip() and not str(common.get(field_id) or "").strip()
+    }
+    if seed:
+        update_lv_common_data(db, case_id, seed)
+
+
 def update_application_data(db: Any, case_id: str, permit_type: str, updates: dict[str, str]) -> dict[str, Any]:
     app = ensure_application(db, case_id, permit_type)
     before = dict(app.get("form_data") or {})
@@ -115,6 +144,7 @@ def update_application_data(db: Any, case_id: str, permit_type: str, updates: di
     app.setdefault("versions", []).append({"ts": time.time(), "source": "user", "before": before, "after": dict(app["form_data"])})
     app["updated_at"] = time.time()
     save_artifact(db, case_id, "permit_application", app["permit_type"], app)
+    _seed_empty_common_fields(db, case_id, app)
     detect_common_data_changes(db, case_id)
     event(db, case_id, "application.saved", "Application fields saved", {"application_id": app["permit_type"], "fields": list(updates)})
     return app

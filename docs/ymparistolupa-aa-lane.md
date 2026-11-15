@@ -137,6 +137,15 @@ the old complete package did — but they stay advisory: only an empty required 
 blocks, criteria are minor-only, and the majors are "merkittävä" review points, not send
 blockers (measured: 0 blocking / 1 major / 7 minor on the 11-file run, gate open).
 
+## Step 1 inherits step 3
+
+`permit_basis` (Hankkeen yleiskuvaus) is both the application field and an LV common-data
+field. When the applicant fills it on the application form — by hand or by accepting an AI
+extraction — an **empty** LV common value is filled from the application
+(`_seed_empty_common_fields` in `services/core.py`), so step 1 shows the same text instead
+of "-". A non-empty LV common value is never overwritten; divergence stays a visible sync
+proposal.
+
 ## No document is mandatory
 
 `required_attachments` is empty for this lane. The applicant's upload *is* the package;

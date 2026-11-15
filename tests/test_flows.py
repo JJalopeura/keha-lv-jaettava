@@ -180,6 +180,32 @@ class ApplicantJourney(unittest.TestCase):
 
         self.assertIn("criteria_custom_noise_context", {issue.id for issue in issues})
 
+    def test_filled_common_field_seeds_empty_lv_common_data(self) -> None:
+        """Step 3 "Hankkeen yleiskuvaus" fills step 1 when step 1 is empty."""
+        case_id = db.create_case("Common data inheritance", language="fi")
+        svc.ensure_seed_state(db, case_id)
+        description = "Hanke sijaitsee Keravalla ja tuottaa uusiutuvaa metaania 15 000 t/a."
+
+        svc.update_application_data(db, case_id, PERMIT, {"permit_basis": description})
+
+        common = svc.artifact_json(db, case_id, "lv_common_data", "main", {"data": {}})["data"]
+        self.assertEqual(common.get("permit_basis"), description)
+        page = client.get(f"/cases/{case_id}/lupademo/application/{PERMIT}/wizard/1")
+        self.assertIn(description[:40], page.text)
+
+    def test_non_empty_lv_common_data_is_not_overwritten(self) -> None:
+        case_id = db.create_case("Common data is the root", language="fi")
+        svc.ensure_seed_state(db, case_id)
+        original = "Käyttäjän kirjoittama hankekuvaus."
+        svc.update_lv_common_data(db, case_id, {"permit_basis": original})
+
+        svc.update_application_data(db, case_id, PERMIT, {"permit_basis": "Lomakkeen eri teksti."})
+
+        common = svc.artifact_json(db, case_id, "lv_common_data", "main", {"data": {}})["data"]
+        self.assertEqual(common.get("permit_basis"), original)
+        sync = svc.artifact_json(db, case_id, "common_data_sync_state", "main", {"changes": []})
+        self.assertTrue(any(change.get("field_id") == "permit_basis" for change in sync.get("changes", [])))
+
     def test_conditional_environmental_criteria_waits_for_trigger(self) -> None:
         # AA-uudistuksessa (2026-12) ainoa ehdollinen sääntö on sivutuotteet: se laukeaa
         # vasta, kun prosessikuvaus mainitsee sivutuoteluokittelun (jätelaki 5 § 2 mom.).
