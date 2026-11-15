@@ -3,7 +3,7 @@
   "tenant_id": "avi_demo",
   "municipality": "",
   "permit_type": "environmental_industrial",
-  "version": "2026-12-demo-1",
+  "version": "2026-12-demo-2",
   "status": "active",
   "sources": [
     "Ympäristölupahakemuksen täyttöohjeet, Asiointipalvelu (AA): Tiivistelmä, Taustatiedot, Toiminta, Riskit, Ympäristö, päästöt ja vaikutukset",
@@ -32,7 +32,7 @@
       "attachment_type": "general_map",
       "severity": "minor",
       "basis": "AA-täyttöohje: Tiivistelmä — hakijan laatima kuvaus",
-      "instruction": "Kirjoita lyhyt ja helposti ymmärrettävä kuvaus hakemuksen pääasioista yleisöä ja viranomaisia varten. Kerro tiivistelmässä hankkeen sijainti, tarkoitus ja tarve, yleiskuvaus ja aikataulu sekä vaikutukset ja vaikutusalue. Vesilain mukaisissa hankkeissa kerro lisäksi tiedot vesistöstä tai vesialueesta, jolla hanke sijaitsee, ja toimenpiteet, jotka edellyttävät vesilain lupaa. Ympäristönsuojelulain mukaisessa toiminnassa kerro lisäksi tiedot olennaisista päästöistä ja syntyvistä jätteistä sekä toimenpiteet, jotka edellyttävät ympäristönsuojelulain lupaa. Liitteeksi lähestymis- tai yleiskartta (1:100 000–1:200 000), johon on merkitty hankkeen sijainti ja tarvittaessa vaikutusalue."
+      "instruction": "Kirjoita lyhyt ja helposti ymmärrettävä kuvaus hakemuksen pääasioista yleisöä ja viranomaisia varten. Kerro tiivistelmässä hankkeen sijainti, tarkoitus ja tarve, yleiskuvaus ja aikataulu sekä vaikutukset ja vaikutusalue. Vesilain mukaisissa hankkeissa kerro lisäksi tiedot vesistöstä tai vesialueesta, jolla hanke sijaitsee, ja toimenpiteet, jotka edellyttävät vesilain lupaa. Ympäristönsuojelulain mukaisessa toiminnassa kerro lisäksi tiedot olennaisista päästöistä ja syntyvistä jätteistä sekä toimenpiteet, jotka edellyttävät ympäristönsuojelulain lupaa. Liitteeksi lähestymis- tai yleiskartta (1:100 000–1:200 000), johon on merkitty hankkeen sijainti ja tarvittaessa vaikutusalue. Katso tarvittavat liitteet kohdasta Liitteet. Muita lisätietoja, esimerkiksi kaksikielisissä kunnissa toisella kotimaisella kielellä kirjoitettu tiivistelmä. Nimeä liitetiedostot siten, että nimestä käy ilmi, mikä asiakirja tiedostossa on."
     },
     {
       "id": "site_location",
@@ -40,7 +40,7 @@
       "field_id": "site_location",
       "severity": "minor",
       "basis": "AA-täyttöohje: Taustatiedot — sijainti",
-      "instruction": "Kerro hankkeen sijainnista. Ilmoita sijaintikiinteistöjen tiedot (nimi ja tunnus) ja ilmoita sijaintikiinteistöjen omistajat ja haltijat yhteystietoineen erillisellä liitteellä."
+      "instruction": "Kerro hankkeen sijainnista. Ilmoita sijaintikiinteistöjen tiedot (nimi ja tunnus) ja ilmoita sijaintikiinteistöjen omistajat ja haltijat yhteystietoineen erillisellä liitteellä (Asianosaiset)."
     },
     {
       "id": "zoning_context",
@@ -49,7 +49,7 @@
       "attachment_type": "zoning_extract",
       "severity": "minor",
       "basis": "AA-täyttöohje: Taustatiedot — kaavoitus; YSL (527/2014) 27 §",
-      "instruction": "Sijaitseeko hanke ja sen ympäristö kaavoitetulla alueella? Ilmoita voimassa olevan, oikeusvaikutteisen asema-, yleis- tai maakuntakaavan tiedot. Kerro, mihin käyttötarkoitukseen hankkeen sijaintialue on kaavassa osoitettu. Arvioi, onko hankkeella vaikutuksia nykyiseen kaavoitukseen ja onko hanke kaavan mukainen. Liitä hakemukseen karttaote voimassa olevasta kaavasta, johon on merkitty selkeästi hankealue, karttaotteet vireillä olevista kaavoista sekä kaavamerkintöjen ja -määräysten selitykset."
+      "instruction": "Sijaitseeko hanke ja sen ympäristö kaavoitetulla alueella? Ilmoita voimassa olevan, oikeusvaikutteisen asema-, yleis- tai maakuntakaavan tiedot. Kerro, mihin käyttötarkoitukseen hankkeen sijaintialue on kaavassa osoitettu. Arvioi, onko hankkeella vaikutuksia nykyiseen kaavoitukseen ja onko hanke kaavan mukainen. Liitä hakemukseen karttaote voimassa olevasta kaavasta, johon on merkitty selkeästi hankealue, karttaotteet vireillä olevista kaavoista sekä kaavamerkintöjen ja -määräysten selitykset. Katso tarvittavat liitteet kohdasta Liitteet. Muita lisätietoja, esimerkiksi kaavaselostus. Lisätietoja: Kaavoitus (https://www.ymparisto.fi/fi/rakennettu-ymparisto/kaavoitus-ja-alueidenkaytto/kaavoitus). Nimeä liitetiedostot siten, että nimestä käy ilmi, mikä asiakirja tiedostossa on."
     },
     {
       "id": "activity_description",
@@ -99,7 +99,7 @@
       "attachment_type": "risk_preparedness_plan",
       "severity": "minor",
       "basis": "AA-täyttöohje: Riskit — ympäristöriskit ja varautuminen; YSL (527/2014) — poikkeukselliset tilanteet",
-      "instruction": "Toimintaan liittyvät ympäristöriskit, onnettomuuksien estämiseksi suunnitellut toimenpiteet ja toiminta häiriötilanteissa: tarkkailu-, hälytys- ja sammutusjärjestelmät ja muut varotoimenpiteet; huolto- ja varajärjestelmät; häiriötilanteiden kirjanpito; missä määrin mahdollisesta onnettomuudesta tai häiriöstä johtuvia vahinkoja ympäristölle voidaan estää tai vähentää toimenpitein sekä näiden arvioidut kustannukset; tiedot mahdollisesta ympäristövahinkovakuutuksesta. Liitteeksi ennaltavarautumissuunnitelma."
+      "instruction": "Toimintaan liittyvät ympäristöriskit, onnettomuuksien estämiseksi suunnitellut toimenpiteet ja toiminta häiriötilanteissa: tarkkailu-, hälytys- ja sammutusjärjestelmät ja muut varotoimenpiteet; huolto- ja varajärjestelmät; häiriötilanteiden kirjanpito; missä määrin mahdollisesta onnettomuudesta tai häiriöstä johtuvia vahinkoja ympäristölle voidaan estää tai vähentää toimenpitein sekä näiden arvioidut kustannukset; tiedot mahdollisesta ympäristövahinkovakuutuksesta. Liitteeksi ennaltavarautumissuunnitelma. Ennaltavarautumissuunnitelman ohje: https://www.ymparisto.fi/sites/default/files/documents/Ennaltavarautumissuunnitelmaohje.pdf"
     },
     {
       "id": "land_use_environment",

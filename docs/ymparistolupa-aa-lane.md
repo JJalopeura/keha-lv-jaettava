@@ -33,7 +33,7 @@ hanke" description and the Kevytasiointi form still carry over.
 ## Criteria: ten rules, guidance as the instruction
 
 `app/domains/lupademo/specs/criteria_sets/national_environmental_industrial_demo_v1.json`
-(`version: 2026-12-demo-1`)
+(`version: 2026-12-demo-2`)
 
 One rule per section; rule `id` equals the field id, `title` equals the section label,
 and `instruction` is the AA guidance text verbatim. Severities stay `minor` /
