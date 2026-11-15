@@ -19,7 +19,7 @@
   "missing": "Ei saatavilla"
 } %}
 {% macro evidence_source_title(title, all_attachments) %}{% set label = namespace(value=title) %}{% for attachment in all_attachments %}{% if label.value.endswith(attachment.filename) %}{% set label.value = attachment.filename %}{% endif %}{% endfor %}{{ label.value }}{% endmacro %}
-{% set common_labels = {"applicant_name": "Hakija", "business_id": "Y-tunnus", "contact_person": "Yhteyshenkilö", "phone": "Puhelin", "email": "Sähköposti", "municipality": "Kunta", "address": "Osoite", "property_id": "Kiinteistötunnus", "project_name": "Hankkeen nimi", "permit_basis": "Toiminnan yleiskuvaus"} %}
+{% set common_labels = {"applicant_name": "Hakija", "business_id": "Y-tunnus", "contact_person": "Yhteyshenkilö", "phone": "Puhelin", "email": "Sähköposti", "municipality": "Kunta", "address": "Osoite", "property_id": "Kiinteistötunnus", "project_name": "Hankkeen nimi", "permit_basis": "Hankkeen yleiskuvaus"} %}
 {% set pending_extraction_count = wizard.get('pending_extraction_count', field_extraction_queue.get('items', [])|selectattr('status', 'equalto', 'pending')|list|length) %}
 {% set pending_field_suggestion_count = wizard.get('pending_field_suggestion_count', suggestions|selectattr('status', 'equalto', 'pending')|list|length) %}
 {% set pending_any_suggestions = suggestions|selectattr('status', 'equalto', 'pending')|list %}
@@ -105,6 +105,7 @@
       <div class="application-field-grid" aria-labelledby="tab-{{ tab.id }}">
         {% for field in tab_fields %}
         <label class="application-field {% if field.type == 'textarea' %}wide-field{% endif %}" id="field-{{ field.id }}"><span class="field-label-text">{{ common_labels.get(field.id, field.label) }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}</span>
+          {% if field.get('help') %}<span class="field-help">{{ field.get('help') }}</span>{% endif %}
           {% if field.type == "textarea" %}
           <textarea name="{{ field.id }}">{{ application.form_data.get(field.id, "") }}</textarea>
           {% else %}
@@ -153,6 +154,10 @@
           "site_map": "Asemapiirros / sijaintikartta",
           "site_plan": "Asemapiirros / sijaintikartta",
           "zoning_extract": "Kaavaote",
+          "general_map": "Lähestymis- / yleiskartta",
+          "zoning_report": "Kaavaselostus",
+          "process_diagram": "Prosessi- / virtauskaavio",
+
           "public_summary": "Julkinen yhteenveto",
           "main_drawings": "Pääpiirustukset",
           "facade_drawings": "Julkisivupiirustukset",
@@ -165,7 +170,7 @@
         </div>
         {% endif %}
         {% set criteria_missing_attachments = namespace(items=[]) %}
-        {% set criteria_attachment_labels = {"monitoring_plan": "Tarkkailu ja raportointi", "confidential_attachment": "Luottamuksellinen liite", "bat_assessment": "BAT-arviointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "stormwater_plan": "Hulevesisuunnitelma"} %}
+        {% set criteria_attachment_labels = {"general_map": "Lähestymis- / yleiskartta", "zoning_extract": "Kaavaote", "zoning_report": "Kaavaselostus", "process_diagram": "Prosessi- / virtauskaavio", "monitoring_plan": "Tarkkailu ja raportointi", "confidential_attachment": "Luottamuksellinen liite", "bat_assessment": "BAT-arviointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "stormwater_plan": "Hulevesisuunnitelma"} %}
         {% for issue in check_report.get('issues', []) %}
         {% set attachment_type = issue.get('attachment_id') %}
         {% if attachment_type and not issue.get('resolved') and attachment_type not in wizard.missing_attachments and attachment_type not in criteria_missing_attachments.items %}{% set _ = criteria_missing_attachments.items.append(attachment_type) %}{% endif %}
@@ -217,6 +222,10 @@
       "public_summary": "Julkinen yhteenveto",
       "site_map": "Asemapiirros / sijaintikartta",
       "zoning_extract": "Kaavaote",
+      "general_map": "Lähestymis- / yleiskartta",
+      "zoning_report": "Kaavaselostus",
+      "process_diagram": "Prosessi- / virtauskaavio",
+
       "main_drawings": "Pääpiirustukset",
       "facade_drawings": "Julkisivupiirustukset",
       "risk_preparedness_plan": "Ennaltavarautumissuunnitelma",
@@ -582,7 +591,11 @@
     <p class="muted">Aineistosta vahvistettu {{ _criteria_green|length }} kriteeriä · seurattavaa {{ _criteria_non_green|length }} kohdetta. Vähäiset huomiot eivät estä lähettämistä.</p>
     {% endif %}
     {% set severity_labels = {"blocking": "Estävä", "major": "Merkittävä", "minor": "Vähäinen", "recommendation": "Suositus"} %}
-    {% set check_attachment_labels = {"site_map": "Asemapiirros / sijaintikartta", "zoning_extract": "Kaavaote", "public_summary": "Julkinen yhteenveto", "site_plan": "Asemapiirros / sijaintikartta", "main_drawings": "Pääpiirustukset", "facade_drawings": "Julkisivupiirustukset", "stormwater_plan": "Hulevesisuunnitelma", "environmental_application": "Ympäristölupahakemus", "bat_assessment": "BAT-arviointi", "monitoring_plan": "Tarkkailu ja raportointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "chemical_inventory_or_sds": "Kemikaaliluettelo / käyttöturvallisuustiedotteet (SDS)", "judgement_freshness_assessment": "Lausunto perustellun päätelmän ajantasaisuudesta", "dnsh_statement": "DNSH-selvitys", "tukes_statement": "Tukesin lausunto", "air_monitoring_plan": "Ilmapäästöjen tarkkailuohjelma", "energy_report": "Energiaselvitys / energiatodistus", "landowner_permission": "Maanomistajan lupa", "rescue_plan": "Pelastussuunnitelma", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "confidential_attachment": "Luottamuksellinen liite"} %}
+    {% set check_attachment_labels = {"site_map": "Asemapiirros / sijaintikartta", "zoning_extract": "Kaavaote",
+ "general_map": "Lähestymis- / yleiskartta",
+ "zoning_report": "Kaavaselostus",
+ "process_diagram": "Prosessi- / virtauskaavio",
+ "public_summary": "Julkinen yhteenveto", "site_plan": "Asemapiirros / sijaintikartta", "main_drawings": "Pääpiirustukset", "facade_drawings": "Julkisivupiirustukset", "stormwater_plan": "Hulevesisuunnitelma", "environmental_application": "Ympäristölupahakemus", "bat_assessment": "BAT-arviointi", "monitoring_plan": "Tarkkailu ja raportointi", "risk_preparedness_plan": "Ennaltavarautumissuunnitelma", "yva_statement": "YVA-selostus / lausunto", "chemical_inventory": "Kemikaaliluettelo", "chemical_inventory_or_sds": "Kemikaaliluettelo / käyttöturvallisuustiedotteet (SDS)", "judgement_freshness_assessment": "Lausunto perustellun päätelmän ajantasaisuudesta", "dnsh_statement": "DNSH-selvitys", "tukes_statement": "Tukesin lausunto", "air_monitoring_plan": "Ilmapäästöjen tarkkailuohjelma", "energy_report": "Energiaselvitys / energiatodistus", "landowner_permission": "Maanomistajan lupa", "rescue_plan": "Pelastussuunnitelma", "air_quality_model": "Ilmapäästöselvitys", "noise_model": "Meluselvitys", "baseline_report": "Perustilaselvitys", "confidential_attachment": "Luottamuksellinen liite"} %}
     {% set check_field_labels = {"location_environment": "Sijainti ja ympäristö", "confidential_attachment": "Luottamuksellinen liite"} %}
     {% set _missing_field_rows = check_report.issues|selectattr('resolved', 'ne', true)|selectattr('type', 'equalto', 'missing')|selectattr('field_id')|rejectattr('attachment_id')|list %}
     <div class="check-issue-grid">
@@ -657,6 +670,10 @@
   "site_map": "Asemapiirros / sijaintikartta",
   "site_plan": "Asemapiirros / sijaintikartta",
   "zoning_extract": "Kaavaote",
+  "general_map": "Lähestymis- / yleiskartta",
+  "zoning_report": "Kaavaselostus",
+  "process_diagram": "Prosessi- / virtauskaavio",
+
   "main_drawings": "Pääpiirustukset",
   "facade_drawings": "Julkisivupiirustukset",
   "risk_preparedness_plan": "Ennaltavarautumissuunnitelma",

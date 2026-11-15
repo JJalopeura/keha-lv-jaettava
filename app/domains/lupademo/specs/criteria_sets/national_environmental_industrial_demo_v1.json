@@ -3,182 +3,119 @@
   "tenant_id": "avi_demo",
   "municipality": "",
   "permit_type": "environmental_industrial",
-  "version": "2026-11-demo-3",
+  "version": "2026-12-demo-1",
   "status": "active",
   "sources": [
-    "Uusiutuvan energian tuotantolaitosten lupamenettelyt ja muut hallinnolliset menettelyt.pdf",
-    "ymparisto.fi ympäristölupa yleisohjeet (demo source)",
-    "Ympäristönsuojelulaki (527/2014) ja YVA-laki (252/2017) — luvan myöntämisen edellytykset",
-    "EU:n talouskasvetsasetus DNSH-vaatimukset",
-    "Esimerkkihakemusaineistot (P2X / Ren-Gas / SharpCell, demo)"
+    "Ympäristölupahakemuksen täyttöohjeet, Asiointipalvelu (AA): Tiivistelmä, Taustatiedot, Toiminta, Riskit, Ympäristö, päästöt ja vaikutukset",
+    "Ympäristönsuojelulaki (527/2014) 27 § — luvan myöntämisen edellytykset",
+    "Jätelaki (646/2011) 5 § 2 momentti — sivutuotteen määritelmä",
+    "ymparisto.fi — kaavoitus ja alueiden käyttö",
+    "Ren-Gas Kerava, Ympäristölupahakemus 15.4.2025 (esimerkkiaineisto, demo)"
   ],
   "domain_hints": [
-    "Kapasiteetti ja päästöt: vertaa ilmoitettua tuotantokapasiteettia päästö- ja jätemääriin. Suuri kapasiteetti selvästi pienin päästöin ilman perustelua on tarkistettava kohta.",
-    "Toimivalta: aluehallintovirasto ratkaisee yleensä laajat ja merkittävät hankkeet, kunnan ympäristönsuojeluviranomainen pienemmät. Jos toimivalta ja toiminnan laajuus eivät sovi yhteen, raportoi siitä.",
-    "YVA: biokaasun, vedyn, kemikaalien ja energiantuotannon hankkeissa YVA-menettely on usein pakollinen. Jos YVA-selostusta ei ole eikä YVA-tarvetta ole perusteltu, se on olennainen havainto.",
-    "BAT: päästöille pitää esittää vertailu BAT-päätelmien tasoihin (BAT-AEL). Pelkkä maininta 'BAT on huomioitu' ei riitä.",
-    "Kemikaalit: jos kemikaaleja varastoidaan tai käsitellään merkittäviä määriä, tarkista luettelo, käyttöturvallisuustiedotteet ja suuronnettomuusvelvoitteet.",
-    "Sijainti: kaava, kaavamääräykset, etäisyydet asutukseen ja herkät kohteet (pohjavesialue, Natura-alue, vesistö) on esitettävä. Ristiriita kaavan kanssa on olennainen havainto.",
-    "Tarkkailu: tarkkailuohjelman pitää kattaa sekä ilmapäästöt että jätevedet, tai puuttuva osa on todettava erikseen.",
+    "Jokainen kriteeri vastaa yhtä Asiointipalvelun lomakkeen osiota. Arvioi juuri sen osion ohjeen vaatimaa sisältöä: älä yleistä koko hakemukseen liittyvää tietoa tämän osion täyttymiseksi.",
+    "Tiivistelmä on yleisölle ja viranomaiselle: sijainti, tarkoitus ja tarve, yleiskuvaus ja aikataulu, vaikutukset ja vaikutusalue. Jos jokin näistä puuttuu, se on olennainen havainto.",
+    "Sijainti: kiinteistön nimi ja tunnus sekä omistajat ja haltijat yhteystietoineen erillisellä liitteellä. Pelkkä kunnan nimi ei riitä.",
+    "Kaavoitus: voimassa oleva oikeusvaikutteinen kaava, alueen käyttötarkoitus, kaavanmukaisuus ja vaikutukset kaavoitukseen. Kaavaote on viranomaisliite.",
+    "Tuotanto: tuotteet, volyymit ja kapasiteetti esitetään samoilla yksiköillä ja samassa suhteessa päästö- ja jätemääriin. Epäsuhta ilman perustelua on tarkistettava kohta.",
+    "Sivutuotteet: käsitellään vain, jos luokittelua haetaan. Silloin jätelain 5 §:n 2 momentin neljä edellytystä on käytävä ilmi.",
+    "Prosessit: yksikköprosessit, laitteistot, varastot ja päästölähteet. Pelkkä prosessin tai teknologian nimi ei riitä kuvaukseksi.",
+    "Riskit: tunnistetut riskit, varautuminen häiriötilanteisiin ja ennaltavarautumissuunnitelma. Pelkkä maininta 'riskit on huomioitu' ei riitä.",
+    "Maankäyttö: nykyinen ja tuleva maankäyttö, häiriöille herkät kohteet etäisyyksineen sekä vaikutukset niihin. Vaikutukset esitetään erikseen lähiympäristön kuvauksesta.",
     "Numerot: saman asian eri arvot eri asiakirjoissa (teho MW, tonnit vuodessa, etäisyys metreinä) ovat ristiriita, eivät tulkintaero."
   ],
   "rules": [
     {
       "id": "permit_basis",
-      "title": "Toiminnan yleiskuvaus",
+      "title": "Hankkeen yleiskuvaus (hakijan laatima kuvaus)",
       "field_id": "permit_basis",
-      "severity": "recommendation",
-      "basis": "YSL (527/2014) 27 § — luvan myöntämisen edellytykset",
-      "instruction": "Kuva neutraalisti ja faktaalisesti ehdotettu toiminta: tavoite, sijainti, keskeiset prosessit, päästöt/jätehuolto, syötteet ja materiaalit sekä merkittävä skaala, kun lähdemateriaalissa on tietoa. Älä tee päätelmää toiminnan luvanvaraisuudesta, älä käytä lainkohtia lopputuloksena eikä lauseita kuten 'Toiminta on hakemuksen mukaan luvanvarainen'."
-    },
-    {
-      "id": "competent_authority",
-      "title": "Toimivaltainen viranomainen",
-      "field_id": "competent_authority",
-      "severity": "recommendation",
-      "basis": "YSL (527/2014) — toimivaltainen viranomainen",
-      "instruction": "Perustele toiminnan laadun ja vaikutusten perusteella, onko toimivaltainen viranomainen aluehallintovirasto vai kunnan ympäristönsuojeluviranomainen."
-    },
-    {
-      "id": "activity_description",
-      "title": "Toiminnan ja yksikköprosessien kuvaus",
+      "attachment_type": "general_map",
       "severity": "minor",
-      "basis": "YSL (527/2014) — hakemuksen sisältö",
-      "instruction": "Kuvaa toiminta yksikköprosesseittain: mitä laitoksella tehdään, missä järjestyksessä ja millä laitteilla. Kerro käyntiajat ja vuosittainen toiminta-aika sekä se, mitkä prosessit ovat päästö- tai jätelähteitä."
+      "basis": "AA-täyttöohje: Tiivistelmä — hakijan laatima kuvaus",
+      "instruction": "Kirjoita lyhyt ja helposti ymmärrettävä kuvaus hakemuksen pääasioista yleisöä ja viranomaisia varten. Kerro tiivistelmässä hankkeen sijainti, tarkoitus ja tarve, yleiskuvaus ja aikataulu sekä vaikutukset ja vaikutusalue. Vesilain mukaisissa hankkeissa kerro lisäksi tiedot vesistöstä tai vesialueesta, jolla hanke sijaitsee, ja toimenpiteet, jotka edellyttävät vesilain lupaa. Ympäristönsuojelulain mukaisessa toiminnassa kerro lisäksi tiedot olennaisista päästöistä ja syntyvistä jätteistä sekä toimenpiteet, jotka edellyttävät ympäristönsuojelulain lupaa. Liitteeksi lähestymis- tai yleiskartta (1:100 000–1:200 000), johon on merkitty hankkeen sijainti ja tarvittaessa vaikutusalue."
     },
     {
-      "id": "production_capacity",
-      "title": "Kapasiteetti ja mitoitusperusteet",
+      "id": "site_location",
+      "title": "Sijainti",
+      "field_id": "site_location",
       "severity": "minor",
-      "basis": "YSL (527/2014) — toiminnan laajuus ja mitoitus",
-      "instruction": "Esitä tuotantokapasiteetti yksiköin (esim. t/vuosi, MW, Nm³/h) ja perustele se suhteessa raaka-aineisiin, päästöihin ja jätemääriin. Jos kapasiteetti ja päästöt eivät ole samassa suhteessa, sano se."
+      "basis": "AA-täyttöohje: Taustatiedot — sijainti",
+      "instruction": "Kerro hankkeen sijainnista. Ilmoita sijaintikiinteistöjen tiedot (nimi ja tunnus) ja ilmoita sijaintikiinteistöjen omistajat ja haltijat yhteystietoineen erillisellä liitteellä."
     },
     {
       "id": "zoning_context",
-      "title": "Kaavoitus ja sijainnin soveltuvuus",
+      "title": "Kaavoitus",
+      "field_id": "zoning_context",
+      "attachment_type": "zoning_extract",
       "severity": "minor",
-      "basis": "YSL (527/2014) 27 § — sijoituspaikan soveltuvuus",
-      "instruction": "Kuvaa sijaintipaikan kaavatilanne (asema- tai yleiskaava), kaavamääräykset ja miten toiminta sijoittuu niihin. Nimeä ristiriita, jos toiminta ei vastaa kaavan käyttötarkoitusta tai kaavamääräyksiä."
+      "basis": "AA-täyttöohje: Taustatiedot — kaavoitus; YSL (527/2014) 27 §",
+      "instruction": "Sijaitseeko hanke ja sen ympäristö kaavoitetulla alueella? Ilmoita voimassa olevan, oikeusvaikutteisen asema-, yleis- tai maakuntakaavan tiedot. Kerro, mihin käyttötarkoitukseen hankkeen sijaintialue on kaavassa osoitettu. Arvioi, onko hankkeella vaikutuksia nykyiseen kaavoitukseen ja onko hanke kaavan mukainen. Liitä hakemukseen karttaote voimassa olevasta kaavasta, johon on merkitty selkeästi hankealue, karttaotteet vireillä olevista kaavoista sekä kaavamerkintöjen ja -määräysten selitykset."
     },
     {
-      "id": "sensitive_receptors",
-      "title": "Herkät kohteet ja etäisyydet",
+      "id": "activity_description",
+      "title": "Toiminnan yleiskuvaus",
+      "field_id": "activity_description",
       "severity": "minor",
-      "basis": "YSL (527/2014) — vaikutusalue ja häiriintyvät kohteet",
-      "instruction": "Nimeä häiriintyvät kohteet ja niiden etäisyydet: asutus, koulut ja päiväkodit, pohjavesialueet, Natura- ja luonnonsuojelualueet, vesistöt. Ilmoita etäisyys metreinä tai kilometreinä, jos lähde sen antaa."
+      "basis": "AA-täyttöohje: Toiminta — toiminnan yleiskuvaus",
+      "instruction": "Yleiskuvaus tuotannosta: mitä tuotetaan, kuinka paljon ja millä menetelmillä."
     },
     {
-      "id": "yva_process",
-      "title": "YVA-menettely ja perusteltu päätelmä",
-      "attachment_type": "yva_statement",
+      "id": "production_capacity",
+      "title": "Tuotanto ja tuotteet",
+      "field_id": "production_capacity",
       "severity": "minor",
-      "basis": "YVA-laki (252/2017)",
-      "instruction": "Jos YVA-menettely on käyty, liitä ympäristövaikutusten arviointiselostus ja perusteltu päätelmä. Mainitse myös, onko päätelmän ajantasaisuudesta erillinen viranomaislausunto."
+      "basis": "AA-täyttöohje: Toiminta — tuotanto ja tuotteet",
+      "instruction": "Päätuotteet ja sivutuotteet sekä kaikki sellaiset myynti- ja välituotteet, joiden tuottamisesta aiheutuu päästöjä tai jätteitä. Tarvittaessa tuotteet yksilöidään toimintayksiköittäin tai prosessikohtaisesti. Esitä tuotannon volyymia kuvaavat tunnusluvut, toteutuneet tuotantomäärät ja hakemuksen mukainen tuotantokapasiteetti (esimerkiksi tonnia tuotetta vuodessa)."
     },
     {
-      "id": "bat_assessment",
-      "title": "BAT-arviointi ja päästötaso",
-      "attachment_type": "bat_assessment",
-      "severity": "minor",
-      "basis": "YSL (527/2014) 27 § — paras käytettävissä oleva tekniikka",
-      "instruction": "Liitä BAT-arviointi, jossa toimintaa verrataan parhaaseen käytettävissä olevaan tekniikkaan ja perustellaan valitut ratkaisut. Vertaa päästöjä BAT-päätelmien tasoihin, älä vain mainitse BAT:n huomioimista."
-    },
-    {
-      "id": "chemical_inventory",
-      "title": "Kemikaaliluettelo ja käyttöturvallisuustiedotteet",
-      "field_id": "raw_materials_chemicals",
-      "attachment_type": "chemical_inventory,chemical_inventory_or_sds",
+      "id": "byproducts",
+      "title": "Sivutuotteet",
+      "field_id": "byproducts",
       "condition": {
-        "field_id": "raw_materials_chemicals",
+        "field_id": "process_description",
         "contains_any": [
-          "kemikaal",
-          "vaarallinen",
-          "varastointi",
-          "liuotin",
-          "sds"
+          "sivutuote",
+          "sivutuotteen",
+          "sivutuotteeksi",
+          "jätelaki 5"
         ]
       },
-      "severity": "minor",
-      "basis": "YSL (527/2014) — kemikaalien käyttö ja varastointi",
-      "instruction": "Kemikaalien käytöstä tai varastoinnista toimitetaan viranomaisliitteenä kemikaaliluettelo tai käyttöturvallisuustiedotteet (SDS)."
+      "severity": "recommendation",
+      "basis": "AA-täyttöohje: Toiminta — sivutuotteet; jätelaki (646/2011) 5 § 2 momentti",
+      "instruction": "Selvitys aiemmin tehdystä tuotantoprosessissa syntyvän aineen tai esineen luokittelusta sivutuotteeksi. Mikäli haetaan tuotantoprosessissa syntyvän aineen tai esineen luokittelua sivutuotteeksi (jätelaki 5 §:n 2 momentti), esitetään kuvaus aineesta tai esineestä ja sen ominaisuuksista sekä sivutuotteeksi luokittelun edellytyksistä: sen jatkokäytöstä on varmuus; sitä voidaan käyttää suoraan sellaisenaan tai sen jälkeen, kun sitä on muunnettu enintään tavanomaisen teollisen käytännön mukaisesti; se syntyy tuotantoprosessin olennaisena osana; sekä se täyttää suunniteltuun käyttöön liittyvät tuotetta sekä ympäristön- ja terveydensuojelua koskevat vaatimukset eikä sen käyttö kokonaisuutena arvioiden aiheuta vaaraa tai haittaa terveydelle tai ympäristölle."
     },
     {
-      "id": "air_emissions",
-      "title": "Ilmapäästöt ja päästörajat",
+      "id": "process_description",
+      "title": "Prosessit",
+      "field_id": "process_description",
       "severity": "minor",
-      "basis": "YSL (527/2014) 27 § — päästöjen ehkäiseminen",
-      "instruction": "Esitä ilmapäästöt päästölähteittäin: komponentit, pitoisuudet ja massavirrat sekä vertailu BAT-AEL-tasoihin tai lupamääräyksiin. Kerro, millä tekniikalla päästöjä rajoitetaan."
-    },
-    {
-      "id": "flue_gas_modeling",
-      "title": "Ilmapäästöjen leviämismallinnus",
-      "attachment_type": "air_quality_model",
-      "severity": "minor",
-      "basis": "YSL (527/2014) — päästöjen vaikutusten arviointi",
-      "instruction": "Liitä savukaasu- ja ilmanlaatumallinnus, jos toiminta tuottaa merkittäviä ilmapäästöjä, sekä kuvaus päästölähteistä."
-    },
-    {
-      "id": "waste",
-      "title": "Jätteet ja jätehuolto",
-      "severity": "minor",
-      "basis": "Jätelaki (646/2011)",
-      "instruction": "Erittele syntyvät jätteet ja niiden määrät sekä se, miten kukin jae hyödynnetään tai käsitellään ja kuka sen vastaanottaa. Kerro myös toiminnassa syntyvästä vaarallisesta jätteestä, jos sitä on."
-    },
-    {
-      "id": "environmental_impacts",
-      "title": "Ympäristövaikutukset ja niiden arviointi",
-      "severity": "minor",
-      "basis": "YSL (527/2014) 27 § — ympäristön pilaantumisen ehkäiseminen",
-      "instruction": "Kuvaa vaikutukset maaperään, pohjaveteen, pintaveteen, ilmaan, meluun ja liikenteeseen sekä arvioinnin menetelmä ja epävarmuudet. Yhdistä arvio päästö- ja jätetietoihin, älä esitä sitä irrallaan."
-    },
-    {
-      "id": "monitoring_plan",
-      "title": "Tarkkailu- ja raportointiohjelma",
-      "field_id": "water_and_wastewater",
-      "attachment_type": "air_monitoring_plan",
-      "severity": "minor",
-      "basis": "YSL (527/2014) — tarkkailu ja raportointi",
-      "instruction": "Kuvaa tarkkailu- ja raportointijärjestelyt: ilmapäästöjen ja jätevesien tarkkailuohjelma sekä seurantapisteet ja raportointivälit."
+      "basis": "AA-täyttöohje: Toiminta — prosessit",
+      "instruction": "Kuvaus tuotantoon tai päästöjen hallintaan liittyvien prosessien tarkoituksesta, toiminnasta ja mitoitustiedoista. Kuvataan tuotantoon tai päästöjen hallintaan liittyvät laitteistot, rakenteet, varastoalueet ja -säiliöt yksikköprosesseittain tarkoituksenmukaisessa laajuudessa. Tavoitteena on tunnistaa toiminnan ympäristökuormituksen kannalta tärkeimmät yksikköprosessit ja niihin liittyvät mahdollisuudet vähentää päästöjä. Jos kyse on luvanvaraisen toiminnan muuttamista koskevasta asiasta, kuvataan nykyinen tilanne ja siihen suunnitellut lupaa edellyttävät muutokset. Prosessi-, kytkentä- tai virtauskaavio voidaan liittää tarvittaessa."
     },
     {
       "id": "risk_preparedness",
-      "title": "Ennaltavarautuminen ja häiriötilanteet",
+      "title": "Riskit – yleiskuvaus",
+      "field_id": "risk_preparedness",
       "attachment_type": "risk_preparedness_plan",
       "severity": "minor",
-      "basis": "YSL (527/2014) — poikkeukselliset tilanteet",
-      "instruction": "Liitä ennaltavarautumissuunnitelma, joka kattaa ympäristöriskien hallinnan, merkittävät riskit ja toimintaohjeet häiriötilanteissa."
+      "basis": "AA-täyttöohje: Riskit — ympäristöriskit ja varautuminen; YSL (527/2014) — poikkeukselliset tilanteet",
+      "instruction": "Toimintaan liittyvät ympäristöriskit, onnettomuuksien estämiseksi suunnitellut toimenpiteet ja toiminta häiriötilanteissa: tarkkailu-, hälytys- ja sammutusjärjestelmät ja muut varotoimenpiteet; huolto- ja varajärjestelmät; häiriötilanteiden kirjanpito; missä määrin mahdollisesta onnettomuudesta tai häiriöstä johtuvia vahinkoja ympäristölle voidaan estää tai vähentää toimenpitein sekä näiden arvioidut kustannukset; tiedot mahdollisesta ympäristövahinkovakuutuksesta. Liitteeksi ennaltavarautumissuunnitelma."
     },
     {
-      "id": "stormwater_management",
-      "title": "Hulevesien hallinta",
-      "attachment_type": "stormwater_plan",
+      "id": "land_use_environment",
+      "title": "Lähiympäristö ja maankäyttö",
+      "field_id": "land_use_environment",
       "severity": "minor",
-      "basis": "YSL (527/2014) — vesien johtaminen ja imeytys",
-      "instruction": "Liitä hulevesien hallintasuunnitelma, joka kuvaa hule- ja perustusten kuivatusvesien imeytyksen, viivytyksen tai johtamisen."
+      "basis": "AA-täyttöohje: Ympäristö, päästöt ja vaikutukset — lähiympäristö ja maankäyttö",
+      "instruction": "Alueen ja ympäristön nykyiset ja tulevat maankäyttömuodot, kiinteistöjen käyttö, häiriöille herkät toiminnot, kohteet ja asutus sekä etäisyydet niihin, häiriöitä aiheuttavat toiminnot ja kohteet."
     },
     {
-      "id": "noise_modeling",
-      "title": "Melumallinnus ja meluntorjunta",
-      "attachment_type": "noise_model",
+      "id": "land_use_impacts",
+      "title": "Vaikutukset maankäyttöön ja kiinteistöjen käyttöön",
+      "field_id": "land_use_impacts",
       "severity": "minor",
-      "basis": "YSL (527/2014) — melu",
-      "instruction": "Liitä melumallinnus, jos toiminta voi aiheuttaa merkittävää melua ympäristöön, ja kuvaa meluntorjuntatoimet."
-    },
-    {
-      "id": "site_map",
-      "title": "Sijaintikartta ja kaavaote",
-      "attachment_type": "site_map",
-      "severity": "minor",
-      "basis": "YSL (527/2014) — sijainti ja vaikutusalue",
-      "instruction": "Liitä sijaintikartta sekä asema- tai yleiskaavaote vaikutusalueen ja toiminnan sijoittumisen hahmottamiseksi."
-    },
-    {
-      "id": "baseline_report",
-      "title": "Perustilaselvitys",
-      "attachment_type": "baseline_report",
-      "severity": "minor",
-      "basis": "YSL (527/2014) — pilaantuneisuus ja lähtötaso",
-      "instruction": "Liitä perustilaselvitys maa- ja kallioperästä sekä pohjavesistä toiminnan vaikutusten arvioinnin pohjaksi."
+      "basis": "AA-täyttöohje: Ympäristö, päästöt ja vaikutukset — vaikutukset maankäyttöön",
+      "instruction": "Vaikutukset maankäyttöön, kiinteistöjen käyttöön ja häiriöille herkkiin toimintoihin ja kohteisiin. Ympäristössä olevien muiden häiriöitä aiheuttavien toimintojen ja kohteiden vaikutus ja huomioon ottaminen hakijan suunnitelmassa."
     }
   ]
 }

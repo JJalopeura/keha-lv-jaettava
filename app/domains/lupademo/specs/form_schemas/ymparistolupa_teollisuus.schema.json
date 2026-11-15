@@ -1,5 +1,5 @@
 {
-  "schema_id": "environmental_industrial_v1",
+  "schema_id": "environmental_industrial_v2",
   "permit_type": "environmental_industrial",
   "title": "Ympäristölupa / teollinen uusiutuvan energian toiminta",
   "authority_default": "Aluehallintovirasto / kunnan ympäristönsuojeluviranomainen",
@@ -9,24 +9,24 @@
       "label": "Hakija ja toiminnan tiedot"
     },
     {
+      "id": "overview",
+      "label": "Tiivistelmä"
+    },
+    {
       "id": "location",
-      "label": "Sijainti ja kaavoitus"
+      "label": "Taustatiedot"
     },
     {
       "id": "activity",
-      "label": "Toiminnan kuvaus"
+      "label": "Toiminta"
     },
     {
-      "id": "materials",
-      "label": "Raaka-aineet ja kemikaalit"
+      "id": "risks",
+      "label": "Riskit"
     },
     {
-      "id": "emissions",
-      "label": "Päästöt, jätteet ja vaikutukset"
-    },
-    {
-      "id": "risk_bat_monitoring",
-      "label": "Riskit, BAT ja tarkkailu"
+      "id": "environment",
+      "label": "Ympäristö, päästöt ja vaikutukset"
     },
     {
       "id": "attachments",
@@ -64,20 +64,13 @@
     },
     {
       "id": "permit_basis",
-      "tab": "applicant",
-      "label": "Toiminnan yleiskuvaus",
+      "tab": "overview",
+      "label": "Hankkeen yleiskuvaus",
       "type": "textarea",
       "required": true,
       "ai_suggest": true,
-      "common_data": true
-    },
-    {
-      "id": "competent_authority",
-      "tab": "applicant",
-      "label": "Toimivaltainen lupaviranomainen",
-      "type": "text",
-      "required": true,
-      "ai_suggest": true
+      "common_data": true,
+      "help": "Kirjoita lyhyt ja helposti ymmärrettävä kuvaus hakemuksen pääasioista yleisöä ja viranomaisia varten. Kerro hankkeen sijainti, tarkoitus ja tarve, yleiskuvaus ja aikataulu sekä vaikutukset ja vaikutusalue. Vesilain hankkeissa kerro lisäksi tiedot vesistöstä ja luvanvaraisista toimenpiteistä; ympäristönsuojelulain toiminnassa olennaisista päästöistä, syntyvistä jätteistä ja luvanvaraisista toiminnoista."
     },
     {
       "id": "site_location",
@@ -85,133 +78,98 @@
       "label": "Sijainti",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "help": "Kerro hankkeen sijainnista. Ilmoita sijaintikiinteistöjen nimet ja tunnukset sekä omistajat ja haltijat yhteystietoineen erillisellä liitteellä."
     },
     {
       "id": "zoning_context",
       "tab": "location",
-      "label": "Kaavoitus ja maankäyttö",
+      "label": "Kaavoitus",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
-    },
-    {
-      "id": "sensitive_receptors",
-      "tab": "location",
-      "label": "Häiriintyvät kohteet ja suojelukohteet",
-      "type": "textarea",
-      "required": true,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "help": "Sijaitseeko hanke kaavoitetulla alueella? Ilmoita voimassa olevan oikeusvaikutteisen asema-, yleis- tai maakuntakaavan tiedot, alueen käyttötarkoitus ja arvio siitä, onko hanke kaavan mukainen ja onko sillä vaikutuksia nykyiseen kaavoitukseen."
     },
     {
       "id": "activity_description",
       "tab": "activity",
-      "label": "Toiminnan tarkempi kuvaus",
+      "label": "Toiminnan yleiskuvaus",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "help": "Yleiskuvaus tuotannosta: mitä tuotetaan, kuinka paljon ja millä menetelmillä."
     },
     {
       "id": "production_capacity",
       "tab": "activity",
-      "label": "Tuotanto ja kapasiteetti",
+      "label": "Tuotanto ja tuotteet",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "help": "Päätuotteet ja sivutuotteet sekä kaikki myynti- ja välituotteet, joiden tuottamisesta aiheutuu päästöjä tai jätteitä. Esitä toimialan volyymitunnusluvut, toteutuneet tuotantomäärät ja hakemuksen mukainen tuotantokapasiteetti (esimerkiksi tonnia tuotetta vuodessa)."
+    },
+    {
+      "id": "byproducts",
+      "tab": "activity",
+      "label": "Sivutuotteet",
+      "type": "textarea",
+      "required": false,
+      "ai_suggest": true,
+      "help": "Jos haetaan tuotantoprosessissa syntyvän aineen tai esineen luokittelua sivutuotteeksi (jätelaki 5 § 2 momentti), esitä aine tai esine, sen ominaisuudet ja luokittelun edellytykset: jatkokäytön varmuus, käytettävyys sellaisenaan tai tavanomaisen teollisen käsittelyn jälkeen, syntyminen prosessin olennaisena osana sekä tuote- ja ympäristövaatimusten täyttyminen."
     },
     {
       "id": "process_description",
       "tab": "activity",
-      "label": "Tuotantoprosessit",
+      "label": "Prosessit",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
-    },
-    {
-      "id": "raw_materials_chemicals",
-      "tab": "materials",
-      "label": "Raaka-aineet, kemikaalit ja varastointi",
-      "type": "textarea",
-      "required": true,
-      "ai_suggest": true
-    },
-    {
-      "id": "water_and_wastewater",
-      "tab": "emissions",
-      "label": "Veden käyttö ja jätevedet",
-      "type": "textarea",
-      "required": true,
-      "ai_suggest": true
-    },
-    {
-      "id": "air_emissions",
-      "tab": "emissions",
-      "label": "Päästöt ilmaan",
-      "type": "textarea",
-      "required": true,
-      "ai_suggest": true
-    },
-    {
-      "id": "waste",
-      "tab": "emissions",
-      "label": "Jätteet",
-      "type": "textarea",
-      "required": true,
-      "ai_suggest": true
-    },
-    {
-      "id": "environmental_impacts",
-      "tab": "emissions",
-      "label": "Arvio ympäristövaikutuksista",
-      "type": "textarea",
-      "required": true,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "help": "Kuvaa tuotantoon ja päästöjen hallintaan liittyvät yksikköprosessit, laitteistot, rakenteet, varastoalueet ja -säiliöt sekä mitoitusperusteet. Tunnista ympäristökuormituksen kannalta tärkeimmät prosessit, päästö- ja jätelähteet sekä mahdollisuudet vähentää päästöjä. Jos kyse on luvanvaraisen toiminnan muuttamisesta, kuvaa nykyinen tilanne ja suunnitellut muutokset."
     },
     {
       "id": "risk_preparedness",
-      "tab": "risk_bat_monitoring",
-      "label": "Riskit, onnettomuudet ja häiriötilanteet",
+      "tab": "risks",
+      "label": "Riskit – yleiskuvaus",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "help": "Kuvaa toimintaan liittyvät ympäristöriskit, onnettomuuksien estämiseksi suunnitellut toimenpiteet ja toiminta häiriötilanteissa: tarkkailu-, hälytys- ja sammutusjärjestelmät ja muut varotoimenpiteet, huolto- ja varajärjestelmät, häiriötilanteiden kirjanpito, mahdollisten vahinkojen estäminen ja arvioidut kustannukset sekä tiedot ympäristövahinkovakuutuksesta."
     },
     {
-      "id": "bat_assessment",
-      "tab": "risk_bat_monitoring",
-      "label": "BAT-arviointi",
+      "id": "land_use_environment",
+      "tab": "environment",
+      "label": "Lähiympäristö ja maankäyttö",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "help": "Kuvaa alueen ja ympäristön nykyiset ja tulevat maankäyttömuodot, kiinteistöjen käyttö, häiriöille herkät toiminnot, kohteet ja asutus sekä etäisyydet niihin ja häiriöitä aiheuttavat toiminnot ja kohteet."
     },
     {
-      "id": "monitoring_plan",
-      "tab": "risk_bat_monitoring",
-      "label": "Tarkkailu ja raportointi",
+      "id": "land_use_impacts",
+      "tab": "environment",
+      "label": "Vaikutukset maankäyttöön ja kiinteistöjen käyttöön",
       "type": "textarea",
       "required": true,
-      "ai_suggest": true
-    },
-    {
-      "id": "yva_context",
-      "tab": "risk_bat_monitoring",
-      "label": "YVA ja perusteltu päätelmä",
-      "type": "textarea",
-      "required": false,
-      "ai_suggest": true
+      "ai_suggest": true,
+      "help": "Kuvaa vaikutukset maankäyttöön, kiinteistöjen käyttöön ja häiriöille herkkiin toimintoihin ja kohteisiin. Kerro, miten ympäristössä olevien muiden häiriöitä aiheuttavien toimintojen vaikutus on otettu huomioon hakijan suunnitelmassa."
     }
   ],
   "required_attachments": [
     "environmental_application"
   ],
   "conditional_attachments": [
-    "baseline_report",
+    "general_map",
+    "zoning_extract",
+    "zoning_report",
+    "process_diagram",
+    "risk_preparedness_plan",
+    "public_summary",
+    "yva_statement",
+    "bat_assessment",
     "chemical_inventory",
     "air_quality_model",
     "noise_model",
-    "yva_statement",
-    "bat_assessment",
-    "monitoring_plan",
-    "risk_preparedness_plan",
+    "baseline_report",
     "stormwater_plan",
     "site_map",
     "air_monitoring_plan",

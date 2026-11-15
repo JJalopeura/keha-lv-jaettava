@@ -135,7 +135,8 @@ class ApplicantJourney(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Tarkistuksessa käytetty kriteeristö", response.text)
-        self.assertIn("Kansallinen peruskriteeristö · 2026-08-demo-2", response.text)
+        self.assertIn("Kansallinen peruskriteeristö", response.text)
+        self.assertIn("Tekoäly arvioi hakemusta kaikille kunnille yhteisellä peruskriteeristöllä", response.text)
 
     def test_idle_check_action_stays_in_ai_panel(self) -> None:
         fresh_case = db.create_case("Idle check action", language="fi")
@@ -180,19 +181,18 @@ class ApplicantJourney(unittest.TestCase):
         self.assertIn("criteria_custom_noise_context", {issue.id for issue in issues})
 
     def test_conditional_environmental_criteria_waits_for_trigger(self) -> None:
-        # Kriteeristön uudistuksen (2026-08) jälkeen ehdollisuus on kemikaalisäännössä:
-        # chemical_inventory laukeaa vain, jos raaka-ainekenttä mainitsee kemikaalit.
-        quiet_form = {"environmental_impacts": "Vaikutukset arvioitu.", "raw_materials_chemicals": "Vesi ja biomassa."}
+        # AA-uudistuksessa (2026-12) ainoa ehdollinen sääntö on sivutuotteet: se laukeaa
+        # vasta, kun prosessikuvaus mainitsee sivutuoteluokittelun (jätelaki 5 § 2 mom.).
+        quiet_form = {"process_description": "Yksikköprosessit ja päästölähteet on kuvattu."}
         triggered_form = {
-            "environmental_impacts": "Toiminnasta syntyy merkittävää melua.",
-            "raw_materials_chemicals": "Kemikaalien varastointi: prosessikemikaalit.",
+            "process_description": "Prosessissa syntyy tuhkaa, jota haetaan sivutuotteeksi jätelain 5 §:n mukaisesti.",
         }
 
         quiet_ids = {issue.id for issue in svc.deterministic_issues("environmental_industrial", quiet_form, [])}
         triggered_ids = {issue.id for issue in svc.deterministic_issues("environmental_industrial", triggered_form, [])}
 
-        self.assertNotIn("criteria_chemical_inventory", quiet_ids)
-        self.assertIn("criteria_chemical_inventory", triggered_ids)
+        self.assertNotIn("criteria_byproducts", quiet_ids)
+        self.assertIn("criteria_byproducts", triggered_ids)
 
     def test_criteria_edit_advances_version_and_deduplicates_shared_subject(self) -> None:
         criteria = svc.effective_criteria(db, case, "environmental_industrial")
@@ -255,6 +255,8 @@ class ApplicantJourney(unittest.TestCase):
         )
 
     def test_combined_criteria_rule_does_not_duplicate_baseline_subjects(self) -> None:
+        # One rule naming both a form field and an attachment must not double-report the
+        # same subject: the baseline field gap stays, the criterion adds its attachment.
         issues = svc.deterministic_issues(
             "environmental_industrial",
             {},
@@ -262,14 +264,14 @@ class ApplicantJourney(unittest.TestCase):
             criteria={
                 "criteria_set_id": "combined-test",
                 "sources": ["Combined test"],
-                "rules": [{"id": "bat", "field_id": "bat_assessment", "attachment_type": "bat_assessment", "severity": "major"}],
+                "rules": [{"id": "risk", "field_id": "risk_preparedness", "attachment_type": "risk_preparedness_plan", "severity": "major"}],
             },
         )
 
-        matching = [issue for issue in issues if issue.field_id == "bat_assessment" or issue.attachment_id == "bat_assessment"]
+        matching = [issue for issue in issues if issue.field_id == "risk_preparedness" or issue.attachment_id == "risk_preparedness_plan"]
         self.assertEqual(len(matching), 2)
-        self.assertEqual({issue.id for issue in matching}, {"missing_bat_assessment", "criteria_bat"})
-        self.assertEqual(len([issue for issue in matching if issue.field_id == "bat_assessment"]), 1)
+        self.assertEqual({issue.id for issue in matching}, {"missing_risk_preparedness", "criteria_risk"})
+        self.assertEqual(len([issue for issue in matching if issue.field_id == "risk_preparedness"]), 1)
 
     def test_package_analysis_uses_edited_municipality_criteria(self) -> None:
         kerava_case = db.create_case("Kerava package criteria", language="fi")
@@ -624,11 +626,15 @@ class ApplicantJourney(unittest.TestCase):
         self.assertIn(attachment["filename"], response.text)
 
     def test_applicant_precheck_copy_uses_canonical_terms(self) -> None:
+        # Run the check first: severities only exist once a report exists, and the point
+        # of this test is that the applicant sees Finnish severity words, not the API's.
+        client.post(f"{base}/ai/check", data={})
         response = client.get(f"{base}/wizard/4")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Estävät puutteet", response.text)
+        self.assertIn("Estävä", response.text)
         self.assertNotIn("blocking-puutteet", response.text)
+        self.assertNotIn("major-puutteet", response.text)
 
 
 class AuthorityJourney(unittest.TestCase):

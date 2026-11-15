@@ -85,6 +85,7 @@ __all__ = [
     "validate_upload_bytes",
     "validate_zip_archive",
     "extract_text_from_path",
+    "evidence_chunks",
     "extract_text_from_bytes",
     "safe_extract_zip",
     "save_upload_file",

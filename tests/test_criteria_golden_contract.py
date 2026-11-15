@@ -93,7 +93,7 @@ class CriteriaGoldenContractTest(unittest.TestCase):
 
         exact = _clean_review_title("Kunnan kriteeri: risk_preparedness_plan puuttuu", criteria)
         model_variant = _clean_review_title(
-            "Kunnan kriteeri: Riskit, onnettomuudet ja häiriötilanteet_plan puuttuu",
+            "Kunnan kriteeri: Riskit – yleiskuvaus_plan puuttuu",
             criteria,
         )
 
@@ -105,28 +105,28 @@ class CriteriaGoldenContractTest(unittest.TestCase):
             "criteria_set_id": "golden",
             "permit_type": "environmental_industrial",
             "rules": [{
-                "id": "monitoring_plan",
-                "field_id": "water_and_wastewater",
-                "attachment_type": "air_monitoring_plan",
+                "id": "process_description",
+                "field_id": "process_description",
+                "attachment_type": "process_diagram",
                 "severity": "recommendation",
             }],
         }
 
         issues = deterministic_issues(
             "environmental_industrial",
-            {"water_and_wastewater": "Jätevesien käsittely kuvattu."},
+            {"process_description": "Yksikköprosessit kuvattu hakemuksessa."},
             [],
             criteria=criteria,
         )
 
-        issue = next(item for item in issues if item.criteria_id == "monitoring_plan")
-        self.assertEqual(issue.title, "Aktiivinen kriteeri: Ilmapäästöjen tarkkailuohjelma puuttuu")
+        issue = next(item for item in issues if item.criteria_id == "process_description")
+        self.assertEqual(issue.title, "Aktiivinen kriteeri: Prosessi- / virtauskaavio puuttuu")
 
         review_title = _clean_review_title(
-            "Kunnan kriteeri: Veden käyttö ja jätevedet puuttuu",
+            "Kunnan kriteeri: Prosessit puuttuu",
             criteria,
         )
-        self.assertEqual(review_title, "Ilmapäästöjen tarkkailuohjelma puuttuu")
+        self.assertEqual(review_title, "Prosessi- / virtauskaavio puuttuu")
 
     def test_gate_artifact_requires_fresh_report_without_major_or_red(self) -> None:
         permit_type = "environmental_industrial"

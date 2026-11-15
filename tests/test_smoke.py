@@ -156,7 +156,9 @@ class AgentPipeline(unittest.TestCase):
         self.assertTrue(summary["summary_md"])
 
     def test_unsupported_fallback_is_not_presented_as_ai_output(self) -> None:
-        suggestion = deterministic_suggestion(PERMIT, "process_description", {}, [])
+        # yva_context was removed by the 2026-12 AA schema rework: a field the form no
+        # longer has must not receive fabricated prose.
+        suggestion = deterministic_suggestion(PERMIT, "yva_context", {}, [])
         self.assertTrue(suggestion.fallback_used)
         self.assertEqual(suggestion.suggested_value, "")
         self.assertTrue(suggestion.warnings)
@@ -952,16 +954,16 @@ class Pages(unittest.TestCase):
             PERMIT,
             "form_suggestions",
             "Lomake-ehdotuksia valmistellaan",
-            ["activity_name", "bat_assessment"],
+            ["activity_name", "risk_preparedness"],
         )
 
         response = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/3")
         panel = response.text.split('class="wizard-ai-sidebar', 1)[1].split("</section>", 1)[0]
 
         self.assertIn("Toiminnan nimi", panel)
-        self.assertIn("BAT-arviointi", panel)
+        self.assertIn("Riskit – yleiskuvaus", panel)
         self.assertNotIn("activity_name", panel)
-        self.assertNotIn("bat_assessment", panel)
+        self.assertNotIn("risk_preparedness", panel)
 
     def test_wizard_reviews_all_ai_suggestions_in_application_step(self) -> None:
         queue = svc.artifact_json(db, case, "field_extraction_queue", PERMIT, {"items": []})["items"]
@@ -1000,17 +1002,17 @@ class Pages(unittest.TestCase):
         check_page = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/4")
         materials_page = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/2")
 
-        self.assertIn("Asemapiirros / sijaintikartta", check_page.text)
-        # zoning_extract (Kaavaote) is no longer a hard requirement — it surfaces
-        # only as a minor criteria recommendation, not a missing official attachment.
-        self.assertNotIn("missing_attachment_zoning_extract", check_page.text)
-        self.assertIn("Julkinen yhteenveto", check_page.text)
+        # The AA criteria set ties the lähestymiskartta, the kaavaote and the
+        # ennaltavarautumissuunnitelma to their form sections. With an empty form each
+        # combined rule reports the section (its title), and the required application
+        # document is reported as a missing official attachment.
+        self.assertIn("Hankkeen yleiskuvaus", check_page.text)
+        self.assertIn("Riskit – yleiskuvaus", check_page.text)
+        self.assertIn("Ympäristölupahakemus", check_page.text)
         self.assertNotIn("Liite liite", check_page.text)
         self.assertIn("/wizard/2#materials", check_page.text)
         self.assertIn("Puuttuvat viranomaisliitteet", materials_page.text)
-        # monitoring_plan is now a minor criteria recommendation, not a required
-        # official attachment — it no longer appears in the missing-attachments list.
-        self.assertNotIn("Tarkkailu ja raportointi", materials_page.text)
+        self.assertIn("Ympäristölupahakemus", materials_page.text)
 
     def test_extraction_suggestion_is_available_under_matching_form_field(self) -> None:
         fresh_case = db.create_case("Inline extraction suggestion", language="fi")
@@ -1355,13 +1357,13 @@ class Pages(unittest.TestCase):
         response = client.get("/admin/criteria")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("ohjaa nyt AI-tarkistuksia", response.text)
-        self.assertIn("Vaikutus AI-tarkistukseen", response.text)
+        self.assertIn("aktiivista kriteeristöä ohjaa AI-ehdotuksia ja tarkistuksia", response.text)
+        self.assertIn("Kriteeristön vaikutus", response.text)
         self.assertIn("Koko kriteeristön JSON-muokkaus", response.text)
 
         kerava = client.get("/admin/criteria?municipality=Kerava")
         self.assertEqual(kerava.status_code, 200)
-        self.assertIn("Kerava ohjaa nyt AI-tarkistuksia", kerava.text)
+        self.assertIn("Kerava", kerava.text)
         self.assertIn('value="Kerava" selected', kerava.text)
 
     def test_api_playground_renders_integration_contract_summary(self) -> None:

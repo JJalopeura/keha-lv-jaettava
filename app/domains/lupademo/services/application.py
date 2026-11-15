@@ -62,7 +62,7 @@ from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, Applicati
 from .criteria import *  # noqa: F401,F403
 from .criteria import _normalize_municipality
 from .jobs import complete_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
-from .intake import ALLOWED_UPLOAD_EXTENSIONS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _coerce_confidence, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, execute_material_ingest_job, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
+from .intake import ALLOWED_UPLOAD_EXTENSIONS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _coerce_confidence, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, evidence_chunks, execute_material_ingest_job, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -97,16 +97,16 @@ def run_criteria_test(db: Any, settings: Any, case_id: str, permit_type: str, mu
     form_data.update(
         {
             "activity_description": "Teollinen testihanke, jossa käytetään kemikaaleja ja seurataan päästöjä.",
-            "raw_materials_chemicals": "Kemikaalien käyttö ja varastointi kuvataan hakemuksessa.",
-            "water_and_wastewater": "Jätevedet käsitellään ja niiden tarkkailu raportoidaan.",
-            "sensitive_receptors": "Lähialueen suojelukohteet ja etäisyydet on arvioitu.",
+            "process_description": "Yksikköprosessit ja kemikaalien varastointi kuvataan hakemuksessa; sivutuotteena syntyvä tuhka esitetään jätelain 5 §:n mukaisesti.",
+            "byproducts": "Prosessissa syntyvä tuhka esitetään sivutuotteeksi jätelain 5 §:n 2 momentin edellytyksin.",
+            "land_use_environment": "Lähialueen suojelukohteet, asutus ja etäisyydet on arvioitu.",
+            "land_use_impacts": "Vaikutukset maankäyttöön ja kiinteistöjen käyttöön on arvioitu.",
         }
     )
     role_sets = {
         "environmental_industrial": {
-            "environmental_application", "public_summary", "yva_statement", "bat_assessment",
-            "chemical_inventory", "monitoring_plan", "risk_preparedness_plan", "air_quality_model",
-            "noise_model", "baseline_report", "stormwater_plan", "site_map",
+            "environmental_application", "general_map", "zoning_extract",
+            "risk_preparedness_plan",
         },
         "building_residential": {"site_plan", "main_drawings", "facade_drawings"},
         "event_public": {"landowner_permission", "rescue_plan"},
@@ -1087,17 +1087,18 @@ def deterministic_suggestion(
         "stormwater_management": "Hulevedet hallitaan ensisijaisesti tontilla imeyttämällä ja viivyttämällä. Ylivirtaama johdetaan hallitusti kunnan hulevesiverkostoon asemapiirroksen ja hulevesisuunnitelman mukaisesti.",
         "wastewater_handling": "Jätevedet johdetaan kunnalliseen viemäriverkostoon. Rakentamisen aikaiset vedet käsitellään niin, ettei kiintoainesta johdu ympäristöön.",
         "project_description": "Hankkeessa rakennetaan yksikerroksinen asuinrakennus ja siihen liittyvät pihajärjestelyt Vantaalle. Kuvaus on luonnos ja hakijan tulee tarkistaa luvut suunnitelmista.",
-        "permit_basis": "Toiminta voi olla ympäristöluvanvaraista teollisen toiminnan, kemikaalien käsittelyn ja päästövaikutusten vuoksi. Tarkka säädösperusta tulee varmistaa toimivaltaiselta viranomaiselta.",
-        "bat_assessment": "Hakemuksessa tulee kuvata sovellettavat BAT-päätelmät, valitut tekniikat, päästöjen ehkäisy sekä perustelut mahdollisille poikkeamille.",
-        "monitoring_plan": "Tarkkailusuunnitelmassa kuvataan käyttötarkkailu, päästötarkkailu, vaikutustarkkailu, mittausvälit, raportointi ja poikkeamatilanteiden käsittely.",
+        "permit_basis": "Hanke sijaitsee teollisuusalueella ja tuottaa uusiutuvaa energiaa. Kuvauksessa esitetään sijainti, tarkoitus ja tarve, yleiskuvaus ja aikataulu sekä vaikutukset ja vaikutusalue. Tarkista tiedot hakemusaineistosta ennen lähettämistä.",
         "activity_description": "Toiminta koostuu uusiutuvan energian tuotantoon liittyvästä prosessista, raaka-aineiden vastaanotosta, varastoinnista, tuotannosta ja päästöjen hallinnasta.",
+        "production_capacity": "Esitä päätuotteet, sivutuotteet ja välituotteet sekä tuotantokapasiteetti samoin yksiköin kuin päästö- ja jätemäärät (esimerkiksi tonnia vuodessa).",
+        "process_description": "Kuvaa yksikköprosessit, laitteistot, varastoalueet ja -säiliöt sekä päästö- ja jätelähteet. Nimeä mahdollisuudet vähentää päästöjä.",
+        "land_use_environment": "Kuvaa alueen nykyinen ja tuleva maankäyttö, häiriöille herkät kohteet etäisyyksineen sekä häiriöitä aiheuttavat toiminnot.",
+        "land_use_impacts": "Kuvaa vaikutukset maankäyttöön, kiinteistöjen käyttöön ja häiriöille herkkiin kohteisiin sekä muiden häiriölähteiden huomioon ottaminen.",
         "activity_name": "Uusiutuvan energian tuotantolaitos",
         "event_description": "Tapahtuma on yleisölle avoin paikallinen kaupunkitapahtuma. Kuvaus tulee täydentää ohjelmalla, aikataululla ja järjestäjän vastuuhenkilöillä.",
         "landowner_permission": "Tapahtuma-alueen käyttö perustuu maanomistajan tai alueen haltijan lupaan, joka liitetään hakemukseen.",
         "rescue_plan": "Pelastussuunnitelmassa kuvataan osallistujamäärä, poistumisreitit, ensiapu, järjestyksenvalvonta, alkusammutus ja häiriötilanteiden toimintamalli.",
         "traffic_arrangements": "Liikennejärjestelyissä kuvataan suljettavat alueet, opastus, esteettömät kulkureitit, huoltoajo ja vaikutukset joukkoliikenteeseen.",
         "waste_management": "Jätehuolto järjestetään lajitteluastioilla, tyhjennyksillä ja tapahtuman jälkisiivouksella.",
-        "environmental_impacts": "Toiminnan ympäristövaikutukset kohdistuvat pääasiassa ilmapäästöihin, meluun, liikenteeseen ja jätevesiin. Vaikutukset arvioidaan YVA-selostuksen ja lupahakemuksen liitteiden perusteella.",
         "risk_preparedness": "Laitoksella on ennaltavarautumissuunnitelma ja toimintaohjeet häiriö- ja poikkeustilanteita varten. Keskeiset riskit liittyvät kemikaalien käsittelyyn, tulipaloon ja vuotoihin.",
         "property_id": "092-416-12-34",
         "intended_use": "Asuinrakennus",
@@ -1446,7 +1447,10 @@ def deterministic_issues(
         field_id = str(schema_field["id"])
         if not schema_field.get("required") or str(form_data.get(field_id, "")).strip() != "":
             continue
-        severity = "blocking" if field_id in {"building_height_m", "stormwater_management", "permit_basis", "competent_authority", "landowner_permission"} else "major"
+        # Criteria findings are advisory (minor-only policy), but a REQUIRED form field is
+        # not a criterion: an application cannot be sent with the form unfilled. This is
+        # what keeps the submit gate meaningful now that the criteria set is all-minor.
+        severity = "blocking"
         label = schema_field["label"]
         if field_id in extracted:
             # The value exists in the material but has not been accepted onto the
@@ -1474,7 +1478,10 @@ def deterministic_issues(
                 except ValueError:
                     issues.append(Issue(id=f"invalid_{num_field}", type="incomplete", severity="blocking", field_id=num_field, title="Numeerinen arvo on virheellinen", detail=f"Kentän {num_field} arvo ei ole numero.", suggested_fix="Anna arvo numerona.", evidence_refs=[criteria_source], confidence=0.95))
     if permit_type == "environmental_industrial":
-        mentions_chemicals = "kemikaal" in str(form_data.get("raw_materials_chemicals", "")).lower()
+        chemical_text = " ".join(
+            str(form_data.get(field_id, "")) for field_id in ("process_description", "activity_description", "production_capacity")
+        ).lower()
+        mentions_chemicals = "kemikaal" in chemical_text
         chemical_roles = "chemical_inventory,chemical_inventory_or_sds"
         chemical_ai_only = attachment_requirement_covered(chemical_roles, attachments, {"ai_context_only"})
         chemical_official = attachment_requirement_covered(chemical_roles, attachments)
@@ -1520,7 +1527,12 @@ def deterministic_issues(
         # field label it happens to point at ("Tarkkailu- ja raportointiohjelma" vs
         # "Veden käyttö ja jätevedet"). Fall back to the label map for rule-less subjects
         # and for criteria sets written before titles existed.
-        subject_label = str(rule.get("title") or "").strip() or _review_subject_label(subject, criteria)
+        # When only the attachment is missing, name the attachment: saying that a filled
+        # section "puuttuu" makes the check look broken.
+        if missing_attachment and not missing_field:
+            subject_label = _review_subject_label(attachment_type or subject, criteria)
+        else:
+            subject_label = str(rule.get("title") or "").strip() or _review_subject_label(subject, criteria)
         _rule_sev = str(rule.get("severity") or "major")
         if _rule_sev == "recommendation":  # 02: recommendation is not an Issue severity; map to minor
             _rule_sev = "minor"
@@ -1924,13 +1936,161 @@ def _trim_retrieval_context(
     return payload
 
 
+# Relevance selection: the assessor gets 9k chars per batch, and the package holds
+# ~1M. Taking an even slice of every document's head meant the 65-page application
+# contributed its cover page and nothing from the chapters the rules ask about. Each
+# batch now pulls the passages its own rules talk about, wherever they sit in a document.
+EVIDENCE_SCORE_TOKEN_MIN = 5
+EVIDENCE_SCORE_TOKEN_CAP = 16
+EVIDENCE_TYPE_BOOST = 14
+EVIDENCE_TITLE_BOOST = 6
+EVIDENCE_MAX_CHUNKS_PER_DOC = 3
+EVIDENCE_STOPWORDS = {
+    "kriteeri",
+    "kriteerin",
+    "hakemus",
+    "hakemuksen",
+    "hakemukseen",
+    "kuvaus",
+    "kuvaa",
+    "kuvataan",
+    "tiedot",
+    "tieto",
+    "tiedossa",
+    "lisäksi",
+    "mukaan",
+    "osalta",
+    "jotka",
+    "joka",
+    "pitää",
+    "tulee",
+    "voidaan",
+    "kohdalla",
+    "koska",
+    "kautta",
+    "esimerkiksi",
+    "seuraavat",
+    "tässä",
+    "annettu",
+    "kyseisen",
+    "tapauksessa",
+    "laajuudessa",
+    "tarkoituksenmukaisessa",
+    "selvitys",
+    "selvitys",
+    "vaatimus",
+    "vaatimukset",
+    "edellyttää",
+    "sisältää",
+    "koskee",
+    "koskien",
+}
+
+
+def _evidence_terms(rules: list[dict[str, Any]]) -> set[str]:
+    """Distinctive words from the batch's rules, as substring probes.
+
+    Finnish inflects heavily ("kaava", "kaavassa", "kaavoitus"), so the terms are used
+    as substrings rather than exact tokens. Short tokens are dropped and the common
+    filler words every instruction repeats are ignored, or every chunk would score alike.
+    """
+    terms: set[str] = set()
+    for rule in rules:
+        text = " ".join(str(rule.get(key) or "") for key in ("title", "instruction", "basis")).lower()
+        for token in re.split(r"[^0-9a-zäöå]+", text):
+            if len(token) >= EVIDENCE_SCORE_TOKEN_MIN and token not in EVIDENCE_STOPWORDS:
+                terms.add(token)
+    return terms
+
+
+def _chunk_roles(chunk: dict[str, Any]) -> set[str]:
+    tags = chunk.get("type_tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+    roles = {str(chunk.get("primary_type") or "")}
+    roles.update(str(tag) for tag in tags)
+    return {role for role in roles if role}
+
+
+def _select_evidence(
+    chunks: list[dict[str, Any]],
+    rules: list[dict[str, Any]],
+    budget_chars: int = CRITERIA_CONTEXT_BUDGET_CHARS,
+) -> dict[str, Any]:
+    """Pick the chunks that best match this batch's rules, deterministically.
+
+    Score = summed length of rule words found in the chunk (so a rare, specific term
+    outweighs a common one) + a boost for the attachment role the rule names + a smaller
+    boost for a filename hit. Ties break on document order so a repeat run selects the
+    same evidence.
+    """
+    if not chunks:
+        return {"mode": "selected_evidence", "excerpts": []}
+    terms = _evidence_terms(rules)
+    rule_roles: set[str] = set()
+    for rule in rules:
+        for part in str(rule.get("attachment_type") or "").split(","):
+            if part.strip():
+                rule_roles.add(part.strip())
+    scored: list[tuple[int, int, dict[str, Any]]] = []
+    for index, chunk in enumerate(chunks):
+        text = str(chunk.get("text") or "").lower()
+        score = 0
+        for term in terms:
+            if term in text:
+                score += min(len(term), EVIDENCE_SCORE_TOKEN_CAP)
+        if rule_roles and _chunk_roles(chunk) & rule_roles:
+            score += EVIDENCE_TYPE_BOOST
+        title = str(chunk.get("title") or "").lower()
+        for term in terms:
+            if term in title:
+                score += EVIDENCE_TITLE_BOOST
+        scored.append((score, index, chunk))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    picked: list[tuple[int, dict[str, Any]]] = []
+    used = 0
+    per_doc: dict[str, int] = {}
+    for _score, index, chunk in scored:
+        text = str(chunk.get("text") or "")
+        cost = len(text) + 96
+        if used + cost > budget_chars:
+            continue
+        doc_key = str(chunk.get("source_id") or chunk.get("title") or "")
+        if per_doc.get(doc_key, 0) >= EVIDENCE_MAX_CHUNKS_PER_DOC:
+            continue
+        per_doc[doc_key] = per_doc.get(doc_key, 0) + 1
+        picked.append((index, chunk))
+        used += cost
+        if used >= budget_chars - 200:
+            break
+    if not picked:
+        limit = max(1, budget_chars // 1600)
+        picked = [(index, chunk) for index, chunk in enumerate(chunks[:limit])]
+    picked.sort(key=lambda item: item[0])
+    excerpts = [
+        {
+            "source_id": chunk.get("source_id"),
+            "title": chunk.get("title"),
+            "delivery_scope": chunk.get("delivery_scope"),
+            "primary_type": chunk.get("primary_type"),
+            "type_tags": chunk.get("type_tags") or [],
+            "text": chunk.get("text"),
+        }
+        for _index, chunk in picked
+    ]
+    return {"mode": "selected_evidence", "excerpts": excerpts}
+
+
 def _batch_prompt_values(
     base_values: dict[str, Any],
     batch_criteria: dict[str, Any],
+    evidence: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Copy the prompt values, narrowing the criteria and the source excerpts to one batch."""
     values = dict(base_values)
     values["criteria"] = json.dumps(batch_criteria, ensure_ascii=False)
+    batch_rules = [rule for rule in (batch_criteria or {}).get("rules", []) if isinstance(rule, dict)]
+    selection = _select_evidence(evidence or [], batch_rules) if evidence else None
     for key in ("retrieved_context", "criteria_and_context", "attachment_context"):
         raw = values.get(key)
         if not raw:
@@ -1943,7 +2103,12 @@ def _batch_prompt_values(
             continue
         if "criteria" in payload:
             payload["criteria"] = batch_criteria
-        if isinstance(payload.get("retrieval"), dict):
+        if selection is not None:
+            if isinstance(payload.get("retrieval"), dict):
+                payload["retrieval"] = selection
+            elif "excerpts" in payload:
+                payload = selection
+        elif isinstance(payload.get("retrieval"), dict):
             payload["retrieval"] = _trim_retrieval_context(payload["retrieval"])
         elif "excerpts" in payload:
             payload = _trim_retrieval_context(payload)
@@ -1959,6 +2124,7 @@ def _assess_one_criteria_batch(
     criteria: dict[str, Any],
     batch_rules: list[dict[str, Any]],
     *,
+    evidence: list[dict[str, Any]] | None = None,
     vector_ids: list[str] | None = None,
     task_id: str | None = None,
     reasoning_effort: str = "low",
@@ -1970,7 +2136,7 @@ def _assess_one_criteria_batch(
         settings,
         case_id,
         "criteria_assessor",
-        _batch_prompt_values(base_values, batch_criteria),
+        _batch_prompt_values(base_values, batch_criteria, evidence),
         CriteriaAssessmentResponse,
         vector_ids=vector_ids,
         fallback={"criteria_results": []},
@@ -1992,6 +2158,7 @@ def assess_criteria_in_batches(
     base_values: dict[str, Any],
     criteria: dict[str, Any],
     *,
+    evidence: list[dict[str, Any]] | None = None,
     vector_ids: list[str] | None = None,
     task_id: str | None = None,
     reasoning_effort: str = "low",
@@ -2036,6 +2203,7 @@ def assess_criteria_in_batches(
             base_values,
             criteria,
             batch_rules,
+            evidence=evidence,
             vector_ids=vector_ids,
             task_id=task_id,
             reasoning_effort=reasoning_effort,
@@ -2158,6 +2326,23 @@ def _normalize_criteria_results(
         for rule in criteria.get("rules", [])
         if isinstance(rule, dict) and rule.get("id")
     }
+    # Models sometimes echo the human title instead of the id. Mapping the title back is
+    # fidelity, not leniency: the finding really is about that criterion.
+    title_to_id: dict[str, str] = {}
+    for rule_id, rule in rules.items():
+        title = str(rule.get("title") or "").strip().lower()
+        if title:
+            title_to_id[title] = rule_id
+
+    def _condition_met(rule: dict[str, Any]) -> bool:
+        condition = rule.get("condition") or {}
+        condition_field = str(condition.get("field_id") or "")
+        terms = [str(term).lower() for term in condition.get("contains_any", [])]
+        if not condition_field or not terms:
+            return True
+        value = str(form_data.get(condition_field) or "").lower()
+        return any(term in value for term in terms)
+
     normalized: list[dict[str, Any]] = []
     notes: list[str] = []
     for raw in results:
@@ -2166,12 +2351,25 @@ def _normalize_criteria_results(
         result = dict(raw)
         criteria_id = str(result.get("criteria_id") or "")
         if rules and criteria_id not in rules:
-            # An assessment of a criterion that does not exist in the active set is not
-            # evidence: keeping it would synthesize a finding titled with a hallucinated
-            # id and attach a generic suggestion to the applicant's review list.
-            notes.append(f"DROPPED: assessor returned unknown criterion {criteria_id or '<empty>'}")
-            continue
+            mapped = title_to_id.get(criteria_id.strip().lower())
+            if mapped:
+                notes.append(f"LINK: mapped criterion title {criteria_id} to {mapped}")
+                criteria_id = mapped
+                result["criteria_id"] = mapped
+            else:
+                # An assessment of a criterion that does not exist in the active set is not
+                # evidence: keeping it would synthesize a finding titled with a hallucinated
+                # id and attach a generic suggestion to the applicant's review list.
+                notes.append(f"DROPPED: assessor returned unknown criterion {criteria_id or '<empty>'}")
+                continue
         rule = rules.get(criteria_id, {})
+        if not _condition_met(rule):
+            result["status"] = "green"
+            result["rationale"] = "Kriteeri ei sovellu tähän hakemukseen: kriteerin ehto ei täyty."
+            result["issues"] = []
+            notes.append(f"CONDITION: criterion {criteria_id} does not apply to this application")
+            normalized.append(result)
+            continue
         rule_severity = str(rule.get("severity") or "major").strip().lower()
         field_id = str(rule.get("field_id") or "")
         attachment_types = [part.strip() for part in str(rule.get("attachment_type") or "").split(",") if part.strip()]
@@ -2235,6 +2433,10 @@ def _review_evidence_catalog(
 
 
 REVIEW_ATTACHMENT_LABELS = {
+    "general_map": "Lähestymis- / yleiskartta",
+    "zoning_extract": "Kaavaote",
+    "zoning_report": "Kaavaselostus",
+    "process_diagram": "Prosessi- / virtauskaavio",
     "yva_statement": "YVA-selvitys / lausunto",
     "bat_assessment": "BAT-arviointi",
     "risk_preparedness_plan": "Ennaltavarautumissuunnitelma",
@@ -2597,6 +2799,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             case_id,
             base_values,
             active_criteria or {},
+            evidence=evidence_chunks(attachments),
             vector_ids=vector_ids,
             task_id=job_id or None,
         )
@@ -3631,12 +3834,15 @@ def run_agent_chain_audit(db: Any, settings: Any, case_id: str) -> dict[str, Any
     started_at = time.time()
     environmental_data = {
         "activity_name": "Synteettinen vetylaitoksen auditointihakemus",
+        "permit_basis": "Hanke sijaitsee teollisuusalueella ja tuottaa uusiutuvaa vetyä. Tiivistelmä kuvaa sijainnin, tarkoituksen ja tarpeen, aikataulun sekä vaikutukset ja vaikutusalueen.",
+        "site_location": "Laitos sijoittuu teollisuuskortteliin; kiinteistön nimi ja tunnus on ilmoitettu ja omistajatiedot ovat erillisellä liitteellä.",
+        "zoning_context": "Alueella on voimassa oikeusvaikutteinen asemakaava, jossa alue on osoitettu teollisuuskäyttöön. Kaavaote on liitteenä.",
         "activity_description": "Vedyn tuotanto, elektrolyysi ja varastointi teollisuusalueella. Hakija kuvaa päästöt, häiriötilanteet ja naapureihin kohdistuvat vaikutukset.",
-        "permit_basis": "Ympäristönsuojelulain mukainen ympäristölupa uudelle teolliselle toiminnalle.",
-        "competent_authority": "Aluehallintovirasto",
-        "raw_materials_chemicals": "Kemikaaliluettelo sisältää vedyn, typen ja huoltokemikaalit. Varastointi on kuvattu liitteessä.",
-        "bat_assessment": "BAT-päätelmien mukainen energiatehokas elektrolyysi, päästöjen ehkäisy ja häiriötilanteiden seuranta.",
-        "monitoring_plan": "Jatkuva käyttötarkkailu, poikkeamien raportointi ja vuosiyhteenveto viranomaiselle.",
+        "production_capacity": "Vedyn tuotantokapasiteetti ilmoitetaan tonneina vuodessa ja suhteutetaan päästö- ja jätemääriin.",
+        "process_description": "Elektrolyysi, vedyn varastointi ja apujärjestelmät kuvataan yksikköprosesseittain laitteistoineen ja päästölähteineen.",
+        "risk_preparedness": "Keskeiset riskit ovat kemikaalien käsittely, tulipalo ja vuodot. Käytössä on hälytys- ja sammutusjärjestelmät, huolto- ja varajärjestelmät sekä kirjanpito häiriötilanteista.",
+        "land_use_environment": "Lähialueella on teollisuutta ja asutusta; etäisyydet herkkiin kohteisiin on ilmoitettu.",
+        "land_use_impacts": "Vaikutukset maankäyttöön ja kiinteistöjen käyttöön arvioidaan suhteessa lähialueen asutukseen ja muihin häiriölähteisiin.",
     }
     building_data = {
         "project_description": "Auditointia varten täydennetty pientalohanke, jossa hulevedet viivytetään tontilla.",
@@ -4225,9 +4431,9 @@ def caseworker_observation_panel(db: Any, case_id: str, permit_type: str) -> dic
 
     checklist = [
         checklist_item(
-            "Toimivalta ja lupaperuste",
-            bool(str(form_data.get("competent_authority") or "").strip() and str(form_data.get("permit_basis") or "").strip()),
-            "Toimivaltainen viranomainen ja lupaperuste löytyvät lomakedatasta." if str(form_data.get("competent_authority") or "").strip() else "Varmista toimivaltainen viranomainen ja lupaperuste ennen päätösvalmistelua.",
+            "Hankkeen yleiskuvaus ja lupaperuste",
+            bool(str(form_data.get("permit_basis") or "").strip()),
+            "Hankkeen yleiskuvaus löytyy lomakedatasta." if str(form_data.get("permit_basis") or "").strip() else "Täydennä hankkeen yleiskuvaus ennen päätösvalmistelua.",
             "Lomakedata",
         ),
         checklist_item(

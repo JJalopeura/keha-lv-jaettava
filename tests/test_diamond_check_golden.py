@@ -111,11 +111,17 @@ class DiamondCheckGoldenTest(unittest.TestCase):
                     f"red criterion {cid} must have an unresolved blocking issue with its criteria_id",
                 )
             elif c.get("status") == "yellow":
-                # Minor-only policy: yellow criterion = osittain täytetty → vähäinen (minor)
-                # review point, never blocking/major (reconcile_verdict C1/P2 target).
+                # Minor-only policy: a yellow criterion is a vähäinen (minor) review point.
+                # The exception is a REQUIRED field that is empty: the criterion cannot be
+                # assessed and the form gap itself is blocking (submit gate). Both are
+                # honest; what must never happen is a yellow criterion with nothing behind it.
                 self.assertTrue(
-                    any(i.get("severity") == "minor" for i in linked),
-                    f"yellow criterion {cid} must have an unresolved minor issue",
+                    any(i.get("severity") == "minor" for i in linked)
+                    or any(
+                        i.get("severity") == "blocking" and str(i.get("id", "")).startswith("missing_")
+                        for i in linked
+                    ),
+                    f"yellow criterion {cid} must have an unresolved minor issue or a blocking field gap",
                 )
             else:  # green
                 for i in linked:

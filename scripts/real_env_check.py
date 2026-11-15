@@ -24,25 +24,19 @@ from app.infra.db import DB  # noqa: E402
 
 FORM_DATA = {
     "municipality": "Kerava",
-    "applicant_name": "Ren-Gas Oy",
+    "applicant_name": "Nordic Ren-Gas Oy",
     "business_id": "2347291-4",
-    "activity_name": "Biokaasu- ja energiantuotantolaitos (ESAVI-14858-2025)",
-    "permit_basis": "Ympäristönsuojelulain 27 § mukainen luvanvaraisuus hakemuksessa; aiemmat AVI-päätökset 2019/2020 liitteinä.",
-    "competent_authority": "Etelä-Suomen aluehallintovirasto",
-    "site_location": "Kerava; sijainti kuvattu hakemuksessa ja YVA-selostuksessa.",
-    "zoning_context": "Kaavoitus ja maankäyttö kuvattu hakemuksessa.",
-    "sensitive_receptors": "Keravanjoki (Liite 10 pohjaeliöstöarvio); erillistä Natura-arviota ei ole.",
-    "activity_description": "Biokaasu- ja energiantuotantolaitos Keravalla; YVA-menettely käyty (Liitteet 4 a–c).",
-    "production_capacity": "Tuotantokapasiteetti hakemusasiakirjojen mukaan.",
-    "process_description": "Biokaasun ja energian tuotantoprosessi; perusteltu päätelmä Liite 4 a.",
-    "raw_materials_chemicals": "Kemikaalien käsittely hakemuksessa; Liite 7 Kemikaaliluettelo.",
-    "water_and_wastewater": "Jätevesien kuvaus hakemuksessa; pohjaeliöstöarvio Liite 10.",
-    "air_emissions": "Savukaasumallinnus Liite 8 + täydennys ilmapäästöihin 2025_0527.",
-    "waste": "Jätteiden käsittely kuvattu hakemuksessa ja perustilaselvityksessä.",
-    "environmental_impacts": "YVA-selostuksen mukaiset vaikutukset (Liite 4 a).",
-    "risk_preparedness": "Liite 12 Ennaltavarautumissuunnitelma Ren-Gas Kerava.",
-    "bat_assessment": "Liite 13 BAT-vertailu Ren-Gas Kerava.",
-    "monitoring_plan": "Vesipuolen tarkkailu Liite 10; erillistä ilman tarkkailuohjelmaa ei ole.",
+    "activity_name": "Puhtaiden P2X-kaasupolttoaineiden ja CO2-vapaan kaukolämmön yhteistuotantolaitos",
+    "permit_basis": "Laitos sijoittuu Alikeravan teollisuuskortteliin Keravan Energian biovoimalaitoksen tontille. Hanke tuottaa uusiutuvaa e-metaania 15 000 t/a ja kaukolämpöä noin 32 MW; YVA-menettely on käyty ja perusteltu päätelmä on liitteenä.",
+    "site_location": "Kiinteistö 245-9-348-1, Alikeravan teollisuuskortteli, Kerava; omistaja- ja haltijatiedot erillisellä liitteellä.",
+    "zoning_context": "Alue on asemakaavassa teollisuuskorttelialuetta; kaavamerkinnät ja kaavatilanne hakemuksen kohdassa 2.3.",
+    "activity_description": "Power-to-Gas-laitos: vedyn tuotanto, hiilidioksidin talteenotto savukaasuista, metaanin tuotanto ja kaukolämmön tuotanto Keravalla.",
+    "production_capacity": "Metaania 15 000 t/a, metaanin tuotantoteho 25 MW ja kaukolämpöä noin 32 MW.",
+    "byproducts": "Sivutuoteluokittelua ei haeta; prosessin jätteet ja sivuvirrat kuvataan hakemuksen kohdassa 3.8.",
+    "process_description": "Vedyn tuotanto, CO₂:n talteenotto, metaanisynteesi, metaanin syöttö siirtoverkkoon sekä apujäähdytys ja kaukolämmön tuotanto (hakemus 3.3).",
+    "risk_preparedness": "Liite 12 Ennaltavarautumissuunnitelma Ren-Gas Kerava; tunnistetut onnettomuus- ja häiriötilanteet hakemuksen kohdassa 5.",
+    "land_use_environment": "Alueen itäpuolella valtatie 4, eteläpuolella metsäalue ja Keravanjoki; lähimmät asuinalueet ja herkät kohteet hakemuksen kohdassa 2.4.",
+    "land_use_impacts": "YVA-selostuksen mukaiset vaikutukset maankäyttöön ja lähialueen asutukseen (Liite 4 a).",
 }
 
 PERMIT = "environmental_industrial"
@@ -55,7 +49,7 @@ def main() -> None:
     db = DB(settings.db_path)
     started = time.time()
     case_id = create_case_from_scenario(db, "environmental_industrial_generic")["case_id"]
-    zip_path = Path("testiaineisto/esimerkkihakemukset/Ren-Gas.zip")
+    zip_path = Path("testiaineisto/esimerkkihakemukset/Ren-Gas pelkkä hakemus 20261104.zip")
     svc.ingest_application_zip(db, settings, case_id, PERMIT, zip_path.name, zip_path.read_bytes())
     attachments = svc.list_attachments(db, case_id, PERMIT)
     print(f"ingested {len(attachments)} attachments in {time.time() - started:.0f}s")

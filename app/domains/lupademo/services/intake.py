@@ -50,10 +50,25 @@ MAX_UPLOAD_ZIP_FILE_COUNT = 200
 ALLOWED_UPLOAD_EXTENSIONS = {".txt", ".md", ".csv", ".tsv", ".pdf", ".docx", ".xlsx"}
 
 
+# A permit application is a 65-page document and its later chapters (toiminta, riskit,
+# vaikutukset) carry the evidence the criteria ask about. The old 20-page / 24k-char cap
+# silently stored only the first ~6 pages, so every later chapter read as "not in the
+# material". Extraction is cheap (measured 2 s for 65 pages, 8 s for a 207-page YVA), so
+# the ceiling is set by artifacts size, not by CPU.
+MAX_PDF_PAGES = 400
+MAX_EXCERPT_CHARS = 300000
+# Zip/file ingest stores the whole document; retrieval picks what it needs from it.
+INGEST_MAX_CHARS = MAX_EXCERPT_CHARS
+
+
 ATTACHMENT_REQUIREMENT_ALIASES = {
     "environmental_application": {"environmental_application"},
     "site_map": {"site_map", "site_plan"},
+    "general_map": {"general_map"},
     "zoning_extract": {"zoning_extract", "site_plan"},
+    "zoning_report": {"zoning_report"},
+    "process_diagram": {"process_diagram"},
+    "risk_preparedness_plan": {"risk_preparedness_plan", "varautumissuunnitelma"},
     "public_summary": {"public_summary"},
     # P2X/Ren-Gas/SharpCell case corpus: safety data sheets count as chemical inventory
     "chemical_inventory_or_sds": {"chemical_inventory_or_sds", "chemical_inventory", "safety_data_sheet", "turvatiedote"},
@@ -71,7 +86,10 @@ ATTACHMENT_REQUIREMENT_ALIASES = {
 ATTACHMENT_REQUIREMENT_TERMS = {
     "environmental_application": ("ympäristölupahakemus", "ymparistolupahakemus"),
     "site_map": ("sijaintikart", "sijaintiperiaate", "asemapiirros", "tonttimuistio"),
-    "zoning_extract": ("kaavatilanne", "kaavamuistio", "asemakaava", "kaavoitus"),
+    "general_map": ("lähestymiskart", "yleiskart"),
+    "zoning_extract": ("kaavatilanne", "kaavamuistio", "asemakaava", "kaavoitus", "kaavaote"),
+    "zoning_report": ("kaavaselostus", "kaavan selostus"),
+    "process_diagram": ("prosessikaavi", "virtauskaavi", "kytkentäkaavi", "prosessin kuvaus"),
     "public_summary": ("yleistajuinen yhteenveto", "julkinen tiivistelmä", "tiivistelmä yleisölle"),
     # Safety data sheets / turvatiedotteet → chemical inventory
     "chemical_inventory_or_sds": ("turvatiedote", "safety data sheet", "sdn", "kemikaali"),
@@ -140,6 +158,9 @@ def classify_attachment(filename: str) -> str:
     name = unicodedata.normalize("NFC", filename.lower())
     rules = [
         ("asemapiir", "site_plan"),
+        # AA: lähestymis-/yleiskartta (1:100 000–1:200 000) ennen yleistä karttasääntöä
+        ("lähestymiskart", "general_map"),
+        ("yleiskart", "general_map"),
         ("sijaintikart", "site_map"),
         ("kartta", "site_map"),
         ("site", "site_plan"),
@@ -147,6 +168,10 @@ def classify_attachment(filename: str) -> str:
         ("paapiir", "main_drawings"),
         ("julkisivu", "facade_drawings"),
         ("huleves", "stormwater_plan"),
+        # AA: prosessi-/kytkentä-/virtauskaavio
+        ("prosessikaavi", "process_diagram"),
+        ("virtauskaavi", "process_diagram"),
+        ("kytkentäkaavi", "process_diagram"),
         ("ympäristölupahakemus", "environmental_application"),
         ("ymparistolupahakemus", "environmental_application"),
         ("lupahakemus", "environmental_application"),
@@ -156,6 +181,8 @@ def classify_attachment(filename: str) -> str:
         ("asemakaava", "zoning_extract"),
         ("yleiskaava", "zoning_extract"),
         ("kaavaote", "zoning_extract"),
+        # Kaavaselostus on kaavaotteen selittävä asiakirja, ei itse karttaote
+        ("kaavaselost", "zoning_report"),
         # UUDELY-lausunto / ajantasaisuuslausunto → judgement_freshness_assessment
         # (ennen yleisiä perusteltu päätelmä -sääntöjä)
         ("perustellun päätelmän ajantasaisu", "judgement_freshness_assessment"),
@@ -259,7 +286,7 @@ def extract_text_from_path(path: str, filename: str, *, max_chars: int = 24000) 
         if ext == ".pdf":
             parts = []
             with pdfplumber.open(path) as pdf:
-                for page in pdf.pages[:20]:
+                for page in pdf.pages[:MAX_PDF_PAGES]:
                     text = page.extract_text() or ""
                     if text:
                         parts.append(text)
@@ -333,6 +360,114 @@ def save_upload_file(settings: Any, case_id: str, filename: str, content: bytes)
     return str(target)
 
 
+EVIDENCE_CHUNK_CHARS = 1500
+EVIDENCE_CHUNK_OVERLAP = 250
+
+
+def _sampled_excerpt(text: str, budget: int, windows: int = 3) -> str:
+    """Sample evenly spaced windows across a document instead of only its head.
+
+    A 65-page application stored 155k chars but the retrieval took `text[:budget]`, so
+    every later chapter (toiminta, riskit, vaikutukset) was invisible to every agent.
+    """
+    text = text or ""
+    if budget <= 0:
+        return ""
+    if len(text) <= budget or windows <= 1:
+        return text[:budget]
+    windows = max(2, windows)
+    # Reserved room for the "\n[… ]\n" separators: without it the final slice to
+    # `budget` chops the tail window and the end of the document is lost again.
+    window = max(200, (budget - 12) // windows)
+    span = len(text) - window
+    starts = [int(span * index / (windows - 1)) for index in range(windows)]
+    parts: list[str] = []
+    for start in starts:
+        part = text[start:start + window].strip()
+        if part and part not in parts:
+            parts.append(part)
+    return "\n[… ]\n".join(parts)[:budget]
+
+
+def _material_source_text(attachments: list[dict[str, Any]], max_chars: int = 32000) -> str:
+    """Join material for structure extraction, giving the application document the budget.
+
+    The zip order puts `Liite 4 a …` before the application itself, so a plain
+    `"".join(excerpts)[:32000]` sent the extractor the YVA statement and nothing from the
+    application. The application is the primary source for the form fields; the rest of
+    the budget goes to the supporting documents, sampled across each one.
+    """
+    if not attachments:
+        return ""
+    application: list[dict[str, Any]] = []
+    supporting: list[dict[str, Any]] = []
+    for att in attachments:
+        roles = _chunk_roles_for_attachment(att)
+        (application if "environmental_application" in roles else supporting).append(att)
+    application_budget = int(max_chars * 0.8) if application else max_chars // 2
+    support_budget = max_chars - application_budget
+    blocks: list[str] = []
+    for att in application:
+        text = str(att.get("text_excerpt") or att.get("summary") or "")
+        blocks.append(f"[Dokumentti: {att.get('filename') or 'Hakemusaineisto'}]\n{_sampled_excerpt(text, application_budget, windows=7)}")
+    if supporting:
+        share = max(800, support_budget // len(supporting))
+        for att in supporting:
+            text = str(att.get("text_excerpt") or att.get("summary") or "")
+            blocks.append(f"[Dokumentti: {att.get('filename') or 'Liite'}]\n{_sampled_excerpt(text, share, windows=2)}")
+    return "\n\n".join(blocks)[:max_chars]
+
+
+def _chunk_roles_for_attachment(att: dict[str, Any]) -> set[str]:
+    tags = att.get("type_tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+    roles = {str(att.get("primary_type") or "")}
+    roles.update(str(tag) for tag in tags)
+    return {role for role in roles if role}
+
+
+def evidence_chunks(
+    attachments: list[dict[str, Any]],
+    *,
+    chunk_chars: int = EVIDENCE_CHUNK_CHARS,
+) -> list[dict[str, Any]]:
+    """Split the stored attachment texts into overlapping chunks for relevance selection.
+
+    Retrieval used to give every document an even share of the budget and take the head
+    of each. With a 65-page application that meant the assessor saw the cover and the
+    table of contents. The chunks let each criteria batch pull the passages its own rules
+    talk about, wherever in the document they are.
+    """
+    chunks: list[dict[str, Any]] = []
+    step = max(1, chunk_chars - EVIDENCE_CHUNK_OVERLAP)
+    for att in attachments:
+        text = str(att.get("text_excerpt") or "")
+        if not text.strip():
+            continue
+        offset = 0
+        while offset < len(text):
+            piece = text[offset:offset + chunk_chars].strip()
+            if len(piece) >= 120:
+                chunks.append(
+                    {
+                        "source_id": att.get("id"),
+                        "title": att.get("filename"),
+                        "primary_type": att.get("primary_type"),
+                        "type_tags": att.get("type_tags") or [],
+                        "delivery_scope": att.get("delivery_scope"),
+                        "offset": offset,
+                        "text": piece,
+                    }
+                )
+            elif offset > 0:
+                break
+            if offset + chunk_chars >= len(text):
+                break
+            offset += step
+    return chunks
+
+
 def retrieval_context(db: Any, case_id: str, permit_type: str, *, max_chars: int = 64000) -> dict[str, Any]:
     attachments = list_attachments(db, case_id, permit_type)
     excerpts = []
@@ -345,7 +480,7 @@ def retrieval_context(db: Any, case_id: str, permit_type: str, *, max_chars: int
         budget = min(per_doc, max(0, max_chars - used))
         if budget < 200:
             break
-        chunk = text[:budget]
+        chunk = _sampled_excerpt(text, budget)
         excerpts.append(
             {
                 "source_id": att.get("id"),
@@ -908,7 +1043,7 @@ def add_attachment(db: Any, case_id: str, permit_type: str, filename: str, size:
         "type_tags": classification.type_tags if classification else [],
         "summary": classification.summary if classification else (text_excerpt[:500] or f"Luokiteltu tiedostonimen perusteella: {filename}"),
         "local_path": local_path,
-        "text_excerpt": text_excerpt[:24000],
+        "text_excerpt": text_excerpt[:MAX_EXCERPT_CHARS],
         "evidence_refs": _plain(classification.evidence_refs) if classification else [source_ref(filename, filename, filename, 0.7)],
         "confidence": classification.confidence if classification else 0.74,
         "created_at": time.time(),
@@ -1103,7 +1238,7 @@ def ingest_application_zip(
         if path.name.startswith(".") or "/__MACOSX/" in f"/{rel_name}":
             skipped.append({"filename": rel_name, "reason": "system_file"})
             continue
-        extracted_text = extract_text_from_path(str(path), path.name)
+        extracted_text = extract_text_from_path(str(path), path.name, max_chars=INGEST_MAX_CHARS)
         primary_type = classify_attachment(rel_name)
         scope = suggested_scope_for_attachment(primary_type, rel_name)
         if scope == "internal_authority_only":
@@ -1169,7 +1304,7 @@ def ingest_application_files(
             continue
         validate_upload_bytes(clean_name, content)
         local_path = save_upload_file(settings, case_id, clean_name, content)
-        text = extract_text_from_path(local_path, clean_name)
+        text = extract_text_from_path(local_path, clean_name, max_chars=INGEST_MAX_CHARS)
         primary_type = classify_attachment(clean_name)
         scope = suggested_scope_for_attachment(primary_type, clean_name)
         if scope == "internal_authority_only":
@@ -1598,44 +1733,28 @@ def structure_environmental_application_from_attachments(
     ensure_application(db, case_id, permit_type)
     attachments = list_attachments(db, case_id, permit_type)
     official_or_ai = [a for a in attachments if a.get("delivery_scope") in {"official_submission", "ai_context_only"}]
-    joined = "\n\n".join(
-        f"[Dokumentti: {a.get('filename') or 'Hakemusaineisto'}]\n{str(a.get('text_excerpt') or a.get('summary') or '')}"
-        for a in official_or_ai
-    )
-    low_joined = joined.lower()
+    joined = _material_source_text(official_or_ai, max_chars=32000)
     extracted: dict[str, str] = {}
+    # Deterministic fallback when the extractor agent is unavailable. The keywords follow
+    # the AA section guidance (Tiivistelmä / Taustatiedot / Toiminta / Riskit / Ympäristö)
+    # so a snippet lands under the same heading the applicant will see.
     field_keywords = {
         "activity_name": ["toiminnan nimi", "hankkeen nimi", "laitoksen nimi"],
-        "activity_description": ["toiminta", "laitos", "hanke", "biokaasu", "biohiili", "lämpö", "prosessi"],
-        "permit_basis": ["ympäristölupa", "luvanvar", "ympäristönsuojelulain"],
-        "competent_authority": ["aluehallintovirasto", "avi", "kunnan ympäristönsuojelu"],
-        "site_location": ["sijaitsee", "sijainti", "kiinteistö", "laitostie", "teollisuusalue"],
-        "zoning_context": ["kaava", "kaavoitus", "teollisuusalue", "asemakaava"],
-        "sensitive_receptors": ["asutus", "häiriinty", "pohjaves", "natura", "suojelukoh"],
-        "production_capacity": ["kapasiteetti", "tonnia", "mw", "tuotanto", "vuodessa"],
-        "process_description": ["prosessi", "vastaanotto", "murskaus", "kuivaus", "mädätys", "pyrolyysi"],
-        "raw_materials_chemicals": ["kemikaali", "varastointi", "raaka-aine", "syöte", "lipeä", "happo"],
-        "water_and_wastewater": ["jäteves", "vesi", "huleves", "viemäri"],
-        "air_emissions": ["päästöt ilmaan", "haju", "pöly", "savukaasu", "ilmapäästö"],
-        "waste": ["jäte", "sivutuote", "tuhka", "rejekti"],
-        "environmental_impacts": ["ympäristövaikut", "melu", "liikenne", "vaikutus"],
-        "risk_preparedness": ["riski", "onnettomuus", "häiriö", "varautuminen", "paloturvallisuus"],
-        "bat_assessment": ["bat", "paras käyttökelpoinen", "energiatehokkuus"],
-        "monitoring_plan": ["tarkkailu", "raportointi", "mittaus", "seuranta"],
-        "yva_context": ["yva", "perusteltu päätelmä"],
+        "permit_basis": ["yleisölle tarkoitettu tiivistelmä", "tiivistelmä", "tarkoitus ja tarve", "vaikutusalue"],
+        "site_location": ["sijaitsee", "sijainti", "kiinteistötunnus", "kiinteistö", "tontti"],
+        "zoning_context": ["kaava", "kaavoitus", "asemakaava", "yleiskaava", "maakuntakaava"],
+        "activity_description": ["toiminnan yleiskuvaus", "laitos koostuu", "tuotetaan", "menetelmillä"],
+        "production_capacity": ["kapasiteetti", "tuotantoteho", "tonnia", "t/a", "mw", "tuotantomäärä"],
+        "byproducts": ["sivutuote", "jätelaki 5", "sivutuotteeksi"],
+        "process_description": ["yksikköprosess", "prosessin kuvaus", "laitteistot", "säiliö", "varastoalue"],
+        "risk_preparedness": ["riski", "onnettomuus", "häiriötilanne", "varautuminen", "hälytys", "sammutus"],
+        "land_use_environment": ["maankäyttö", "asutus", "häiriinty", "etäisyys", "herkkä"],
+        "land_use_impacts": ["vaikutukset maankäyttöön", "kiinteistöjen käyttö", "vaikutus lähialue"],
     }
     for field_id, keywords in field_keywords.items():
         snippet = _keyword_snippet(joined, keywords)
         if snippet:
             extracted[field_id] = snippet
-    if extracted.get("activity_description") and "teollinen tuotantolaitos" not in extracted["activity_description"].lower():
-        extracted["activity_description"] = f"Teollinen tuotantolaitos: {extracted['activity_description']}"
-    if "aluehallintovirasto" in low_joined:
-        extracted["competent_authority"] = "Aluehallintovirasto"
-    elif re.search(r"\bavi\b", low_joined):
-        extracted["competent_authority"] = "AVI"
-    if "ympäristölupa" in low_joined and "permit_basis" not in extracted:
-        extracted["permit_basis"] = "Aineisto viittaa ympäristöluvanvaraiseen toimintaan; säädösperusta on tarkistettava ennen lähettämistä."
     source_by_field = []
     for field_id, value in extracted.items():
         source = next((a for a in official_or_ai if field_id.split("_")[0].lower() in str(a.get("text_excerpt", "")).lower()), None) or (official_or_ai[0] if official_or_ai else {})
