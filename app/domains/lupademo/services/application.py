@@ -2403,7 +2403,22 @@ SUMMARY_VS_DOCUMENT_HINTS = (
 )
 
 
-def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
+DOCUMENTED_CHANGE_HINTS = (
+    "yva",
+    "lausunto",
+    "ajantasaisuus",
+    "uudely",
+    "kasvanut",
+    "kasvoi",
+    "kasvanut",
+    "päivitetty",
+    "päivitti",
+    "muutos",
+)
+MODELLING_HINTS = ("mallinnus", "leviämismallinnus", "savukaasumallinnus", "vaikutusarvio")
+
+
+def _demote_policy_conflicts(issues: list[Issue], schema_field_ids: set[str] | None = None) -> list[Issue]:
     """Drop agent findings that contradict the app's own stated policy.
 
     Two classes kept recurring across runs of the same case, so they are handled in code
@@ -2416,8 +2431,13 @@ def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
     kept: list[Issue] = []
     dropped: list[Issue] = []
     reclassified = 0
+    schema_ids = schema_field_ids or set()
     for issue in issues:
         text = f"{issue.title} {issue.detail}".lower()
+        if schema_ids and issue.field_id and str(issue.field_id) not in schema_ids:
+            # An agent can invent a field name; the grouped "N pakollista kenttää" card
+            # would then claim form fields are missing that do not exist in the form.
+            issue.field_id = None
         consultant_identifier = (
             issue.type == "inconsistent"
             and any(hint in text for hint in CONSULTANT_IDENTIFIER_HINTS)
@@ -2443,6 +2463,24 @@ def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
             issue.suggested_fix = (
                 issue.suggested_fix
                 or "Esitä vuosituotanto ja varastointimäärä erikseen sekä samoissa yksiköissä."
+            )
+            reclassified += 1
+            kept.append(issue)
+            continue
+        documented_change = (
+            issue.type == "inconsistent"
+            and any(hint in text for hint in DOCUMENTED_CHANGE_HINTS)
+            and any(hint in text for hint in ("kasvanut", "kasvoi", "päivitetty", "päivitti", "muutos"))
+            and not any(hint in text for hint in MODELLING_HINTS)
+        )
+        if documented_change:
+            issue.type = "incomplete"
+            issue.severity = "minor"
+            if not issue.title.startswith("Täsmennettävä:"):
+                issue.title = f"Täsmennettävä: {issue.title}"
+            issue.suggested_fix = (
+                issue.suggested_fix
+                or "Kirjaa lomakkeelle, miten kapasiteetti on muuttunut YVA-menettelyn jälkeen."
             )
             reclassified += 1
             kept.append(issue)
@@ -2991,7 +3029,10 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         agent_issues = _filter_covered_attachment_issues(agent_issues, attachments)
         agent_issues = _dedupe_agent_findings(agent_issues)
         agent_issues = _drop_unsupported_contradictions(agent_issues, app.get("form_data") or {})
-        agent_issues = _demote_policy_conflicts(agent_issues)
+        agent_issues = _demote_policy_conflicts(
+            agent_issues,
+            {str(field.get("id")) for field in schema.get("fields", []) if field.get("id")},
+        )
         agent_issues = _drop_duplicate_field_findings(agent_issues, deterministic)
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")

@@ -369,6 +369,13 @@ class PolicyConflictFilterTest(unittest.TestCase):
 class NoMandatoryDocumentContractTest(unittest.TestCase):
     """No document is hard-required in the demo lane: whatever was uploaded is the package."""
 
+    def _issue(self, **kwargs):
+        from app.domains.lupademo.services.domain import Issue
+
+        base = dict(id="x", type="inconsistent", severity="major", title="", detail="", confidence=0.8)
+        base.update(kwargs)
+        return Issue(**base)
+
     def test_schema_requires_no_documents(self) -> None:
         schema = load_form_schema(PERMIT)
         self.assertEqual(schema.get("required_attachments"), [])
@@ -384,3 +391,40 @@ class NoMandatoryDocumentContractTest(unittest.TestCase):
                 {"minor", "recommendation"},
                 f"missing attachment {issue.attachment_id} must be advisory, got {issue.severity}",
             )
+
+    def test_invented_field_ids_do_not_claim_form_fields_are_missing(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts(
+            [self._issue(id="completeness-7", type="missing", severity="major", title="Tiivistelmästä puuttuu hankkeen aikataulu", field_id="Tiivistelmän aikataulu")],
+            {"permit_basis", "site_location"},
+        )
+        self.assertIsNone(issues[0].field_id)
+        self.assertEqual(issues[0].severity, "major")
+
+    def test_documented_capacity_change_is_a_completeness_note(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts([
+            self._issue(
+                id="consistency-8",
+                title="Metaanin tuotantokapasiteetin arvo ristiriidassa YVA-ajantasaisuuslausunnon kanssa",
+                detail="Liitteessä 4 c todetaan, että kapasiteetti on kasvanut 20 MW:sta 25 MW:iin; muutos on dokumentoitu lausunnossa.",
+            ),
+        ])
+        demoted = next(issue for issue in issues if issue.id == "consistency-8")
+        self.assertEqual(demoted.type, "incomplete")
+        self.assertEqual(demoted.severity, "minor")
+
+    def test_outdated_modelling_stays_a_real_finding(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts([
+            self._issue(
+                id="consistency-9",
+                title="Ilmapäästöjen leviämismallinnus perustuu vanhaan kapasiteettiin",
+                detail="Mallinnus on tehty 20 MW:lle, hakemus on 25 MW; vaikutusarviota ei ole päivitetty.",
+            ),
+        ])
+        kept = next(issue for issue in issues if issue.id == "consistency-9")
+        self.assertEqual(kept.severity, "major")
