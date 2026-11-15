@@ -427,10 +427,16 @@ def _chunk_roles_for_attachment(att: dict[str, Any]) -> set[str]:
     return {role for role in roles if role}
 
 
+# Which delivery scopes may feed the AI evidence path. Authority-only material is not
+# applicant evidence and must never reach a model that writes applicant-facing findings.
+EVIDENCE_ALLOWED_SCOPES = {"official_submission", "ai_context_only"}
+
+
 def evidence_chunks(
     attachments: list[dict[str, Any]],
     *,
     chunk_chars: int = EVIDENCE_CHUNK_CHARS,
+    allowed_scopes: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Split the stored attachment texts into overlapping chunks for relevance selection.
 
@@ -439,16 +445,19 @@ def evidence_chunks(
     table of contents. The chunks let each criteria batch pull the passages its own rules
     talk about, wherever in the document they are.
     """
+    scopes = allowed_scopes or EVIDENCE_ALLOWED_SCOPES
     chunks: list[dict[str, Any]] = []
     step = max(1, chunk_chars - EVIDENCE_CHUNK_OVERLAP)
     for att in attachments:
+        if str(att.get("delivery_scope") or "") not in scopes:
+            continue
         text = str(att.get("text_excerpt") or "")
         if not text.strip():
             continue
         offset = 0
         while offset < len(text):
             piece = text[offset:offset + chunk_chars].strip()
-            if len(piece) >= 120:
+            if len(piece) >= 40:
                 chunks.append(
                     {
                         "source_id": att.get("id"),
@@ -469,7 +478,10 @@ def evidence_chunks(
 
 
 def retrieval_context(db: Any, case_id: str, permit_type: str, *, max_chars: int = 64000) -> dict[str, Any]:
-    attachments = list_attachments(db, case_id, permit_type)
+    attachments = [
+        att for att in list_attachments(db, case_id, permit_type)
+        if str(att.get("delivery_scope") or "") in EVIDENCE_ALLOWED_SCOPES
+    ]
     excerpts = []
     used = 0
     per_doc = max(800, max_chars // max(1, len(attachments)))  # 800-char floor, even spread otherwise

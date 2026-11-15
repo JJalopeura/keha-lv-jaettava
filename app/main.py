@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.infra.config import load_settings
 from app.infra.db import DB
+from app.infra.error_log import RequestErrorLogMiddleware
 from app.infra.llm_factory import LLMUnavailableError
 from app.infra.session import DemoSessionMiddleware
 from app.domains.lupademo import services as svc
@@ -37,6 +38,12 @@ app.add_middleware(
     session_cookie="lv_session",
     same_site="lax",
     https_only=False,
+)
+# Outermost on purpose: a 500 from anywhere (including the session middleware) is
+# written to /home/data/errors.log so an intermittent failure leaves evidence.
+app.add_middleware(
+    RequestErrorLogMiddleware,
+    log_path=str(Path(settings.db_path).parent / "errors.log"),
 )
 app.mount(
     "/static",

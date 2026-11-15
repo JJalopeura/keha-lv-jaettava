@@ -167,3 +167,72 @@ class EvidenceSelectionContractTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EvidenceHygieneContractTest(unittest.TestCase):
+    """Trust boundaries the deployed check must keep (from the 2026-11-15 review)."""
+
+    def _attachments(self) -> list[dict]:
+        body = "Kaavoitus: asemakaava osoittaa alueen teollisuuskäyttöön. " * 40
+        return [
+            {
+                "id": "official",
+                "filename": "Kaavoitus.pdf",
+                "primary_type": "zoning_extract",
+                "type_tags": [],
+                "delivery_scope": "official_submission",
+                "text_excerpt": body,
+            },
+            {
+                "id": "internal",
+                "filename": "Sisäinen muistio.pdf",
+                "primary_type": "other",
+                "type_tags": [],
+                "delivery_scope": "internal_authority_only",
+                "text_excerpt": "Viranomaisen sisäinen arvio, ei hakijan aineistoa. " * 40,
+            },
+            {
+                "id": "tiny",
+                "filename": "Lyhyt muistio.txt",
+                "primary_type": "other",
+                "type_tags": [],
+                "delivery_scope": "official_submission",
+                "text_excerpt": "Lyhyt mutta olennainen havainto kaavoituksesta.",
+            },
+        ]
+
+    def test_authority_only_material_never_becomes_evidence(self) -> None:
+        chunks = evidence_chunks(self._attachments())
+        sources = {chunk["source_id"] for chunk in chunks}
+        self.assertEqual(sources, {"official", "tiny"})
+        self.assertNotIn("Viranomaisen sisäinen", " ".join(chunk["text"] for chunk in chunks))
+
+    def test_short_documents_are_kept(self) -> None:
+        chunks = evidence_chunks(self._attachments())
+        self.assertIn("tiny", {chunk["source_id"] for chunk in chunks})
+
+    def test_each_rule_gets_its_own_passage(self) -> None:
+        # Two rules with disjoint vocabulary; the package has much more text about the
+        # first topic. Both rules must still get a passage inside the budget.
+        chunks = evidence_chunks(
+            [
+                {
+                    "id": "doc",
+                    "filename": "Aineisto.pdf",
+                    "primary_type": "environmental_application",
+                    "type_tags": [],
+                    "delivery_scope": "official_submission",
+                    "text_excerpt": ("Sivutuotteet ja jätelaki 5 pykälä. " * 120)
+                    + ("Melumallinnus ja meluntorjunta. " * 6),
+                }
+            ],
+            chunk_chars=400,
+        )
+        rules = [
+            {"id": "byproducts", "title": "Sivutuotteet", "instruction": "sivutuotteet jätelaki luokittelu"},
+            {"id": "noise", "title": "Melu", "instruction": "melumallinnus meluntorjunta"},
+        ]
+        selected = _select_evidence(chunks, rules, budget_chars=1400)
+        text = " ".join(item["text"] for item in selected["excerpts"]).lower()
+        self.assertIn("sivutuotteet", text)
+        self.assertIn("melumallinnus", text)

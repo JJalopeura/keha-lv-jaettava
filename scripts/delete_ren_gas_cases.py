@@ -3,8 +3,9 @@
 Dry run by default; `--apply` performs the deletes. Runs on the App Service worker
 where /home/data/keha_lv.db lives, or locally with KEHA_LV_DB_PATH pointing at a copy.
 
-    python3 delete_ren_gas_cases.py            # list
-    python3 delete_ren_gas_cases.py --apply    # delete
+    python3 delete_ren_gas_cases.py                      # list submitted ren-gas cases
+    python3 delete_ren_gas_cases.py --apply              # delete them
+    python3 delete_ren_gas_cases.py <case-id> --apply    # delete one specific case
 """
 
 from __future__ import annotations
@@ -19,6 +20,12 @@ from pathlib import Path
 DB_PATH = Path(os.environ.get("KEHA_LV_DB_PATH", "/home/data/keha_lv.db"))
 UPLOADS = Path(os.environ.get("KEHA_LV_UPLOADS_DIR", "/home/data/uploads"))
 CUSTOMER_ID = os.environ.get("KEHA_LV_CUSTOMER_ID", "ren-gas")
+# Explicit case ids (comma separated) delete exactly those, regardless of receipt.
+CASE_IDS = {
+    part.strip()
+    for part in [*sys.argv[1:], *os.environ.get("KEHA_LV_CASE_IDS", "").split(",")]
+    if part.strip() and not part.startswith("-")
+}
 APPLY = "--apply" in sys.argv
 
 
@@ -31,9 +38,12 @@ def main() -> None:
     ).fetchall()
     # Only the SUBMITTED Ren-Gas hankkeet are in scope. Other ren-gas cases on the
     # server are colleagues' drafts and must not be deleted by this script.
-    cases = [row for row in all_cases if connection.execute(
-        "select 1 from artifacts where id like ? limit 1", (f"{row['id']}:receipt:%",)
-    ).fetchone()]
+    if CASE_IDS:
+        cases = [row for row in all_cases if row["id"] in CASE_IDS]
+    else:
+        cases = [row for row in all_cases if connection.execute(
+            "select 1 from artifacts where id like ? limit 1", (f"{row['id']}:receipt:%",)
+        ).fetchone()]
     print(f"database: {DB_PATH}")
     print(f"ren-gas cases total: {len(all_cases)} · submitted (in scope): {len(cases)}")
     for row in all_cases:

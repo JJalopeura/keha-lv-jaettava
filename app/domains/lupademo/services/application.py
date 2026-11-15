@@ -62,7 +62,7 @@ from .core import AdditionalInfoRequestDraft, ApplicantPrecheckReport, Applicati
 from .criteria import *  # noqa: F401,F403
 from .criteria import _normalize_municipality
 from .jobs import complete_ai_job, list_ai_jobs, mark_agent_complete, start_ai_job
-from .intake import ALLOWED_UPLOAD_EXTENSIONS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _coerce_confidence, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, evidence_chunks, execute_material_ingest_job, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
+from .intake import ALLOWED_UPLOAD_EXTENSIONS, ATTACHMENT_REQUIREMENT_ALIASES, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_ZIP_BYTES, _coerce_confidence, _extraction_has_substantive_value, _write_agent_audit_attachment, accept_all_extraction_queue_items, add_attachment, attachment_extraction_summary, attachment_requirement_covered, attachments_updated_at, azure_vector_store_ids, build_retrieval_context, classify_source_material, current_material_package, evidence_chunks, execute_material_ingest_job, extract_text_from_path, list_attachments, retrieval_context, run_json_agent, safe_extract_zip, structure_environmental_application_from_attachments
 
 
 PRECHECK_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -1445,7 +1445,8 @@ def deterministic_issues(
     extracted = {str(k): str(v) for k, v in (extracted_values or {}).items() if str(v or "").strip()}
     for schema_field in schema.get("fields", []):
         field_id = str(schema_field["id"])
-        if not schema_field.get("required") or str(form_data.get(field_id, "")).strip() != "":
+        raw_value = form_data.get(field_id)
+        if not schema_field.get("required") or str(raw_value or "").strip() != "":
             continue
         # Criteria findings are advisory (minor-only policy), but a REQUIRED form field is
         # not a criterion: an application cannot be sent with the form unfilled. This is
@@ -2012,6 +2013,15 @@ def _chunk_roles(chunk: dict[str, Any]) -> set[str]:
     return {role for role in roles if role}
 
 
+def _rule_terms(rule: dict[str, Any]) -> set[str]:
+    text = " ".join(str(rule.get(key) or "") for key in ("title", "instruction")).lower()
+    return {
+        token
+        for token in re.split(r"[^0-9a-zäöå]+", text)
+        if len(token) >= EVIDENCE_SCORE_TOKEN_MIN and token not in EVIDENCE_STOPWORDS
+    }
+
+
 def _select_evidence(
     chunks: list[dict[str, Any]],
     rules: list[dict[str, Any]],
@@ -2030,8 +2040,10 @@ def _select_evidence(
     rule_roles: set[str] = set()
     for rule in rules:
         for part in str(rule.get("attachment_type") or "").split(","):
-            if part.strip():
-                rule_roles.add(part.strip())
+            role = part.strip()
+            if role:
+                rule_roles.add(role)
+                rule_roles.update(str(alias).lower() for alias in ATTACHMENT_REQUIREMENT_ALIASES.get(role, set()))
     scored: list[tuple[int, int, dict[str, Any]]] = []
     for index, chunk in enumerate(chunks):
         text = str(chunk.get("text") or "").lower()
@@ -2048,9 +2060,41 @@ def _select_evidence(
         scored.append((score, index, chunk))
     scored.sort(key=lambda item: (-item[0], item[1]))
     picked: list[tuple[int, dict[str, Any]]] = []
+    picked_indexes: set[int] = set()
     used = 0
     per_doc: dict[str, int] = {}
+
+    def take(index: int, chunk: dict[str, Any]) -> None:
+        nonlocal used
+        cost = len(str(chunk.get("text") or "")) + 96
+        picked.append((index, chunk))
+        picked_indexes.add(index)
+        used += cost
+        doc_key = str(chunk.get("source_id") or chunk.get("title") or "")
+        per_doc[doc_key] = per_doc.get(doc_key, 0) + 1
+
+    # One passage per rule first: a batch must not spend its whole budget on the one
+    # section whose vocabulary happens to dominate the package.
+    for rule in rules:
+        terms = _rule_terms(rule)
+        if not terms:
+            continue
+        for score, index, chunk in scored:
+            if index in picked_indexes or score <= 0:
+                continue
+            text = str(chunk.get("text") or "").lower()
+            if not any(term in text for term in terms):
+                continue
+            if used + len(str(chunk.get("text") or "")) + 96 > budget_chars:
+                break
+            if per_doc.get(str(chunk.get("source_id") or chunk.get("title") or ""), 0) >= EVIDENCE_MAX_CHUNKS_PER_DOC:
+                continue
+            take(index, chunk)
+            break
+
     for _score, index, chunk in scored:
+        if index in picked_indexes:
+            continue
         text = str(chunk.get("text") or "")
         cost = len(text) + 96
         if used + cost > budget_chars:
@@ -2058,9 +2102,7 @@ def _select_evidence(
         doc_key = str(chunk.get("source_id") or chunk.get("title") or "")
         if per_doc.get(doc_key, 0) >= EVIDENCE_MAX_CHUNKS_PER_DOC:
             continue
-        per_doc[doc_key] = per_doc.get(doc_key, 0) + 1
-        picked.append((index, chunk))
-        used += cost
+        take(index, chunk)
         if used >= budget_chars - 200:
             break
     if not picked:
@@ -2333,6 +2375,12 @@ def _normalize_criteria_results(
         title = str(rule.get("title") or "").strip().lower()
         if title:
             title_to_id[title] = rule_id
+    schema = load_form_schema(str(criteria.get("permit_type") or "environmental_industrial"))
+    for field in schema.get("fields", []):
+        label = str(field.get("label") or "").strip().lower()
+        field_id = str(field.get("id") or "")
+        if label and field_id in rules:
+            title_to_id.setdefault(label, field_id)
 
     def _condition_met(rule: dict[str, Any]) -> bool:
         condition = rule.get("condition") or {}
@@ -2340,8 +2388,13 @@ def _normalize_criteria_results(
         terms = [str(term).lower() for term in condition.get("contains_any", [])]
         if not condition_field or not terms:
             return True
-        value = str(form_data.get(condition_field) or "").lower()
-        return any(term in value for term in terms)
+        values = [str(form_data.get(condition_field) or "").lower()]
+        own_field = str(rule.get("field_id") or "")
+        if own_field and own_field != condition_field:
+            # An applicant can trigger the section by filling it even when the prose the
+            # condition points at does not repeat the keyword.
+            values.append(str(form_data.get(own_field) or "").lower())
+        return any(term in value for term in terms for value in values)
 
     normalized: list[dict[str, Any]] = []
     notes: list[str] = []
@@ -2868,12 +2921,20 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             *reconciliation_notes,
             f"INCOMPLETE: {', '.join(incomplete_agents)} returned no criteria results for {rules_total} rules; criteria half scored 0.5",
         ]
+    truncated_documents = [
+        str(att.get("filename") or "")
+        for att in attachments
+        if int(att.get("text_chars") or 0) > len(str(att.get("text_excerpt") or ""))
+    ]
     degraded = {
         "fallback_used_agents": _degraded_agents(
             db, case_id, ("completeness_validator", "consistency_validator", "criteria_assessor", "applicant_precheck_report")
         ),
         "incomplete_agents": incomplete_agents,
         "reconciliation_notes": reconciliation_notes,
+        # A document whose stored text stops before its end is a known coverage gap, not
+        # a silent one: the review screens can say which file was only partly read.
+        "truncated_documents": truncated_documents,
     }
     response = ApplicationCheckResponse(
         request_id=f"check_{uuid.uuid4().hex[:8]}",
@@ -4431,7 +4492,7 @@ def caseworker_observation_panel(db: Any, case_id: str, permit_type: str) -> dic
 
     checklist = [
         checklist_item(
-            "Hankkeen yleiskuvaus ja lupaperuste",
+            "Hankkeen yleiskuvaus",
             bool(str(form_data.get("permit_basis") or "").strip()),
             "Hankkeen yleiskuvaus löytyy lomakedatasta." if str(form_data.get("permit_basis") or "").strip() else "Täydennä hankkeen yleiskuvaus ennen päätösvalmistelua.",
             "Lomakedata",

@@ -575,6 +575,27 @@ class ApplicantJourney(unittest.TestCase):
         report = svc.artifact_json(db, case, "check_report", PERMIT, {})
         self.assertIsInstance(report.get("issues"), list)
 
+    def test_required_field_gap_blocks_submission_for_every_permit(self) -> None:
+        """The gate needs a floor for every lane, not just the environmental one.
+
+        Criteria are advisory by policy; without blocking required-field gaps an empty
+        form would be submittable because no criterion can produce a blocking finding.
+        """
+        for permit_type, field_id in (
+            ("building_residential", "stormwater_management"),
+            ("environmental_industrial", "permit_basis"),
+            ("event_public", "rescue_plan"),
+        ):
+            with self.subTest(permit_type=permit_type):
+                empty_case = db.create_case(f"Empty {permit_type} form", language="fi")
+                svc.ensure_seed_state(db, empty_case)
+                svc.update_application_data(db, empty_case, permit_type, {field_id: None})
+                issues = svc.deterministic_issues(permit_type, {field_id: None}, [])
+                blocking = [issue for issue in issues if issue.field_id == field_id and issue.severity == "blocking"]
+                self.assertTrue(blocking, f"{permit_type}: an empty required field must be blocking")
+                with self.assertRaises(RuntimeError):
+                    svc.submit_application(db, empty_case, permit_type, _flow_settings)
+
     def test_submit_is_blocked_by_blocking_issues(self) -> None:
         """An incomplete application must be blocked at the submit gate."""
         response = client.post(f"{base}/submit", data={})
