@@ -3254,9 +3254,11 @@ def precheck_gate_status(db: Any, case_id: str, permit_type: str, *, max_age_sec
         stale_reasons.append("missing_report")
     if report and checked_at <= 0:
         stale_reasons.append("missing_checked_at")
-    if checked_at > 0 and form_updated_at > checked_at + 0.001:
+    # Strictly greater, no millisecond tolerance: a save that lands after the check is a
+    # change even when both timestamps fall in the same millisecond (fast local/DB path).
+    if checked_at > 0 and form_updated_at > checked_at:
         stale_reasons.append("form_changed_after_check")
-    if checked_at > 0 and current_attachments_updated_at > checked_at + 0.001:
+    if checked_at > 0 and current_attachments_updated_at > checked_at:
         stale_reasons.append("attachments_changed_after_check")
     if report and (
         report_criteria_set_id != current_criteria_set_id

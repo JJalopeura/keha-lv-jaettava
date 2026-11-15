@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 import json
 import time
 import uuid
@@ -314,16 +316,36 @@ class ProseSuggestionResponse:
     fallback_used: bool = False
 
 
+_SPEC_CACHE: dict[str, Any] = {}
+
+
 def load_json(path: Path, default: Any) -> Any:
+    """Load a spec file, cached for the process lifetime.
+
+    Specs are static files shipped with the deploy, and on App Service they live on
+    Azure Files: a page that renders a form schema, a criteria set and a prompt would
+    otherwise read them over the network on every request.
+    """
+    key = str(path)
+    cached = _SPEC_CACHE.get(key)
+    if cached is not None:
+        # Callers edit the returned dict in place (criteria rules, form fields), so the
+        # cache must hand out a copy: a shared object would leak edits across requests.
+        return copy.deepcopy(cached)
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default
+    _SPEC_CACHE[key] = value
+    return copy.deepcopy(value)
 
 
 def load_form_schema(permit_type: str) -> dict[str, Any]:
     filename = PERMIT_SCHEMAS.get(permit_type, PERMIT_SCHEMAS["building_residential"])
     return load_json(SPEC_ROOT / "form_schemas" / filename, {})
+
+
+_PROMPT_CACHE: dict[str, str] = {}
 
 
 def _load_prompt(agent: str) -> str:
@@ -339,6 +361,9 @@ def _load_prompt(agent: str) -> str:
     if not filename:
         return ""
     path = SPEC_ROOT / "prompts" / filename
+    cached = _PROMPT_CACHE.get(str(path))
+    if cached is not None:
+        return cached
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -353,6 +378,7 @@ def _load_prompt(agent: str) -> str:
             "Olet Lupademon AI-agentti. Promptin lataus epäonnistui. Palauta pyydetyn JSON-skeeman "
             "mukainen varovainen vastaus annettuun kontekstiin perustuen."
         )
+    _PROMPT_CACHE[str(path)] = text
     return text
 
 

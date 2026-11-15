@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -15,23 +16,35 @@ class DB:
     def __init__(self, db_path: str):
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
+        # /home on App Service is Azure Files, so every connection open + PRAGMA is a
+        # network round trip. A page issues dozens of artifact reads; one connection per
+        # thread turns those round trips into local ones.
+        self._local = threading.local()
         self._init_db()
+
+    def _connection(self) -> sqlite3.Connection:
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            conn.row_factory = sqlite3.Row
+            # WAL keeps readers from blocking the writer while AI jobs persist their
+            # artifacts; the busy timeout turns a write collision into a short wait
+            # instead of an immediate "database is locked" error.
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn = conn
+        return conn
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        # WAL keeps readers from blocking the writer while AI jobs persist their
-        # artifacts; the busy timeout turns a write collision into a short wait
-        # instead of an immediate "database is locked" error.
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        conn = self._connection()
         try:
-            with conn:
-                yield conn
-        finally:
-            conn.close()
+            yield conn
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
     def _init_db(self) -> None:
         with self._conn() as conn:
