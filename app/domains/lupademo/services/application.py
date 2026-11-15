@@ -2375,6 +2375,20 @@ COMMON_DATA_SYNC_HINTS = (
     "common data",
 )
 
+# A form field is a summary and an attachment is a 65-page document. "The attachment
+# says more than the field" is a completeness nudge, not a contradiction between two
+# values of the same quantity.
+SUMMARY_VS_DOCUMENT_HINTS = (
+    "tarkemmin",
+    "yksityiskohtaisem",
+    "ylimalkai",
+    "suppea",
+    "pintapuol",
+    "ei ole kuvattu yhtä",
+    "kuvaa laajemmin",
+    "liitteessä on enemmän",
+)
+
 
 def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
     """Drop agent findings that contradict the app's own stated policy.
@@ -2388,6 +2402,7 @@ def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
     """
     kept: list[Issue] = []
     dropped: list[Issue] = []
+    reclassified = 0
     for issue in issues:
         text = f"{issue.title} {issue.detail}".lower()
         consultant_identifier = (
@@ -2402,6 +2417,14 @@ def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
         if consultant_identifier or unsynced_common_data:
             dropped.append(issue)
             continue
+        if issue.type == "inconsistent" and any(hint in text for hint in SUMMARY_VS_DOCUMENT_HINTS):
+            # Same quantity is not in dispute: the form summarises, the document details.
+            issue.type = "incomplete"
+            issue.severity = "minor"
+            if not issue.title.startswith("Täsmennettävä:"):
+                issue.title = f"Täsmennettävä: {issue.title}"
+            issue.suggested_fix = issue.suggested_fix or "Täydennä lomakkeen kuvausta liitteen tiedoilla tai viittaa liitteeseen."
+            reclassified += 1
         kept.append(issue)
     if dropped:
         # The audit trail keeps the decision visible instead of silently losing it.
@@ -2411,12 +2434,27 @@ def _demote_policy_conflicts(issues: list[Issue]) -> list[Issue]:
                 id="policy_filter_note",
                 type="incomplete",
                 severity="recommendation",
-                title="Tarkistus suodatti kaksi policy-tason havaintoa",
+                title="Tarkistus suodatti policy-tason havaintoja",
                 detail=(
                     "Konsultin Y-tunnusta ja tallentamatonta yhteistä tietoa ei raportoida ristiriitana. "
                     f"Suodatetut havainnot: {dropped_ids}."
                 ),
                 suggested_fix="Tallenna muuttuneet tiedot LV:n yhteisiin tietoihin ja tarkista tunnukset.",
+                confidence=0.9,
+            )
+        )
+    if reclassified:
+        kept.append(
+            Issue(
+                id="policy_reclassify_note",
+                type="incomplete",
+                severity="recommendation",
+                title="Lomake on tiivistelmä: liitteen tarkempi kuvaus ei ole ristiriita",
+                detail=(
+                    f"{reclassified} havaintoa käsiteltiin täydennysehdotuksena ristiriidan sijaan, "
+                    "koska lomakekenttä on tiivistelmä ja liite kuvaa asian tarkemmin."
+                ),
+                suggested_fix="Täydennä lomakekenttiä liitteen tiedoilla siltä osin kuin ne kuuluvat tiivistelmään.",
                 confidence=0.9,
             )
         )

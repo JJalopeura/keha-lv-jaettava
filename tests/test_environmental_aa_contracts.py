@@ -334,3 +334,18 @@ class PolicyConflictFilterTest(unittest.TestCase):
             ),
         ])
         self.assertEqual([issue.id for issue in issues], ["consistency-4"])
+
+    def test_summary_vs_document_detail_is_a_completeness_note(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts([
+            self._issue(
+                id="consistency-5",
+                title="Kaavoituksen ristiriita lomakkeen ja liitteen välillä",
+                detail="Lomakkeella kaavatilanne on kuvattu suppeammin kuin liitteessä, jossa asia kerrotaan tarkemmin.",
+            ),
+        ])
+        demoted = next(issue for issue in issues if issue.id == "consistency-5")
+        self.assertEqual(demoted.type, "incomplete")
+        self.assertEqual(demoted.severity, "minor")
+        self.assertTrue(any(issue.id == "policy_reclassify_note" for issue in issues))
