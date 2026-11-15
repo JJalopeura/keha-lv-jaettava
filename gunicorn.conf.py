@@ -6,8 +6,8 @@ Used by the Azure startup command:
 Binds to port 8000, which is what Azure Web App expects (WEBSITES_PORT=8000).
 """
 
-max_requests = 1000
-max_requests_jitter = 50
+max_requests = 10000
+max_requests_jitter = 500
 log_file = "-"
 bind = "0.0.0.0:8000"
 # AI checks can take 30-60 s; the HTTP response returns immediately (background
