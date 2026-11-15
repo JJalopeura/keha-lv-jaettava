@@ -68,7 +68,12 @@ def must(response: httpx.Response, code: int = 200, label: str = "") -> httpx.Re
 
 
 def active_job(page_html: str, label_prefix: str) -> str:
-    """Return the status URL of the active job whose kind label matches."""
+    """Return the status URL of the active job the page is showing.
+
+    The wizard sidebar renders possibly several labelled jobs; the Kevytasiointi page
+    renders one `data-ai-job` element without a kind label. Match the wizard markup by
+    label first, then fall back to any single status URL.
+    """
     for match in re.finditer(
         r'<article class="wizard-ai-job" data-wizard-ai-job data-status-url="([^"]+)"(.*?)</article>',
         page_html,
@@ -76,13 +81,17 @@ def active_job(page_html: str, label_prefix: str) -> str:
     ):
         if label_prefix in match.group(2):
             return match.group(1)
-    return ""
+    fallback = re.search(r'data-status-url="([^"]+)"', page_html)
+    return fallback.group(1) if fallback else ""
 
 
 def wait_job(page_url: str, label_prefix: str, timeout_s: float, label: str) -> None:
     started = time.time()
     status_url = ""
     transient_errors = 0
+    # The job may take a few seconds to appear after the POST/redirect; do not read
+    # "not on the page yet" as "already finished".
+    appear_deadline = started + 90
     while time.time() - started < timeout_s:
         page = session.get(BASE + page_url)
         if page.status_code >= 500:
@@ -98,8 +107,8 @@ def wait_job(page_url: str, label_prefix: str, timeout_s: float, label: str) -> 
         html = must(page, label=f"GET {page_url}").text
         status_url = status_url or active_job(html, label_prefix)
         if not status_url:
-            if time.time() - started > 20:
-                log(f"  {label}: no active job found after 20 s (already finished?)")
+            if time.time() > appear_deadline:
+                log(f"  {label}: no active job on the page after 90 s (assuming finished)")
                 return
             time.sleep(3)
             continue
@@ -234,6 +243,9 @@ if __name__ == "__main__":
     health = must(session.get(BASE + "/healthz"), label="healthz")
     log(f"healthz: {health.text.strip()[:200]}")
     started = time.time()
-    path_b()
-    path_a()
-    log(f"\nlive e2e total {time.time() - started:.0f}s")
+    paths = os.environ.get("KEHA_LV_PATHS", "ab").lower()
+    if "b" in paths:
+        path_b()
+    if "a" in paths:
+        path_a()
+    log(f"\nlive e2e total {time.time() - started:.0f}s (paths={paths})")
