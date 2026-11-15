@@ -31,14 +31,20 @@ class RequestErrorLogMiddleware:
             self._write(scope)
             raise
 
+    MAX_BYTES = 1_000_000
+
     def _write(self, scope: Scope) -> None:
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            if self.log_path.exists() and self.log_path.stat().st_size > self.MAX_BYTES:
+                # One rollover is enough for a demo box; the point is that the file
+                # cannot grow without bound between deploys.
+                self.log_path.replace(self.log_path.with_suffix(self.log_path.suffix + ".1"))
             entry = {
                 "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "method": scope.get("method"),
                 "path": scope.get("path"),
-                "query": (scope.get("query_string") or b"").decode("utf-8", "ignore"),
+                # No query string: it can carry applicant-entered values.
                 "traceback": traceback.format_exc(),
             }
             with self.log_path.open("a", encoding="utf-8") as handle:

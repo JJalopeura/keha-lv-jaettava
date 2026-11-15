@@ -456,7 +456,7 @@ def evidence_chunks(
         offset = 0
         while offset < len(text):
             piece = text[offset:offset + chunk_chars].strip()
-            if len(piece) >= 40:
+            if len(piece) >= 40 or (offset == 0 and piece):
                 chunks.append(
                     {
                         "source_id": att.get("id"),

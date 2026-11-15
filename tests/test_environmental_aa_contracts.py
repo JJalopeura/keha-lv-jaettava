@@ -236,3 +236,52 @@ class EvidenceHygieneContractTest(unittest.TestCase):
         text = " ".join(item["text"] for item in selected["excerpts"]).lower()
         self.assertIn("sivutuotteet", text)
         self.assertIn("melumallinnus", text)
+
+
+class ValuePresenceContractTest(unittest.TestCase):
+    """Presence, applicability and evidence edge cases the reviewer found."""
+
+    def test_numeric_zero_is_a_value_not_a_missing_field(self) -> None:
+        from app.domains.lupademo.services.application import deterministic_issues
+
+        issues = deterministic_issues(
+            "building_residential",
+            {"floor_area_m2": 0, "building_height_m": "8.5", "distance_to_boundary_m": "4"},
+            [],
+        )
+        self.assertNotIn("missing_floor_area_m2", {issue.id for issue in issues})
+
+    def test_filling_the_rule_field_makes_a_conditional_rule_apply(self) -> None:
+        from app.domains.lupademo.services.application import _normalize_criteria_results
+
+        criteria = {
+            "permit_type": "environmental_industrial",
+            "rules": [
+                {
+                    "id": "byproducts",
+                    "field_id": "byproducts",
+                    "title": "Sivutuotteet",
+                    "condition": {"field_id": "process_description", "contains_any": ["sivutuote"]},
+                    "severity": "recommendation",
+                }
+            ],
+        }
+        results, _notes = _normalize_criteria_results(
+            [{"criteria_id": "byproducts", "status": "yellow", "rationale": "x"}],
+            criteria,
+            {"byproducts": "Kyllä, haetaan luokittelua.", "process_description": "Prosessit kuvattu."},
+            [],
+        )
+        self.assertEqual(results[0]["status"], "yellow")
+
+    def test_a_too_large_chunk_does_not_end_the_rule_search(self) -> None:
+        chunks = [
+            {"source_id": "a", "title": "a.pdf", "primary_type": "other", "type_tags": [], "delivery_scope": "official_submission", "text": "sivutuote " + "x" * 2000},
+            {"source_id": "b", "title": "b.pdf", "primary_type": "other", "type_tags": [], "delivery_scope": "official_submission", "text": "sivutuote lyhyt maininta."},
+        ]
+        selected = _select_evidence(
+            chunks,
+            [{"id": "byproducts", "title": "Sivutuotteet", "instruction": "sivutuotteet jätelaki"}],
+            budget_chars=600,
+        )
+        self.assertEqual([item["source_id"] for item in selected["excerpts"]], ["b"])

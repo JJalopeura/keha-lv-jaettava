@@ -1411,6 +1411,17 @@ def _link_criteria_to_existing_findings(
     return issues
 
 
+def _filled(value: Any) -> bool:
+    """Presence test that does not turn 0 or False into "missing"."""
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return True
+    return bool(str(value).strip())
+
+
 def deterministic_issues(
     permit_type: str,
     form_data: dict[str, Any],
@@ -1445,8 +1456,7 @@ def deterministic_issues(
     extracted = {str(k): str(v) for k, v in (extracted_values or {}).items() if str(v or "").strip()}
     for schema_field in schema.get("fields", []):
         field_id = str(schema_field["id"])
-        raw_value = form_data.get(field_id)
-        if not schema_field.get("required") or str(raw_value or "").strip() != "":
+        if not schema_field.get("required") or _filled(form_data.get(field_id)):
             continue
         # Criteria findings are advisory (minor-only policy), but a REQUIRED form field is
         # not a criterion: an application cannot be sent with the form unfilled. This is
@@ -2086,7 +2096,8 @@ def _select_evidence(
             if not any(term in text for term in terms):
                 continue
             if used + len(str(chunk.get("text") or "")) + 96 > budget_chars:
-                break
+                # Too big now, but a smaller passage later in the ranking may still fit.
+                continue
             if per_doc.get(str(chunk.get("source_id") or chunk.get("title") or ""), 0) >= EVIDENCE_MAX_CHUNKS_PER_DOC:
                 continue
             take(index, chunk)
@@ -2388,12 +2399,13 @@ def _normalize_criteria_results(
         terms = [str(term).lower() for term in condition.get("contains_any", [])]
         if not condition_field or not terms:
             return True
-        values = [str(form_data.get(condition_field) or "").lower()]
         own_field = str(rule.get("field_id") or "")
-        if own_field and own_field != condition_field:
-            # An applicant can trigger the section by filling it even when the prose the
-            # condition points at does not repeat the keyword.
-            values.append(str(form_data.get(own_field) or "").lower())
+        own_value = _filled(form_data.get(own_field)) if own_field else False
+        if own_value and own_field != condition_field:
+            # Filling the section itself is a deliberate statement that it applies, even
+            # when the prose the condition points at does not repeat the keyword.
+            return True
+        values = [str(form_data.get(condition_field) or "").lower()]
         return any(term in value for term in terms for value in values)
 
     normalized: list[dict[str, Any]] = []
