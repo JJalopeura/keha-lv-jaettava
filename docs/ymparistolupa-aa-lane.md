@@ -137,6 +137,17 @@ the old complete package did — but they stay advisory: only an empty required 
 blocks, criteria are minor-only, and the majors are "merkittävä" review points, not send
 blockers (measured: 0 blocking / 1 major / 7 minor on the 11-file run, gate open).
 
+## No document is mandatory
+
+`required_attachments` is empty for this lane. The applicant's upload *is* the package;
+the check does not invent a mandatory document list on top of it. The only blocking class
+left is an empty required **form** field. The three AA attachments (lähestymiskartta,
+kaavaote, ennaltavarautumissuunnitelma) stay as `minor` criteria requirements, so their
+absence is a Vähäinen finding — never Merkittävä or Estävä.
+
+That also means the wizard's step-2 "Puuttuvat viranomaisliitteet" banner is intentionally
+absent for this permit type; the materials step lists what was uploaded and nothing more.
+
 ## Known limits
 
 - The package has no yleiskartta, kaavaote or prosessikaavio, so those requirements

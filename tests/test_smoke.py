@@ -994,25 +994,23 @@ class Pages(unittest.TestCase):
         self.assertEqual(check_page.status_code, 200)
         self.assertIn("Tekoäly- ja sääntötarkistus", check_page.text)
 
-    def test_missing_official_attachments_link_to_materials_step(self) -> None:
-        fresh_case = db.create_case("Missing official attachments", language="fi")
+    def test_no_document_is_declared_required(self) -> None:
+        """Whatever the applicant uploaded is the package; no document is mandatory.
+
+        The demo lane has no hard-required attachment list, so the materials step must not
+        claim that official attachments are missing. The only blocking class left is an
+        empty required form field.
+        """
+        fresh_case = db.create_case("No required documents", language="fi")
         svc.ensure_seed_state(db, fresh_case)
         svc.run_application_check(db, fresh_case, PERMIT, settings=load_settings())
 
         check_page = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/4")
         materials_page = client.get(f"/cases/{fresh_case}/lupademo/application/{PERMIT}/wizard/2")
 
-        # The AA criteria set ties the lähestymiskartta, the kaavaote and the
-        # ennaltavarautumissuunnitelma to their form sections. With an empty form each
-        # combined rule reports the section (its title), and the required application
-        # document is reported as a missing official attachment.
-        self.assertIn("Hankkeen yleiskuvaus", check_page.text)
-        self.assertIn("Riskit – yleiskuvaus", check_page.text)
-        self.assertIn("Ympäristölupahakemus", check_page.text)
-        self.assertNotIn("Liite liite", check_page.text)
-        self.assertIn("/wizard/2#materials", check_page.text)
-        self.assertIn("Puuttuvat viranomaisliitteet", materials_page.text)
-        self.assertIn("Ympäristölupahakemus", materials_page.text)
+        self.assertNotIn("Puuttuvat viranomaisliitteet", materials_page.text)
+        self.assertNotIn("missing_attachment_", check_page.text)
+        self.assertIn("Hakemuslomakkeelta puuttuu 10 pakollista kenttää", check_page.text)
 
     def test_extraction_suggestion_is_available_under_matching_form_field(self) -> None:
         fresh_case = db.create_case("Inline extraction suggestion", language="fi")

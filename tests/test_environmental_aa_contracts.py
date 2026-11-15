@@ -364,3 +364,23 @@ class PolicyConflictFilterTest(unittest.TestCase):
         self.assertEqual(demoted.type, "incomplete")
         self.assertEqual(demoted.severity, "minor")
         self.assertTrue(demoted.title.startswith("Täsmennettävä:"))
+
+
+class NoMandatoryDocumentContractTest(unittest.TestCase):
+    """No document is hard-required in the demo lane: whatever was uploaded is the package."""
+
+    def test_schema_requires_no_documents(self) -> None:
+        schema = load_form_schema(PERMIT)
+        self.assertEqual(schema.get("required_attachments"), [])
+
+    def test_missing_documents_never_rise_above_minor(self) -> None:
+        from app.domains.lupademo.services.application import deterministic_issues
+
+        issues = deterministic_issues(PERMIT, {}, [])
+        attachment_issues = [issue for issue in issues if issue.attachment_id]
+        for issue in attachment_issues:
+            self.assertIn(
+                issue.severity,
+                {"minor", "recommendation"},
+                f"missing attachment {issue.attachment_id} must be advisory, got {issue.severity}",
+            )

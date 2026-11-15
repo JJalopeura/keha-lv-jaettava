@@ -154,9 +154,7 @@
       "help": "Kuvaa vaikutukset maankäyttöön, kiinteistöjen käyttöön ja häiriöille herkkiin toimintoihin ja kohteisiin. Kerro, miten ympäristössä olevien muiden häiriöitä aiheuttavien toimintojen vaikutus on otettu huomioon hakijan suunnitelmassa."
     }
   ],
-  "required_attachments": [
-    "environmental_application"
-  ],
+  "required_attachments": [],
   "conditional_attachments": [
     "general_map",
     "zoning_extract",
