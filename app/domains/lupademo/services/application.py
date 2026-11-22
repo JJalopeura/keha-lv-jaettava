@@ -2853,6 +2853,30 @@ def _finnish_public_text(text: Any, replacements: dict[str, str]) -> str:
     return clean.strip(" ,;:-")
 
 
+def _plain_ref(ref: Any) -> dict[str, Any] | None:
+    """Evidence refs arrive as dicts or dataclasses; normalise before rewriting text."""
+    if isinstance(ref, dict):
+        return ref
+    if is_dataclass(ref) and not isinstance(ref, type):
+        return asdict(ref)
+    return None
+
+
+def _finnish_refs(refs: Any, replacements: dict[str, str]) -> list[dict[str, Any]]:
+    """Rewrite the source labels of evidence refs; the quoted document text stays verbatim."""
+    clean: list[dict[str, Any]] = []
+    for ref in refs or []:
+        data = _plain_ref(ref)
+        if data is None:
+            continue
+        if data.get("title"):
+            data["title"] = _finnish_public_text(data["title"], replacements)
+        if data.get("locator"):
+            data["locator"] = _finnish_public_text(data["locator"], replacements)
+        clean.append(data)
+    return clean
+
+
 def _finnish_issue_text(issues: list[Issue], criteria: dict[str, Any]) -> list[Issue]:
     replacements = _public_text_replacements(criteria)
     for issue in issues:
@@ -2860,14 +2884,8 @@ def _finnish_issue_text(issues: list[Issue], criteria: dict[str, Any]) -> list[I
         issue.detail = _finnish_public_text(issue.detail, replacements)
         issue.suggested_fix = _finnish_public_text(issue.suggested_fix or "", replacements)
         # "Peruste aineistossa" shows the agent's source label, which can carry a field
-        # id ("Lomakedata: site_location"); the document quote itself stays verbatim.
-        for ref in getattr(issue, "evidence_refs", None) or []:
-            if not isinstance(ref, dict):
-                continue
-            if ref.get("title"):
-                ref["title"] = _finnish_public_text(ref["title"], replacements)
-            if ref.get("locator"):
-                ref["locator"] = _finnish_public_text(ref["locator"], replacements)
+        # id ("Lomakedata: site_location").
+        issue.evidence_refs = _finnish_refs(getattr(issue, "evidence_refs", None), replacements)
     return issues
 
 
@@ -2889,12 +2907,7 @@ def _finnish_review(review: dict[str, Any], criteria: dict[str, Any]) -> dict[st
             item["title"] = _finnish_public_text(item.get("title", ""), replacements)
             item["detail"] = _finnish_public_text(item.get("detail", ""), replacements)
             item["action"] = _finnish_public_text(item.get("action", ""), replacements)
-            for ref in item.get("evidence_refs") or []:
-                if isinstance(ref, dict):
-                    if ref.get("title"):
-                        ref["title"] = _finnish_public_text(ref["title"], replacements)
-                    if ref.get("locator"):
-                        ref["locator"] = _finnish_public_text(ref["locator"], replacements)
+            item["evidence_refs"] = _finnish_refs(item.get("evidence_refs"), replacements)
     return review
 
 

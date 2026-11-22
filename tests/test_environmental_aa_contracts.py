@@ -485,6 +485,27 @@ class FinnishCheckTextTest(unittest.TestCase):
         self.assertEqual(ref["locator"], "Tuotanto ja tuotteet")
         self.assertEqual(ref["quote"], "Metaanin tuotanto 210 GWh/vuosi")
 
+    def test_dataclass_evidence_refs_are_sanitized(self) -> None:
+        """Reconcile verdicts build EvidenceRef objects; those leaked 'criteria' labels."""
+        from app.domains.lupademo.services.application import _finnish_issue_text
+        from app.domains.lupademo.services.domain import EvidenceRef
+
+        issues = _finnish_issue_text(
+            [
+                self._issue(
+                    title="Kaavoitus on osittain täytetty",
+                    detail="Kaavaote puuttuu.",
+                    evidence_refs=[
+                        EvidenceRef(source_id="zoning_context", title="Näyttö kentästä zoning_context", locator="criteria"),
+                    ],
+                ),
+            ],
+            load_criteria(PERMIT),
+        )
+        ref = issues[0].evidence_refs[0]
+        self.assertEqual(ref["locator"], "kriteeristö")
+        self.assertEqual(ref["title"], "Näyttö kentästä Kaavoitus")
+
     def test_english_source_labels_become_finnish(self) -> None:
         from app.domains.lupademo.services.application import _finnish_public_text
 
