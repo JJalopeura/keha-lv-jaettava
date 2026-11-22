@@ -2495,17 +2495,17 @@ def _demote_policy_conflicts(issues: list[Issue], schema_field_ids: set[str] | N
             reclassified += 1
         kept.append(issue)
     if dropped:
-        # The audit trail keeps the decision visible instead of silently losing it.
-        dropped_ids = ", ".join(sorted(str(issue.id) for issue in dropped))
+        # The audit trail keeps the decision visible instead of silently losing it — as a
+        # count, because the applicant must not read internal finding ids.
         kept.append(
             Issue(
                 id="policy_filter_note",
                 type="incomplete",
                 severity="recommendation",
-                title="Tarkistus suodatti policy-tason havaintoja",
+                title="Osa havainnoista ei ole hakemuksen puute",
                 detail=(
-                    "Konsultin Y-tunnusta ja tallentamatonta yhteistä tietoa ei raportoida ristiriitana. "
-                    f"Suodatetut havainnot: {dropped_ids}."
+                    "Konsultin Y-tunnus ja tallentamaton yhteinen tieto eivät ole ristiriitoja "
+                    f"hakemuksen tietojen kanssa. Tällaisia havaintoja rajattiin raportista pois: {len(dropped)} kappaletta."
                 ),
                 suggested_fix="Tallenna muuttuneet tiedot LV:n yhteisiin tietoihin ja tarkista tunnukset.",
                 confidence=0.9,
@@ -2773,6 +2773,94 @@ def _clean_review_title(title: str, criteria: dict[str, Any]) -> str:
             )
     clean = re.sub(r"(?<=\w)_(?:plan|statement|assessment|report)\b", "", clean, flags=re.IGNORECASE)
     return clean[:160]
+
+
+# Internal names that must never reach the applicant's screen as English words.
+_LEAKED_IDENTIFIER = re.compile(r"(?<![A-Za-z0-9_])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![A-Za-z0-9_])")
+_INTERNAL_ISSUE_ID = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:consistency|completeness|criteria|missing|invalid|policy)[-_][A-Za-z0-9][A-Za-z0-9_-]*(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+
+
+def _public_text_replacements(criteria: dict[str, Any]) -> dict[str, str]:
+    """Finnish labels for every internal name that can leak into check text.
+
+    Field ids (`production_capacity`), attachment types (`bat_assessment`) and rule ids
+    are internal names; the applicant-facing report shows the Finnish label instead.
+    """
+    schema = load_form_schema(str(criteria.get("permit_type") or "environmental_industrial"))
+    replacements = dict(REVIEW_ATTACHMENT_LABELS)
+    for field in schema.get("fields", []):
+        field_id = str(field.get("id") or "").strip()
+        label = str(field.get("label") or "").strip()
+        if field_id and label:
+            replacements[field_id] = label
+    for rule in criteria.get("rules", []):
+        if not isinstance(rule, dict):
+            continue
+        rule_id = str(rule.get("id") or "").strip()
+        subject = str(rule.get("attachment_type") or rule.get("field_id") or "").strip()
+        if rule_id and subject and rule_id not in replacements:
+            replacements[rule_id] = _review_subject_label(subject, criteria)
+    return replacements
+
+
+def _finnish_public_text(text: Any, replacements: dict[str, str]) -> str:
+    """Rewrite a check string so it reads as Finnish prose, without internal names.
+
+    A known identifier becomes its Finnish label; an identifier with no label is cut
+    rather than shown as an English word (`consistency-1`, `byproducts`) inside a
+    Finnish sentence.
+    """
+    clean = str(text or "")
+    if not clean:
+        return clean
+    for token, label in sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True):
+        if token and label:
+            clean = re.sub(rf"(?<![\w]){re.escape(token)}(?![\w])", label, clean)
+    clean = _INTERNAL_ISSUE_ID.sub("", clean)
+    clean = _LEAKED_IDENTIFIER.sub("", clean)
+    clean = re.sub(r"['\"`]\s*['\"`]", "", clean)
+    clean = re.sub(r"\(\s*\)", "", clean)
+    # A cut identifier leaves its punctuation behind ("Havainnot: 1, 2." would lose
+    # its list); tidy the seams rather than leaving ":." or ":,." in the sentence.
+    for _ in range(2):
+        clean = re.sub(r"\s*[:;,]+\s*(?=[.,;:])", "", clean)
+    clean = re.sub(r"\s+([,.;:])", r"\1", clean)
+    clean = re.sub(r"([,;:])\s*$", ".", clean)
+    clean = re.sub(r"\s{2,}", " ", clean)
+    return clean.strip(" ,;:-")
+
+
+def _finnish_issue_text(issues: list[Issue], criteria: dict[str, Any]) -> list[Issue]:
+    replacements = _public_text_replacements(criteria)
+    for issue in issues:
+        issue.title = _finnish_public_text(issue.title, replacements)
+        issue.detail = _finnish_public_text(issue.detail, replacements)
+        issue.suggested_fix = _finnish_public_text(issue.suggested_fix or "", replacements)
+    return issues
+
+
+def _finnish_criteria_results(results: list[dict[str, Any]], criteria: dict[str, Any]) -> list[dict[str, Any]]:
+    replacements = _public_text_replacements(criteria)
+    for result in results:
+        if isinstance(result, dict) and result.get("rationale"):
+            result["rationale"] = _finnish_public_text(result["rationale"], replacements)
+    return results
+
+
+def _finnish_review(review: dict[str, Any], criteria: dict[str, Any]) -> dict[str, Any]:
+    """Same Finnish-only rule for the AI-written review cards."""
+    replacements = _public_text_replacements(criteria)
+    for key in ("strengths", "improvements"):
+        for item in review.get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            item["title"] = _finnish_public_text(item.get("title", ""), replacements)
+            item["detail"] = _finnish_public_text(item.get("detail", ""), replacements)
+            item["action"] = _finnish_public_text(item.get("action", ""), replacements)
+    return review
 
 
 def _clean_review_evidence_refs(raw_refs: Any, catalog: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -3083,6 +3171,9 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
         rule_titles=rule_labels,
     )
     reconciliation_notes = [*criteria_notes, *link_notes, *reconciliation_notes]
+    # The applicant reads these strings, so internal names never travel with them.
+    issues = _finnish_issue_text(issues, active_criteria or {})
+    criteria_results = _finnish_criteria_results(criteria_results, active_criteria or {})
     rules_total = len((active_criteria or {}).get("rules") or [])
     counts, score, readiness = _derive_check_verdict(issues, criteria_results, criteria_expected=rules_total)
     blocked = [i for i in issues if i.severity == "blocking" and not i.resolved]
@@ -3203,6 +3294,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             attachments,
             app.get("form_data", {}),
         )
+        review = _finnish_review(review, active_criteria or {})
         report_payload["review"] = review
         report_payload["ai_summary"] = precheck_dict.get("summary") or ""
         report_payload["summary"] = response.summary
@@ -5132,6 +5224,8 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         rule_titles=rule_labels,
     )
     reconciliation_notes = [*criteria_notes, *link_notes, *reconciliation_notes]
+    issues = _finnish_issue_text(issues, active_criteria or {})
+    criteria_results = _finnish_criteria_results(criteria_results, active_criteria or {})
     rules_total = len((active_criteria or {}).get("rules") or [])
     counts, score, readiness = _derive_check_verdict(issues, criteria_results, criteria_expected=rules_total)
     incomplete_agents = _incomplete_agents(criteria_results, rules_total)
@@ -5173,14 +5267,17 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
     )
     result = asdict(response)
     result["provider"] = "azure" if settings is not None else "deterministic"
-    result["review"] = _build_applicant_review(
-        {},
-        response.summary,
-        issues,
-        criteria_results,
+    result["review"] = _finnish_review(
+        _build_applicant_review(
+            {},
+            response.summary,
+            issues,
+            criteria_results,
+            active_criteria or {},
+            req.attachments,
+            req.form_data,
+        ),
         active_criteria or {},
-        req.attachments,
-        req.form_data,
     )
     return _pixie_wrap(
         result,

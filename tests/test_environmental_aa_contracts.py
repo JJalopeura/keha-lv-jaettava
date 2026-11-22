@@ -428,3 +428,69 @@ class NoMandatoryDocumentContractTest(unittest.TestCase):
         ])
         kept = next(issue for issue in issues if issue.id == "consistency-9")
         self.assertEqual(kept.severity, "major")
+
+
+class FinnishCheckTextTest(unittest.TestCase):
+    """Applicant-facing check text is Finnish, never internal English identifiers.
+
+    The check screen — "Muut parannusehdotukset" in particular — is read by the
+    applicant. Field ids (`production_capacity`), attachment types (`byproducts`) and
+    finding ids (`consistency-1`) are internal names and must not surface there.
+    """
+
+    def _issue(self, **kwargs):
+        from app.domains.lupademo.services.domain import Issue
+
+        base = dict(id="x", type="incomplete", severity="minor", title="", detail="", confidence=0.8)
+        base.update(kwargs)
+        return Issue(**base)
+
+    def test_issue_text_replaces_internal_names_with_finnish_labels(self) -> None:
+        from app.domains.lupademo.services.application import _finnish_issue_text
+
+        issues = _finnish_issue_text(
+            [
+                self._issue(
+                    id="consistency-1",
+                    title="Täsmennettävä: production_capacity",
+                    detail="Lomakkeen byproducts-kohdassa viitataan liitteeseen bat_assessment.",
+                    suggested_fix="Täydennä byproducts ja tarkista zoning_context.",
+                ),
+            ],
+            load_criteria(PERMIT),
+        )
+        text = " ".join([issues[0].title, issues[0].detail, issues[0].suggested_fix])
+        self.assertNotRegex(text, r"[a-z]+_[a-z]+")
+        self.assertIn("Tuotanto ja tuotteet", text)
+        self.assertIn("Sivutuotteet", text)
+        self.assertIn("BAT-arviointi", text)
+
+    def test_unknown_identifiers_are_cut_rather_than_shown(self) -> None:
+        from app.domains.lupademo.services.application import _finnish_public_text
+
+        text = _finnish_public_text(
+            "Havainto koskee kenttää unknown_metric ja havaintoa consistency-7.",
+            {},
+        )
+        self.assertNotIn("unknown_metric", text)
+        self.assertNotIn("consistency-7", text)
+        self.assertTrue(text.startswith("Havainto koskee kenttää"))
+
+    def test_policy_note_counts_findings_instead_of_naming_them(self) -> None:
+        from app.domains.lupademo.services.application import _demote_policy_conflicts
+
+        issues = _demote_policy_conflicts(
+            [
+                self._issue(
+                    id="consistency-2",
+                    type="inconsistent",
+                    title="Hakijan Y-tunnuksen ristiriita lomakedatan ja liitteen välillä",
+                    detail="Liitteen on laatinut AFRY Finland Oy ja sen Y-tunnus 0625905-6 poikkeaa hakijan Y-tunnuksesta.",
+                ),
+            ]
+        )
+        note = next(issue for issue in issues if issue.id == "policy_filter_note")
+        visible = " ".join([note.title, note.detail, note.suggested_fix or ""])
+        self.assertNotIn("consistency", visible)
+        self.assertNotIn("policy", visible)
+        self.assertIn("1", visible)

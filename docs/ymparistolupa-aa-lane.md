@@ -90,7 +90,12 @@ Two copy/fidelity fixes around the same area:
 - a missing attachment now names the attachment ("Lähestymis- / yleiskartta puuttuu")
   rather than the section that is already filled ("Hankkeen yleiskuvaus puuttuu");
 - an agent that answers with a criterion **title** instead of its id is mapped back
-  instead of dropped, and a non-applicable conditional rule is forced green.
+  instead of dropped, and a non-applicable conditional rule is forced green;
+- applicant-facing check text is Finnish only (`_finnish_issue_text`): a field id
+  (`production_capacity`), attachment type (`byproducts`) or finding id
+  (`consistency-1`) becomes its Finnish label or is cut, so "Muut parannusehdotukset"
+  never shows internal English names. The policy note reports a count of filtered
+  findings instead of naming them.
 
 ## Measured end-to-end (2026-11-15, local, real Foundry)
 
