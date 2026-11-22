@@ -465,6 +465,33 @@ class FinnishCheckTextTest(unittest.TestCase):
         self.assertIn("Sivutuotteet", text)
         self.assertIn("BAT-arviointi", text)
 
+    def test_evidence_source_labels_are_finnish_too(self) -> None:
+        from app.domains.lupademo.services.application import _finnish_issue_text
+
+        issues = _finnish_issue_text(
+            [
+                self._issue(
+                    title="Prosessikuvaus on ylimalkainen",
+                    detail="Kuvaus jää ylätasolle.",
+                    evidence_refs=[
+                        {"source_id": "form_data", "title": "Lomakedata: production_capacity", "locator": "production_capacity", "quote": "Metaanin tuotanto 210 GWh/vuosi"},
+                    ],
+                ),
+            ],
+            load_criteria(PERMIT),
+        )
+        ref = issues[0].evidence_refs[0]
+        self.assertEqual(ref["title"], "Lomakedata: Tuotanto ja tuotteet")
+        self.assertEqual(ref["locator"], "Tuotanto ja tuotteet")
+        self.assertEqual(ref["quote"], "Metaanin tuotanto 210 GWh/vuosi")
+
+    def test_english_source_labels_become_finnish(self) -> None:
+        from app.domains.lupademo.services.application import _finnish_public_text
+
+        self.assertEqual(_finnish_public_text("help", {}), "ohje")
+        self.assertEqual(_finnish_public_text("criteria", {}), "kriteeristö")
+        self.assertEqual(_finnish_public_text("Form_data", {}), "lomakedata")
+
     def test_unknown_identifiers_are_cut_rather_than_shown(self) -> None:
         from app.domains.lupademo.services.application import _finnish_public_text
 

@@ -2783,6 +2783,24 @@ _INTERNAL_ISSUE_ID = re.compile(
 )
 
 
+# Agent-written source labels: "help", "criteria", "document" are English words that
+# would otherwise sit next to Finnish text in the evidence disclosure.
+_PUBLIC_WORD_LABELS = {
+    "help": "ohje",
+    "criteria": "kriteeristö",
+    "criterion": "kriteeri",
+    "form_data": "lomakedata",
+    "formdata": "lomakedata",
+    "evidence": "lähde",
+    "document": "asiakirja",
+    "policy": "toimintaperiaate",
+    "confidence": "luottamus",
+    "high": "korkea",
+    "medium": "keskitaso",
+    "low": "matala",
+}
+
+
 def _public_text_replacements(criteria: dict[str, Any]) -> dict[str, str]:
     """Finnish labels for every internal name that can leak into check text.
 
@@ -2819,6 +2837,8 @@ def _finnish_public_text(text: Any, replacements: dict[str, str]) -> str:
     for token, label in sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True):
         if token and label:
             clean = re.sub(rf"(?<![\w]){re.escape(token)}(?![\w])", label, clean)
+    for word, label in _PUBLIC_WORD_LABELS.items():
+        clean = re.sub(rf"(?<![\w]){re.escape(word)}(?![\w])", label, clean, flags=re.IGNORECASE)
     clean = _INTERNAL_ISSUE_ID.sub("", clean)
     clean = _LEAKED_IDENTIFIER.sub("", clean)
     clean = re.sub(r"['\"`]\s*['\"`]", "", clean)
@@ -2839,6 +2859,15 @@ def _finnish_issue_text(issues: list[Issue], criteria: dict[str, Any]) -> list[I
         issue.title = _finnish_public_text(issue.title, replacements)
         issue.detail = _finnish_public_text(issue.detail, replacements)
         issue.suggested_fix = _finnish_public_text(issue.suggested_fix or "", replacements)
+        # "Peruste aineistossa" shows the agent's source label, which can carry a field
+        # id ("Lomakedata: site_location"); the document quote itself stays verbatim.
+        for ref in getattr(issue, "evidence_refs", None) or []:
+            if not isinstance(ref, dict):
+                continue
+            if ref.get("title"):
+                ref["title"] = _finnish_public_text(ref["title"], replacements)
+            if ref.get("locator"):
+                ref["locator"] = _finnish_public_text(ref["locator"], replacements)
     return issues
 
 
@@ -2860,6 +2889,12 @@ def _finnish_review(review: dict[str, Any], criteria: dict[str, Any]) -> dict[st
             item["title"] = _finnish_public_text(item.get("title", ""), replacements)
             item["detail"] = _finnish_public_text(item.get("detail", ""), replacements)
             item["action"] = _finnish_public_text(item.get("action", ""), replacements)
+            for ref in item.get("evidence_refs") or []:
+                if isinstance(ref, dict):
+                    if ref.get("title"):
+                        ref["title"] = _finnish_public_text(ref["title"], replacements)
+                    if ref.get("locator"):
+                        ref["locator"] = _finnish_public_text(ref["locator"], replacements)
     return review
 
 
