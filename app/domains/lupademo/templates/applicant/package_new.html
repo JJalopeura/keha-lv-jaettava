@@ -96,9 +96,21 @@
     }));
     zipName.textContent = zip.files && zip.files[0] ? zip.files[0].name : "Ei valittua tiedostoa";
     const hasMaterial = chosen.length > 0 || (zip.files && zip.files.length > 0) || textarea.value.trim().length > 0;
-    const ready = hasMaterial && municipality.value.trim() && projectName.value.trim();
-    submit.disabled = !ready;
-    hint.textContent = hasMaterial ? `${chosen.length + (zip.files && zip.files.length ? 1 : 0)} tiedostoa valittu. Voit jatkaa.` : "Valitse vähintään yksi tiedosto tai lisää hankkeen kuvaus.";
+    const fileCount = chosen.length + (zip.files && zip.files.length ? 1 : 0);
+    const missing = [];
+    if (!projectName.value.trim()) missing.push("hankkeen nimi");
+    if (!municipality.value.trim()) missing.push("kunta");
+    // A disabled submit button cannot show why it is disabled: browser validation never
+    // runs on it. So material is the only hard gate, and the hint names what is still
+    // empty instead — the `required` attributes then validate on submit.
+    submit.disabled = !hasMaterial;
+    if (!hasMaterial) {
+      hint.textContent = "Valitse vähintään yksi tiedosto tai lisää hankkeen kuvaus.";
+    } else if (missing.length) {
+      hint.textContent = `${fileCount} tiedostoa valittu. Täytä vielä ${missing.join(" ja ")}.`;
+    } else {
+      hint.textContent = `${fileCount} tiedostoa valittu. Voit jatkaa.`;
+    }
   }
   files.addEventListener("change", render);
   zip.addEventListener("change", render);
