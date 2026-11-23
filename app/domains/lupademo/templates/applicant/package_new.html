@@ -8,17 +8,17 @@
   <span><b>3</b> Lähetys viranomaiselle</span>
 </nav>
 
-<form method="post" enctype="multipart/form-data" action="/applicant/packages/new" class="setup-layout" data-upload-form>
+<form method="post" enctype="multipart/form-data" action="/applicant/packages/new" class="setup-layout" data-upload-form novalidate>
   <section class="form-section" aria-labelledby="project-details">
     <div class="form-section-heading"><div><h2 id="project-details">Hankkeen yhteiset tiedot</h2></div></div>
     <div class="field-grid">
-      <label class="wide-field">Hankkeen nimi<input name="project_name" value="{{ profile.get('project_name', '') }}" placeholder="Esimerkiksi Koivutien pientalo" required></label>
+      <label class="wide-field">Hankkeen nimi<input name="project_name" value="{{ profile.get('project_name', '') }}" placeholder="Esimerkiksi Koivutien pientalo" data-field-label="hankkeen nimi" required></label>
       <label class="wide-field">Hakija<input name="applicant_name" value="{{ profile.get('applicant_name', '') }}" autocomplete="organization"></label>
       <label>Y-tunnus<input name="business_id" value="{{ profile.get('business_id', '') }}" autocomplete="off"></label>
       <label>Yhteyshenkilö<input name="contact_person" value="{{ profile.get('contact_person', '') }}" autocomplete="name"></label>
       <label>Puhelin<input type="tel" name="phone" value="{{ profile.get('phone', '') }}" autocomplete="tel"></label>
       <label class="wide-field">Sähköposti<input type="email" name="email" value="{{ profile.get('email', '') }}" autocomplete="email"></label>
-      <label>Kunta<input name="municipality" value="{{ profile.get('municipality', '') }}" autocomplete="address-level2" required></label>
+      <label>Kunta<input name="municipality" value="{{ profile.get('municipality', '') }}" autocomplete="address-level2" data-field-label="kunta" required></label>
       <label class="wide-field">Osoite<input name="address" value="{{ profile.get('address', '') }}" autocomplete="street-address"></label>
       <label class="wide-field">Kiinteistötunnus<input name="property_id" value="" autocomplete="off"></label>
       <label class="wide-field">Hankkeen yleiskuvaus<textarea name="permit_basis" rows="3">{{ profile.get('permit_basis', '') }}</textarea></label>
@@ -119,7 +119,16 @@
   projectName.addEventListener("input", render);
   ["dragenter", "dragover"].forEach((eventName) => dropzone.addEventListener(eventName, () => dropzone.classList.add("drag-active")));
   ["dragleave", "drop"].forEach((eventName) => dropzone.addEventListener(eventName, () => dropzone.classList.remove("drag-active")));
-  form.addEventListener("submit", () => {
+  form.addEventListener("submit", (event) => {
+    // Custom validation so the message is Finnish wherever the browser runs: a native
+    // bubble would appear in the browser's own language in the middle of a Finnish form.
+    const missingField = Array.from(form.querySelectorAll("[required]")).find((field) => !field.value.trim());
+    if (missingField) {
+      event.preventDefault();
+      missingField.focus();
+      hint.textContent = `Täytä vielä ${missingField.getAttribute("data-field-label") || missingField.name} ennen jatkamista.`;
+      return;
+    }
     submit.disabled = true;
     submit.innerHTML = 'Hanke ja aineisto tallennetaan <span aria-hidden="true">…</span>';
     hint.textContent = "Siirryt seuraavaksi Kevyt integraatioon. Aineisto käsitellään taustalla.";
