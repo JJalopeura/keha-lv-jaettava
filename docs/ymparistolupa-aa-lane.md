@@ -33,13 +33,15 @@ hanke" description and the Kevytasiointi form still carry over.
 ## Criteria: ten rules, guidance as the instruction
 
 `app/domains/lupademo/specs/criteria_sets/national_environmental_industrial_demo_v1.json`
-(`version: 2026-12-demo-2`)
+(`version: 2026-12-demo-3`)
 
 One rule per section; rule `id` equals the field id, `title` equals the section label,
-and `instruction` is the AA guidance text verbatim. Severities stay `minor` /
-`recommendation` (the minor-only policy is unchanged), so criteria findings never block a
-submission. The three attachments the guidance names are the only attachment
-requirements:
+and `instruction` states what the section must contain ("Kuvauksesta pitää löytyä …") —
+the wording the domain reviewer, Sinikka Dahl, gave the rules on 23.11.2026. Every rule is
+`major`: a finding reads "Merkittävä" but stays advisory for the submit gate (only a
+missing required form field or a *red* criterion can close it; none of the ten has come
+back red on the demo package). The three attachments the guidance names are the only
+attachment requirements:
 
 - `permit_basis` → `general_map` (lähestymis-/yleiskartta 1:100 000–1:200 000)
 - `zoning_context` → `zoning_extract` (kaavaote)
@@ -82,8 +84,31 @@ things followed:
 A missing **required form field** is blocking again (`deterministic_issues`). Criteria are
 advisory by policy, but the submit gate must still mean something: without this, an empty
 form would be submittable because no criterion can produce a blocking finding. Prepared
-applications fill every required field, so the minor-only gate still yields zero
-blocking/major for them.
+applications fill every required field, so the gate yields zero blocking on them.
+
+Severities are `major` since 2026-12-demo-3 (the reviewer's call), which changes the tone
+of the report, not the gate: majors are counted and shown, only blocking findings and red
+criteria block.
+
+## Criteria storage: one definition, every hanke
+
+Field report: the reviewer edited the ten Ympäristölupa rules in the admin view, the edit
+showed, and the next new test hanke checked against the old rules. The cause was storage,
+not the editor — `criteria_set` was an artifact keyed `{case_id}:criteria_set:{name}`, so
+every hanke was seeded from the bundled JSON and an edit never left the hanke it was made
+in.
+
+Criteria now live in a store keyed only by permit type (and city, where variants exist):
+`services/criteria.py` writes and reads `__criteria_store__:criteria_set:{name}` and
+keeps the case artifact as a write-through mirror. Consequences, by design:
+
+- an edit made in any hanke applies immediately to every hanke and to hankkeet created
+  later, and new checks report the new `criteria_version`;
+- the version history is shared, so the admin page in a brand-new hanke shows what was
+  changed and when;
+- the bundled JSON is the factory default; it is taken while the store copy is unedited,
+  and a store copy that carries `updated_by` (a real edit) is never overwritten by a
+  later shipped default.
 
 Two copy/fidelity fixes around the same area:
 
@@ -139,8 +164,8 @@ the current package only.
 
 Because the current package is thinner, a *correct* check shows **more** suggestions than
 the old complete package did — but they stay advisory: only an empty required form field
-blocks, criteria are minor-only, and the majors are "merkittävä" review points, not send
-blockers (measured: 0 blocking / 1 major / 7 minor on the 11-file run, gate open).
+or a red criterion blocks, and the majors are "merkittävä" review points, not send
+blockers (measured: 0 blocking / 1–2 major / 5–8 minor on the 11-file run, gate open).
 
 ## Step 1 inherits step 3
 

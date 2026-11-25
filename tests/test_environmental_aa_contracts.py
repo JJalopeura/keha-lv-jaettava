@@ -60,7 +60,10 @@ class EnvironmentalSchemaContractTest(unittest.TestCase):
             self.assertTrue(str(rule.get("title") or "").strip(), f"rule {rule['id']} lacks a title")
             self.assertGreater(len(str(rule.get("instruction") or "")), 40, f"rule {rule['id']} instruction is a stub")
             self.assertTrue(str(rule.get("basis") or "").strip(), f"rule {rule['id']} lacks a basis")
-            self.assertIn(str(rule.get("severity")), {"minor", "recommendation"}, f"rule {rule['id']} is not advisory")
+            # 2026-12-demo-3: the domain reviewer raised every AA section to major, so a
+            # finding reads "Merkittävä". Major findings are advisory for the submit gate
+            # (only a blocking finding or a red criterion can close it).
+            self.assertEqual(str(rule.get("severity")), "major", f"rule {rule['id']} lost its reviewed severity")
 
     def test_form_fields_carry_the_aa_help_text(self) -> None:
         for field in self.schema["fields"]:
@@ -380,7 +383,8 @@ class NoMandatoryDocumentContractTest(unittest.TestCase):
         schema = load_form_schema(PERMIT)
         self.assertEqual(schema.get("required_attachments"), [])
 
-    def test_missing_documents_never_rise_above_minor(self) -> None:
+    def test_missing_documents_are_advisory_never_blocking(self) -> None:
+        """No document is mandatory: a missing attachment may be major, never blocking."""
         from app.domains.lupademo.services.application import deterministic_issues
 
         issues = deterministic_issues(PERMIT, {}, [])
@@ -388,8 +392,8 @@ class NoMandatoryDocumentContractTest(unittest.TestCase):
         for issue in attachment_issues:
             self.assertIn(
                 issue.severity,
-                {"minor", "recommendation"},
-                f"missing attachment {issue.attachment_id} must be advisory, got {issue.severity}",
+                {"minor", "major", "recommendation"},
+                f"missing attachment {issue.attachment_id} must stay advisory, got {issue.severity}",
             )
 
     def test_invented_field_ids_do_not_claim_form_fields_are_missing(self) -> None:

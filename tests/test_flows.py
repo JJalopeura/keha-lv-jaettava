@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import app.domains.lupademo.services as svc  # noqa: E402
+from app.domains.lupademo.services import criteria as criteria_svc  # noqa: E402
 from app.domains.lupademo.routes import create_lupademo_router  # noqa: E402
 from app.infra.session import DemoSessionMiddleware  # noqa: E402
 from app.infra.config import load_settings  # noqa: E402
@@ -84,6 +85,9 @@ class ApplicantJourney(unittest.TestCase):
 
     def setUp(self) -> None:
         client.post("/logout")
+        # Criteria are one global definition per permit type (that is the point of the
+        # store), so a test that edits them must not leak into the next test.
+        db.delete_artifacts(criteria_svc.CRITERIA_STORE)
 
     def test_building_check_uses_target_municipality_criteria(self) -> None:
         """A municipality-specific rule changes the deterministic check result."""
@@ -376,7 +380,7 @@ class ApplicantJourney(unittest.TestCase):
         svc.ensure_seed_state(db, rule_case)
         criteria = svc.effective_criteria(db, rule_case, "building_residential", "Kerava")
         criteria["rules"] = [{"id": "clearable", "field_id": "noise_context", "attachment_type": "noise_model", "severity": "major"}]
-        svc.save_artifact(db, rule_case, "criteria_set", "building_residential:kerava", criteria)
+        svc.save_artifact(db, criteria_svc.CRITERIA_STORE, "criteria_set", "building_residential:kerava", criteria)
 
         updated = svc.upsert_criteria_rule(
             db,
@@ -453,7 +457,8 @@ class ApplicantJourney(unittest.TestCase):
         active = svc.effective_criteria(db, identity_case, "building_residential", "Kerava")
         active["criteria_set_id"] = "replacement-criteria-set"
         active["version"] = result["criteria_version"]
-        svc.save_artifact(db, identity_case, "criteria_set", "building_residential:kerava", active)
+        # The store is what every hanke reads: change the identity there.
+        svc.save_artifact(db, criteria_svc.CRITERIA_STORE, "criteria_set", "building_residential:kerava", active)
         current = svc.effective_criteria(db, identity_case, "building_residential", "Kerava")
 
         self.assertEqual(original["criteria_version"], current["version"])
@@ -467,7 +472,7 @@ class ApplicantJourney(unittest.TestCase):
 
         active = svc.effective_criteria(db, gate_case, "building_residential", "Kerava")
         active["criteria_set_id"] = "replacement-precheck-set"
-        svc.save_artifact(db, gate_case, "criteria_set", "building_residential:kerava", active)
+        svc.save_artifact(db, criteria_svc.CRITERIA_STORE, "criteria_set", "building_residential:kerava", active)
         gate = svc.precheck_gate_status(db, gate_case, "building_residential")
 
         self.assertFalse(gate["is_fresh"])
@@ -479,7 +484,7 @@ class ApplicantJourney(unittest.TestCase):
         svc.update_application_data(db, suggestion_case, "building_residential", {"municipality": "Kerava"})
         active = svc.effective_criteria(db, suggestion_case, "building_residential", "Kerava")
         active["version"] = "kerava-edited-suggestion"
-        svc.save_artifact(db, suggestion_case, "criteria_set", "building_residential:kerava", active)
+        svc.save_artifact(db, criteria_svc.CRITERIA_STORE, "criteria_set", "building_residential:kerava", active)
 
         suggestion = svc.create_field_suggestion(db, suggestion_case, "building_residential", "project_description")
 
@@ -503,7 +508,7 @@ class ApplicantJourney(unittest.TestCase):
         svc.update_application_data(db, chat_case, "building_residential", {"municipality": "Kerava"})
         active = svc.effective_criteria(db, chat_case, "building_residential", "Kerava")
         active["version"] = "kerava-edited-chat"
-        svc.save_artifact(db, chat_case, "criteria_set", "building_residential:kerava", active)
+        svc.save_artifact(db, criteria_svc.CRITERIA_STORE, "criteria_set", "building_residential:kerava", active)
 
         svc.contextual_chat_answer(db, chat_case, "building_residential", "Ehdota project_description")
         pending = svc.artifact_json(db, chat_case, "ai_suggestions", "building_residential", {"suggestions": []})

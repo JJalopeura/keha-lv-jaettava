@@ -34,6 +34,24 @@ CRITERIA_BY_MUNICIPALITY: dict[str, dict[str, str]] = {
 
 SEVERITY_ORDER = {"recommendation": 0, "minor": 1, "major": 2, "blocking": 3}
 
+# Criteria are a national, permit-type-level definition, not per-hanke state. The
+# artifacts below hold the version every hanke reads, so an edit made in one case
+# applies to all cases and to hankkeet created later. Case-level artifacts remain as a
+# write-through mirror for the admin page and for older stored artifacts.
+CRITERIA_STORE = "__criteria_store__"
+
+
+def _store_get(db: Any, kind: str, name: str) -> dict[str, Any]:
+    return artifact_json(db, CRITERIA_STORE, kind, name, {})
+
+
+def _store_put(db: Any, kind: str, name: str, data: dict[str, Any]) -> None:
+    save_artifact(db, CRITERIA_STORE, kind, name, data)
+
+
+def _criteria_is_edited(criteria: dict[str, Any]) -> bool:
+    return bool(str(criteria.get("updated_by") or "").strip()) or "-edited-" in str(criteria.get("version") or "")
+
 
 def _normalize_municipality(value: Any) -> str:
     return str(value or "").strip().lower()
@@ -90,6 +108,7 @@ def create_city_criteria(db: Any, case_id: str, municipality: str, editor: str =
         criteria["updated_at"] = time.time()
         criteria["updated_by"] = editor
         save_artifact(db, case_id, "criteria_set", name, criteria)
+        _store_put(db, "criteria_set", name, criteria)
         event(db, case_id, "criteria.city.created", "City criteria created", {"permit_type": permit_type, "municipality": city})
         if not result:
             result = criteria
@@ -120,29 +139,43 @@ def load_criteria(permit_type: str, municipality: Any = None) -> dict[str, Any]:
 
 
 def effective_criteria(db: Any, case_id: str, permit_type: str, municipality: Any = None) -> dict[str, Any]:
+    """Return the current criteria set for a permit type — the same for every hanke.
+
+    The store holds the one authoritative version; a case never pins its own copy, so
+    criteria edited in the admin view apply immediately to every hanke and every later
+    check. The bundled JSON is the factory default, used until someone edits.
+    """
     permit_type = application_id_for(permit_type)
     name = _criteria_name(permit_type, municipality)
-    art = artifact_json(db, case_id, "criteria_set", name, {})
     requested_city = _normalize_municipality(municipality) if permit_type in CRITERIA_BY_MUNICIPALITY else ""
-    if art and (not requested_city or _normalize_municipality(art.get("municipality")) == requested_city):
-        bundled = load_criteria(permit_type, municipality)
-        if (
-            str(art.get("criteria_set_id") or "") == str(bundled.get("criteria_set_id") or "")
-            and str(art.get("version") or "") != str(bundled.get("version") or "")
-            and not str(art.get("updated_by") or "").strip()
-            and "-edited-" not in str(art.get("version") or "")
-        ):
-            # Bundled built-in criteria advanced without admin edits — refresh the
-            # persisted copy so existing cases pick up the new rules automatically.
-            criteria = copy.deepcopy(bundled)
-            save_artifact(db, case_id, "criteria_set", name, criteria)
-            return criteria
-        return art
-    criteria = load_criteria(permit_type, municipality)
-    criteria_city = _normalize_municipality(criteria.get("municipality"))
-    if requested_city and criteria_city != requested_city:
+    bundled = load_criteria(permit_type, municipality)
+    criteria = _store_get(db, "criteria_set", name)
+    if criteria and requested_city and _normalize_municipality(criteria.get("municipality")) != requested_city:
+        criteria = {}
+    if not criteria:
+        if requested_city and _normalize_municipality(bundled.get("municipality")) != requested_city:
+            # No city-specific set exists for this municipality: keep the national
+            # default rather than storing it under a city name.
+            return bundled
+        criteria = copy.deepcopy(bundled)
+        _store_put(db, "criteria_set", name, criteria)
+    elif (
+        not _criteria_is_edited(criteria)
+        and str(criteria.get("criteria_set_id") or "") == str(bundled.get("criteria_set_id") or "")
+        and str(criteria.get("version") or "") != str(bundled.get("version") or "")
+    ):
+        # A shipped default advanced and nobody has edited the set: take the new default.
+        criteria = copy.deepcopy(bundled)
+        _store_put(db, "criteria_set", name, criteria)
+    if requested_city and _normalize_municipality(criteria.get("municipality")) != requested_city:
         return criteria
-    if not requested_city or criteria_city == requested_city:
+    # Mirror to the case so the admin page and any older reader see the same version.
+    mirror = artifact_json(db, case_id, "criteria_set", name, {})
+    if (
+        not mirror
+        or str(mirror.get("version") or "") != str(criteria.get("version") or "")
+        or str(mirror.get("updated_by") or "") != str(criteria.get("updated_by") or "")
+    ):
         save_artifact(db, case_id, "criteria_set", name, criteria)
     return criteria
 
@@ -179,12 +212,21 @@ def save_criteria_version(db: Any, case_id: str, permit_type: str, criteria: dic
     criteria["updated_by"] = editor
     save_artifact(db, case_id, "criteria_history", name, history)
     save_artifact(db, case_id, "criteria_set", name, criteria)
+    # The store is what every hanke reads: persist the edit there too, with its history.
+    store_history = _store_get(db, "criteria_history", name) or {"versions": []}
+    store_history.setdefault("versions", []).append({"ts": time.time(), "editor": editor, "action": "replaced", "criteria": current})
+    _store_put(db, "criteria_history", name, store_history)
+    _store_put(db, "criteria_set", name, criteria)
     event(db, case_id, "criteria.updated", "Criteria set updated", {"permit_type": permit_type, "municipality": _normalize_municipality(municipality), "version": criteria.get("version")})
+    event(db, case_id, "criteria.promoted", "Criteria set promoted to every hanke", {"permit_type": permit_type, "municipality": _normalize_municipality(municipality), "version": criteria.get("version")})
     return criteria
 
 
 def criteria_history(db: Any, case_id: str, permit_type: str, municipality: Any = None) -> dict[str, Any]:
     name = _criteria_name(application_id_for(permit_type), municipality)
+    stored = _store_get(db, "criteria_history", name)
+    if stored.get("versions"):
+        return stored
     return artifact_json(db, case_id, "criteria_history", name, {"versions": []})
 
 

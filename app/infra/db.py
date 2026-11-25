@@ -290,6 +290,15 @@ class DB:
             row = conn.execute("SELECT * FROM artifacts WHERE id=?", (f"{case_id}:{type_}:{name}",)).fetchone()
         return self._artifact_row(row)
 
+    def delete_artifacts(self, case_id: str, type_: Optional[str] = None) -> int:
+        """Delete a case's artifacts, or only one artifact type. Returns the row count."""
+        with self._conn() as conn:
+            if type_:
+                cursor = conn.execute("DELETE FROM artifacts WHERE case_id=? AND type=?", (case_id, type_))
+            else:
+                cursor = conn.execute("DELETE FROM artifacts WHERE case_id=?", (case_id,))
+            return cursor.rowcount or 0
+
     def list_artifacts(self, case_id: str) -> list[dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute("SELECT * FROM artifacts WHERE case_id=? ORDER BY updated_at DESC", (case_id,))

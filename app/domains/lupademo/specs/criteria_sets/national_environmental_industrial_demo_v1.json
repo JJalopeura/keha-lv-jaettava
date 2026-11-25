@@ -3,7 +3,7 @@
   "tenant_id": "avi_demo",
   "municipality": "",
   "permit_type": "environmental_industrial",
-  "version": "2026-12-demo-2",
+  "version": "2026-12-demo-3",
   "status": "active",
   "sources": [
     "Ympäristölupahakemuksen täyttöohjeet, Asiointipalvelu (AA): Tiivistelmä, Taustatiedot, Toiminta, Riskit, Ympäristö, päästöt ja vaikutukset",
@@ -30,42 +30,42 @@
       "title": "Hankkeen yleiskuvaus (hakijan laatima kuvaus)",
       "field_id": "permit_basis",
       "attachment_type": "general_map",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Tiivistelmä — hakijan laatima kuvaus",
-      "instruction": "Kirjoita lyhyt ja helposti ymmärrettävä kuvaus hakemuksen pääasioista yleisöä ja viranomaisia varten. Kerro tiivistelmässä hankkeen sijainti, tarkoitus ja tarve, yleiskuvaus ja aikataulu sekä vaikutukset ja vaikutusalue. Vesilain mukaisissa hankkeissa kerro lisäksi tiedot vesistöstä tai vesialueesta, jolla hanke sijaitsee, ja toimenpiteet, jotka edellyttävät vesilain lupaa. Ympäristönsuojelulain mukaisessa toiminnassa kerro lisäksi tiedot olennaisista päästöistä ja syntyvistä jätteistä sekä toimenpiteet, jotka edellyttävät ympäristönsuojelulain lupaa. Liitteeksi lähestymis- tai yleiskartta (1:100 000–1:200 000), johon on merkitty hankkeen sijainti ja tarvittaessa vaikutusalue. Katso tarvittavat liitteet kohdasta Liitteet. Muita lisätietoja, esimerkiksi kaksikielisissä kunnissa toisella kotimaisella kielellä kirjoitettu tiivistelmä. Nimeä liitetiedostot siten, että nimestä käy ilmi, mikä asiakirja tiedostossa on."
+      "instruction": "Kuvauksen pitää olla lyhyt ja helposti ymmärrettävä tiivistelmä hakemuksen pääasioista yleisöä ja viranomaisia varten. Kuvauksesta pitää löytyä hankkeen sijainti, tarkoitus ja tarve, yleiskuvaus ja aikataulu sekä vaikutukset ja vaikutusalue. Jos kyse on vesilain mukaisista hankkeista, pitää löytyä lisäksi tiedot vesistöstä tai vesialueesta, jolla hanke sijaitsee, ja toimenpiteet, jotka edellyttävät vesilain lupaa. Jos kyse on ympäristönsuojelulain mukaisesta toiminnasta, kuvauksesta pitää löytyä lisäksi tiedot olennaisista päästöistä ja syntyvistä jätteistä sekä toimenpiteet, jotka edellyttävät ympäristönsuojelulain lupaa. Liitteenä on oltava lähestymis- tai yleiskartta (1:100 000–1:200 000), johon on merkitty hankkeen sijainti ja tarvittaessa vaikutusalue. Jos kyseessä on kaksikielinen kunta, tiivistelmä pitää olla kirjoitettu myös toisella kotimaisella kielellä. Liitetiedostot pitää olla nimetty siten, että nimestä käy ilmi, mikä asiakirja tiedostossa on."
     },
     {
       "id": "site_location",
       "title": "Sijainti",
       "field_id": "site_location",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Taustatiedot — sijainti",
-      "instruction": "Kerro hankkeen sijainnista. Ilmoita sijaintikiinteistöjen tiedot (nimi ja tunnus) ja ilmoita sijaintikiinteistöjen omistajat ja haltijat yhteystietoineen erillisellä liitteellä (Asianosaiset)."
+      "instruction": "Kuvauksesta pitää löytyä sijaintikiinteistöjen tiedot (nimi ja tunnus). Sijaintikiinteistöjen omistajat ja haltijat yhteystietoineen pitää löytyä erillisestä liitteestä (Asianosaiset)."
     },
     {
       "id": "zoning_context",
       "title": "Kaavoitus",
       "field_id": "zoning_context",
       "attachment_type": "zoning_extract",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Taustatiedot — kaavoitus; YSL (527/2014) 27 §",
-      "instruction": "Sijaitseeko hanke ja sen ympäristö kaavoitetulla alueella? Ilmoita voimassa olevan, oikeusvaikutteisen asema-, yleis- tai maakuntakaavan tiedot. Kerro, mihin käyttötarkoitukseen hankkeen sijaintialue on kaavassa osoitettu. Arvioi, onko hankkeella vaikutuksia nykyiseen kaavoitukseen ja onko hanke kaavan mukainen. Liitä hakemukseen karttaote voimassa olevasta kaavasta, johon on merkitty selkeästi hankealue, karttaotteet vireillä olevista kaavoista sekä kaavamerkintöjen ja -määräysten selitykset. Katso tarvittavat liitteet kohdasta Liitteet. Muita lisätietoja, esimerkiksi kaavaselostus. Lisätietoja: Kaavoitus (https://www.ymparisto.fi/fi/rakennettu-ymparisto/kaavoitus-ja-alueidenkaytto/kaavoitus). Nimeä liitetiedostot siten, että nimestä käy ilmi, mikä asiakirja tiedostossa on."
+      "instruction": "Kuvauksesta pitää löytyä tieto, onko hanke/toiminta ja sen ympäristö kaavoitetulla alueella ja voimassa olevan, oikeusvaikutteisen asema-, yleis- tai maakuntakaavan tiedot.\nKuvauksesta pitää löytyä tieto, mihin käyttötarkoitukseen hankkeen/toiminnan sijaintialue on kaavassa osoitettu ja tieto siitä, onko hankkeella/toiminnalla vaikutuksia nykyiseen kaavoitukseen ja onko hanke/toiminta kaavan mukainen.\n\nLisätietoja: Kaavoitus (https://www.ymparisto.fi/fi/rakennettu-ymparisto/kaavoitus-ja-alueidenkaytto/kaavoitus)\nHakemuksessa pitää olla liitteenä:\nkarttaote voimassa olevasta, oikeusvaikutteisesta asema-, yleis- tai maakuntakaavasta, johon on merkitty selkeästi hanke-/toiminta-alue\nkarttaotteet mahdollisista vireillä olevista kaavoista, joihin on merkitty selkeästi hanke-/toiminta-alue\nkaavamerkintöjen ja -määräyksien selitykset.\nTarvittaessa liitteenä voi olla kaavaselostus.\nLiitetiedostot pitää olla nimetty siten, että nimestä käy ilmi, mikä asiakirja tiedostossa on."
     },
     {
       "id": "activity_description",
       "title": "Toiminnan yleiskuvaus",
       "field_id": "activity_description",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Toiminta — toiminnan yleiskuvaus",
-      "instruction": "Yleiskuvaus tuotannosta: mitä tuotetaan, kuinka paljon ja millä menetelmillä."
+      "instruction": "Toiminnan yleiskuvauksesta pitää löytyä tieto siitä, mitä tuotetaan, kuinka paljon ja millä menetelmillä."
     },
     {
       "id": "production_capacity",
       "title": "Tuotanto ja tuotteet",
       "field_id": "production_capacity",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Toiminta — tuotanto ja tuotteet",
-      "instruction": "Päätuotteet ja sivutuotteet sekä kaikki sellaiset myynti- ja välituotteet, joiden tuottamisesta aiheutuu päästöjä tai jätteitä. Tarvittaessa tuotteet yksilöidään toimintayksiköittäin tai prosessikohtaisesti. Esitä tuotannon volyymia kuvaavat tunnusluvut, toteutuneet tuotantomäärät ja hakemuksen mukainen tuotantokapasiteetti (esimerkiksi tonnia tuotetta vuodessa)."
+      "instruction": "Kuvauksesta pitää löytyä päätuotteet ja sivutuotteet sekä kaikki sellaiset myynti- ja välituotteet, joiden tuottamisesta aiheutuu päästöjä tai jätteitä. Tarvittaessa tuotteet pitää olla yksilöity toimintayksiköittäin tai prosessikohtaisesti. Kuvauksesta pitää löytyä tuotannon volyymia kuvaavat tunnusluvut, toteutuneet tuotantomäärät ja hakemuksen mukainen tuotantokapasiteetti (esimerkiksi tonnia tuotetta vuodessa)."
     },
     {
       "id": "byproducts",
@@ -80,42 +80,43 @@
           "jätelaki 5"
         ]
       },
-      "severity": "recommendation",
+      "severity": "major",
       "basis": "AA-täyttöohje: Toiminta — sivutuotteet; jätelaki (646/2011) 5 § 2 momentti",
-      "instruction": "Selvitys aiemmin tehdystä tuotantoprosessissa syntyvän aineen tai esineen luokittelusta sivutuotteeksi. Mikäli haetaan tuotantoprosessissa syntyvän aineen tai esineen luokittelua sivutuotteeksi (jätelaki 5 §:n 2 momentti), esitetään kuvaus aineesta tai esineestä ja sen ominaisuuksista sekä sivutuotteeksi luokittelun edellytyksistä: sen jatkokäytöstä on varmuus; sitä voidaan käyttää suoraan sellaisenaan tai sen jälkeen, kun sitä on muunnettu enintään tavanomaisen teollisen käytännön mukaisesti; se syntyy tuotantoprosessin olennaisena osana; sekä se täyttää suunniteltuun käyttöön liittyvät tuotetta sekä ympäristön- ja terveydensuojelua koskevat vaatimukset eikä sen käyttö kokonaisuutena arvioiden aiheuta vaaraa tai haittaa terveydelle tai ympäristölle."
+      "instruction": "Kuvauksesta pitää löytyä selvitys aiemmin tehdystä tuotantoprosessissa syntyvän aineen tai esineen luokittelusta sivutuotteeksi. Mikäli hakemuksessa haetaan tuotantoprosessissa syntyvän aineen tai esineen luokittelua sivutuotteeksi (jätelaki 5 §:n 2 momentti), pitää löytyä kuvaus aineesta tai esineestä ja sen ominaisuuksista sekä sivutuotteeksi luokittelun edellytyksistä: sen jatkokäytöstä on varmuus; sitä voidaan käyttää suoraan sellaisenaan tai sen jälkeen, kun sitä on muunnettu enintään tavanomaisen teollisen käytännön mukaisesti; se syntyy tuotantoprosessin olennaisena osana; sekä se täyttää suunniteltuun käyttöön liittyvät tuotetta sekä ympäristön- ja terveydensuojelua koskevat vaatimukset eikä sen käyttö kokonaisuutena arvioiden aiheuta vaaraa tai haittaa terveydelle tai ympäristölle."
     },
     {
       "id": "process_description",
       "title": "Prosessit",
       "field_id": "process_description",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Toiminta — prosessit",
-      "instruction": "Kuvaus tuotantoon tai päästöjen hallintaan liittyvien prosessien tarkoituksesta, toiminnasta ja mitoitustiedoista. Kuvataan tuotantoon tai päästöjen hallintaan liittyvät laitteistot, rakenteet, varastoalueet ja -säiliöt yksikköprosesseittain tarkoituksenmukaisessa laajuudessa. Tavoitteena on tunnistaa toiminnan ympäristökuormituksen kannalta tärkeimmät yksikköprosessit ja niihin liittyvät mahdollisuudet vähentää päästöjä. Jos kyse on luvanvaraisen toiminnan muuttamista koskevasta asiasta, kuvataan nykyinen tilanne ja siihen suunnitellut lupaa edellyttävät muutokset. Prosessi-, kytkentä- tai virtauskaavio voidaan liittää tarvittaessa."
+      "instruction": "Kuvauksessa pitää olla kuvaus tuotantoon tai päästöjen hallintaan liittyvien prosessien tarkoituksesta, toiminnasta ja mitoitustiedoista. Pitää löytyä tuotantoon tai päästöjen hallintaan liittyvät laitteistot, rakenteet, varastoalueet ja -säiliöt yksikköprosesseittain tarkoituksenmukaisessa laajuudessa. Tavoitteena on tunnistaa toiminnan ympäristökuormituksen kannalta tärkeimmät yksikköprosessit ja niihin liittyvät mahdollisuudet vähentää päästöjä. Jos hakemuksessa on kyse luvanvaraisen toiminnan muuttamista koskevasta asiasta, pitää löytyä kuvaus nykyisestä tilanteesta ja siihen suunnitellut lupaa edellyttävät muutokset. Prosessi-, kytkentä- tai virtauskaavio voi olla liitteenä."
     },
     {
       "id": "risk_preparedness",
       "title": "Riskit – yleiskuvaus",
       "field_id": "risk_preparedness",
       "attachment_type": "risk_preparedness_plan",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Riskit — ympäristöriskit ja varautuminen; YSL (527/2014) — poikkeukselliset tilanteet",
-      "instruction": "Toimintaan liittyvät ympäristöriskit, onnettomuuksien estämiseksi suunnitellut toimenpiteet ja toiminta häiriötilanteissa: tarkkailu-, hälytys- ja sammutusjärjestelmät ja muut varotoimenpiteet; huolto- ja varajärjestelmät; häiriötilanteiden kirjanpito; missä määrin mahdollisesta onnettomuudesta tai häiriöstä johtuvia vahinkoja ympäristölle voidaan estää tai vähentää toimenpitein sekä näiden arvioidut kustannukset; tiedot mahdollisesta ympäristövahinkovakuutuksesta. Liitteeksi ennaltavarautumissuunnitelma. Ennaltavarautumissuunnitelman ohje: https://www.ymparisto.fi/sites/default/files/documents/Ennaltavarautumissuunnitelmaohje.pdf"
+      "instruction": "Kuvauksesta pitää löytyä toimintaan liittyvät ympäristöriskit, onnettomuuksien estämiseksi suunnitellut toimenpiteet ja toiminta häiriötilanteissa: tarkkailu-, hälytys- ja sammutusjärjestelmät ja muut varotoimenpiteet; huolto- ja varajärjestelmät; häiriötilanteiden kirjanpito; missä määrin mahdollisesta onnettomuudesta tai häiriöstä johtuvia vahinkoja ympäristölle voidaan estää tai vähentää toimenpitein sekä näiden arvioidut kustannukset; tiedot mahdollisesta ympäristövahinkovakuutuksesta. Liitteeksi ennaltavarautumissuunnitelma. Ennaltavarautumissuunnitelman ohje: https://www.ymparisto.fi/sites/default/files/documents/Ennaltavarautumissuunnitelmaohje.pdf"
     },
     {
       "id": "land_use_environment",
       "title": "Lähiympäristö ja maankäyttö",
       "field_id": "land_use_environment",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Ympäristö, päästöt ja vaikutukset — lähiympäristö ja maankäyttö",
-      "instruction": "Alueen ja ympäristön nykyiset ja tulevat maankäyttömuodot, kiinteistöjen käyttö, häiriöille herkät toiminnot, kohteet ja asutus sekä etäisyydet niihin, häiriöitä aiheuttavat toiminnot ja kohteet."
+      "instruction": "Kuvauksesta pitää löytyä alueen ja ympäristön nykyiset ja tulevat maankäyttömuodot, kiinteistöjen käyttö, häiriöille herkät toiminnot, kohteet ja asutus sekä etäisyydet niihin, häiriöitä aiheuttavat toiminnot ja kohteet."
     },
     {
       "id": "land_use_impacts",
       "title": "Vaikutukset maankäyttöön ja kiinteistöjen käyttöön",
       "field_id": "land_use_impacts",
-      "severity": "minor",
+      "severity": "major",
       "basis": "AA-täyttöohje: Ympäristö, päästöt ja vaikutukset — vaikutukset maankäyttöön",
-      "instruction": "Vaikutukset maankäyttöön, kiinteistöjen käyttöön ja häiriöille herkkiin toimintoihin ja kohteisiin. Ympäristössä olevien muiden häiriöitä aiheuttavien toimintojen ja kohteiden vaikutus ja huomioon ottaminen hakijan suunnitelmassa."
+      "instruction": "Kuvauksesta pitää löytyä vaikutukset maankäyttöön, kiinteistöjen käyttöön ja häiriöille herkkiin toimintoihin ja kohteisiin. Ympäristössä olevien muiden häiriöitä aiheuttavien toimintojen ja kohteiden vaikutus ja huomioon ottaminen hakijan suunnitelmassa."
     }
-  ]
+  ],
+  "change_note": "2026-12-demo-3: Sinikka Dahl rewrote the ten rule instructions on 23.11.2026 (\"Kuvauksesta pitää löytyä ...\") and raised every rule to major; adopted as the national default, typos corrected."
 }
