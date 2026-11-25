@@ -116,6 +116,9 @@ Two copy/fidelity fixes around the same area:
   rather than the section that is already filled ("Hankkeen yleiskuvaus puuttuu");
 - an agent that answers with a criterion **title** instead of its id is mapped back
   instead of dropped, and a non-applicable conditional rule is forced green;
+- a finding of type `missing` that names a *filled* field is reclassified as
+  `incomplete` (`_reclassify_filled_field_findings`), so the grouped card no longer
+  claims "lomakkeelta puuttuu N pakollista kenttää" while step 3 shows the fields filled;
 - applicant-facing check text is Finnish only (`_finnish_issue_text`): a field id
   (`production_capacity`), attachment type (`byproducts`) or finding id
   (`consistency-1`) becomes its Finnish label or is cut, so "Muut parannusehdotukset"

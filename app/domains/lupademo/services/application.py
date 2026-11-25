@@ -2529,6 +2529,25 @@ def _demote_policy_conflicts(issues: list[Issue], schema_field_ids: set[str] | N
     return kept
 
 
+def _reclassify_filled_field_findings(issues: list[Issue], form_data: dict[str, Any]) -> list[Issue]:
+    """A finding about a *filled* field is incomplete content, not a missing field.
+
+    The check screen groups `type=missing` + `field_id` findings into one "the form is
+    missing N required fields" card. An agent uses `missing` loosely — "the owners are
+    not in a separate attachment" or "the description is too thin" — and the field it
+    names is filled. Reporting that as a missing required field contradicts step 3, so
+    the finding keeps its content but becomes an incomplete-content note.
+    """
+    for issue in issues:
+        if issue.type != "missing" or not issue.field_id or issue.attachment_id:
+            continue
+        if str(form_data.get(issue.field_id) or "").strip():
+            issue.type = "incomplete"
+            if issue.severity == "blocking":
+                issue.severity = "major"
+    return issues
+
+
 def _filter_covered_attachment_issues(issues: list[Issue], attachments: list[dict[str, Any]]) -> list[Issue]:
     attachment_ids = {str(item.get("id") or "") for item in attachments}
     return [
@@ -3169,6 +3188,7 @@ def run_application_check(db: Any, case_id: str, permit_type: str, settings: Any
             agent_issues,
             {str(field.get("id")) for field in schema.get("fields", []) if field.get("id")},
         )
+        agent_issues = _reclassify_filled_field_findings(agent_issues, app.get("form_data") or {})
         agent_issues = _drop_duplicate_field_findings(agent_issues, deterministic)
         if job_id:
             mark_agent_complete(db, case_id, app["permit_type"], job_id, "completeness_validator", "Täydellisyystarkistus valmis.")
@@ -5245,6 +5265,7 @@ def suggestion_service_check(payload: dict[str, Any], db: Any = None, settings: 
         if criteria_results:
             save_artifact(db, api_case, "criteria_assessment", f"api_{req.permit_type}", {"criteria_results": criteria_results})
         issues = merge_issues(issues, agent_issues)
+    issues = _reclassify_filled_field_findings(issues, req.form_data)
     criteria_results, criteria_notes = _normalize_criteria_results(
         criteria_results,
         active_criteria or {},

@@ -434,6 +434,39 @@ class NoMandatoryDocumentContractTest(unittest.TestCase):
         self.assertEqual(kept.severity, "major")
 
 
+class FilledFieldFindingTest(unittest.TestCase):
+    """A finding about a filled field is thin content, not a missing required field."""
+
+    def _issue(self, **kwargs):
+        from app.domains.lupademo.services.domain import Issue
+
+        base = dict(id="completeness-9", type="missing", severity="minor", title="", detail="", confidence=0.8)
+        base.update(kwargs)
+        return Issue(**base)
+
+    def test_missing_finding_on_a_filled_field_becomes_incomplete(self) -> None:
+        from app.domains.lupademo.services.application import _reclassify_filled_field_findings
+
+        issues = _reclassify_filled_field_findings(
+            [self._issue(field_id="site_location", title="Asianosaisliite puuttuu (kiinteistön omistajat/haltijat)")],
+            {"site_location": "Hankealue sijaitsee Keravalla, Myllykorventie 20."},
+        )
+
+        self.assertEqual(issues[0].type, "incomplete")
+        self.assertEqual(issues[0].severity, "minor")
+
+    def test_missing_finding_on_an_empty_field_stays_missing(self) -> None:
+        from app.domains.lupademo.services.application import _reclassify_filled_field_findings
+
+        issues = _reclassify_filled_field_findings(
+            [self._issue(field_id="site_location", severity="blocking", title="Sijainti on täyttämättä lomakkeella")],
+            {"site_location": "   "},
+        )
+
+        self.assertEqual(issues[0].type, "missing")
+        self.assertEqual(issues[0].severity, "blocking")
+
+
 class FinnishCheckTextTest(unittest.TestCase):
     """Applicant-facing check text is Finnish, never internal English identifiers.
 
